@@ -138,3 +138,6 @@
   - 项目配置新增自定义启动/停止/重启命令、目标 JAR、备份策略和备份目录；一键部署上传到目标 JAR，默认把旧包备份到远端项目 `bak/原名-版本.bak.jar`，也支持直接替换。
   - 项目构建支持“上传已有 JAR”模式，跳过本地构建直接上传并重启；设置页新增 Maven 目录、本地仓库和配置目录覆盖，配置目录默认仍为程序目录 `config/` 且变更需重启生效。
   - 新增 `ProjectServiceConfigTest`、`AppSettingsStoreTest`、`ProcessOutputDecoderTest` 并扩展 `ConfigValidatorTest`；已通过 Release 构建、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。
+- 2026-06-18：Git 初始化并上传：
+  - 新增 `.gitignore`，排除 `build*/`、`dist/`、`deps/`、`Testing/`、运行时配置/日志和临时输出。
+  - 初始化 `main` 分支，提交 `67c2566 Initial Deploy Hub project` 已推送到 `git@github2.com:zmoony/deploy-db-hub.git`。

@@ -1,0 +1,17 @@
+#pragma once
+
+#include <QObject>
+
+class ProjectServiceConfigTest final : public QObject
+{
+    Q_OBJECT
+
+private slots:
+    void derivesServiceMatchFromProjectId();
+    void buildsDefaultTargetJarAndBackupPath();
+    void rendersCommandPlaceholders();
+    void pgrepSafePatternAvoidsSelfMatch();
+    void buildsLinuxStatusCommandWithBracketPattern();
+    void buildsLinuxStatusCommandForTargetJar();
+    void buildsWindowsStatusCommandExcludesShell();
+};

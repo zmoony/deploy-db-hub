@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "prod-linux-1",
+  "name": "Prod Linux 1",
+  "os": "linux",
+  "host": "192.168.1.10",
+  "port": 22,
+  "username": "deploy",
+  "auth": {
+    "mode": "system-keychain",
+    "credentialRef": "deploy-hub/prod-linux-1",
+    "sshPrivateKeyPath": null
+  },
+  "defaultRemoteBaseDir": "/opt/deploy-hub",
+  "ssh": {
+    "knownHostsPolicy": "strict-with-prompt"
+  },
+  "winrm": null,
+  "remoteFiles": {
+    "enabled": true,
+    "defaultBrowsePath": "/opt/deploy-hub",
+    "uploadTempDir": "/tmp/deploy-hub-uploads",
+    "maxUploadSizeMb": 500,
+    "operations": {
+      "listDir": true,
+      "mkdir": true,
+      "upload": true,
+      "delete": false,
+      "rename": false
+    }
+  }
+}

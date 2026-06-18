@@ -1,0 +1,140 @@
+# 当前进度
+
+- 2026-06-15：已落地并优化 Deploy Hub 文档体系：
+  - `docs/deploy-hub-prd.md` PRD v1.5。
+  - `docs/deploy-hub-technical-design.md` 技术设计 v1.2。
+  - `docs/schemas/` JSON Schema v1.1。
+  - `docs/decisions/001-winrm-over-wrm4j.md` ADR 已同步 WinRM 实现路线。
+- 已补齐开发前关键决策：libssh、libcurl WinRM、WinRM 分块上传协议、凭据缓存、日志清理策略、schema 认证约束。
+- 2026-06-15：已开始代码落地：
+  - 新增 `AGENTS.md` 项目约束。
+  - 新增 CMake + Qt 6 Widgets 工程骨架。
+  - 新增核心模块：部署状态、`DeployJob`、版本号、产物匹配、配置校验、日志脱敏、日志写入、SQLite 存储、手动凭据会话缓存。
+  - 新增适配器骨架：本地构建、Git 来源、SSH、WinRM。
+  - 新增 Qt Test 单元测试骨架。
+  - 2026-06-15：接入部署编排与存储校验：
+    - `ConfigStore::upsertDeployment` 写入前校验；项目/服务器 upsert 同步校验。
+    - `DeploymentRecord`、`DeployOrchestrator`、`DataPaths`。
+    - `LogWriter::forDeployment` 由编排器统一创建。
+    - 新增 `ConfigStoreTest`、`DeployOrchestratorTest`、`DeploymentRecordTest`。
+    - `ConfigValidator`：`defaultRemoteBaseDir`、`validateDeployment`、WinRM SHA-1 指纹校验。
+    - `LogPath` + `LogWriter::forDeployment`：相对 `logs/<id>.log` 约定。
+    - `GitSourceProvider`：commit SHA 与分支/tag 分路、unshallow 回退。
+    - 新增 `LogPathTest`、`GitSourceProviderTest`，扩展 `ConfigValidatorTest`。
+  - 当前环境缺少 CMake/Qt，尚未完成真实编译验证。
+- 2026-06-15：检测到 Qt 实际安装路径 `D:\systemInsall\Qt\6.11.1\mingw_64`，并使用 Qt 自带 CMake/Ninja/MinGW 完成 Release 构建。
+- 2026-06-15：新增 `scripts/build-release.ps1` 与 `scripts/package-windows.ps1`，已通过 `windeployqt` 打包到 `dist/windows/deploy-hub.exe`。
+- 2026-06-15：主界面已从占位页升级为可视化桌面框架，包含仪表盘、项目管理、服务器管理、一键部署、历史记录、设置页和演示部署流程。
+- 2026-06-15：完成服务器/项目 CRUD UI：
+  - `ServerManagerWidget` + `ServerDialog`：新建/编辑/删除/刷新，写入 `ConfigStore`。
+  - `ProjectManagerWidget` + `ProjectDialog`：新建/编辑/删除/刷新，依赖服务器列表。
+  - `AppStyle` 深色运维主题（`#020617` / `#22C55E` CTA）。
+  - `MainWindow` 侧栏导航接入上述页面；部署页下拉从 DB 加载。
+- 2026-06-15：UI 浅色主题 + 布局间距优化；配置目录改为 exe 同级 `config/`（数据库、日志、工作区）。
+- 2026-06-15：新增 `PageLayout` 统一 8px 栅格间距（32/24/16/12/8）；全页空状态、焦点环、表格行高。
+- 2026-06-17：UI 去掉页面灰底：`QWidget` 默认透明，内容区/表头/指标卡/对话框白底；外层主窗口保留 `#F1F5F9` 浅灰底（修复透明导致黑底）。
+- 2026-06-17：一键部署页「部署配置」区块增加底部间距与表单样式优化。
+- 2026-06-17：服务器管理支持记住密码（CredentialStore + 认证 UI）；项目配置对话框改为双列可缩放布局，路径字段支持手动输入/浏览；Linux 远程文件框架（schema、Stub、浏览对话框）已接入。
+- 2026-06-17：`deploy-hub` 构建为 Windows GUI 子系统（`WIN32`），启动不再弹出控制台黑窗。
+- 2026-06-17：一键部署移除假演示日志，改为按项目配置真实执行本地构建与产物匹配；上传阶段在 SSH/WinRM 未接入前会如实报错。
+- 2026-06-17：部署日志查看：一键部署/历史记录支持按相对路径 `logs/<deploy-id>.log` 打开完整日志；`ConfigStore::listDeployments` / `getLatestDeploymentForProject`；项目/服务器配置对话框 label 与输入框同行（与部署配置一致）。
+- 2026-06-17：`images/icon.png` 应用图标；`WindowChrome` 主窗口/模态框支持还原、最大化、全屏（F11/Esc）；Linux 远程文件浏览器 MobaXterm 式左右分栏（目录树+文件列表）。
+- 2026-06-17：日志查看支持扫描 `config/logs` 下拉选择+手填、一键查看；项目配置 `deploy.logDir`；一键部署页服务状态监控；服务器监控对话框（CPU/内存/磁盘、进程列表、结束进程 Stub）。
+- 2026-06-17：进程列表增加完整命令行列（区分多个 java）；远程文件从 `/` 展示完整目录树，路径栏/树/列表联动；支持查看/编辑/上传/删除；schema 增加 `read`/`write` 操作。
+- 2026-06-17：移除 Stub 远程实现，改为真实通信：Linux 走系统 OpenSSH（ssh/scp/sftp），Windows 走 winrs；监控/文件/部署上传均通过真实远程命令执行。
+- 2026-06-17：代码审查修复 SQLite 连接线程归属问题：`ConfigStore` 改为实例独立连接名并析构移除连接；`DeployWorker` 后台线程按数据库路径创建线程内 `ConfigStore`；新增跨线程同库打开回归测试。
+- 2026-06-17：服务器监控修复 Linux 指标命令（POSIX `free`/`df`/`/proc/stat`，不再触发 sh 语法错误）；指标条压缩、进程表占比加大；监控/远程文件列表改后台线程刷新；目录树同步不再逐级 SSH 拉取子目录。
+- 2026-06-17：UI 全局视觉重构为浅色柔和专业客户端风：
+  - 页面底色统一 `#fafaf9`，正文统一柔和深灰 `#262626`，主色切换为雾灰紫 `#b8b0d1`。
+  - 全局圆角统一 12px，移除粗边框、黑色分割线、重渐变与高饱和功能色。
+  - 卡片/对话框使用极淡底部软阴影，代码与日志区域改为浅暖灰底。
+  - 页边距与组件间距收敛到 8/12/16/24px 模数，整体留白更松弛。
+  - Linux 远程文件浏览与监控对话框改为更接近 MobaXterm 的信息结构，但保持浅米色轻量风格。
+  - 已通过 `scripts/build-release.ps1` 重建，并通过 `ctest`。
+- 2026-06-17：仪表盘视觉增强：
+  - 首页改为 tabs + 状态头图 + 统计卡 + 资源概览 table + 操作面板 + 最近部署 table。
+  - 侧栏 tab 普通态/hover/选中态均增加浅背景色，减少单调空白。
+  - 全局 QComboBox 去掉右侧硬竖线和小方块，改为浅雾灰紫胶囊背景 + `images/chevron-down.svg` 箭头资源。
+  - QSpinBox 右侧上下按钮同步柔和化，去掉可见竖向分割块。
+  - 已通过 `scripts/build-release.ps1` 重建，并通过 `ctest`。
+- 2026-06-17：仪表盘 tab 切换（总览/部署/服务器/日志）、滚动条 6px、QComboBox 样式、去除文字选中黑框、侧栏收窄与远程文件列表区加宽。
+- 2026-06-17：Review 修复：`os` 字段、指标卡实时数据、合并 DB 查询、空状态、日志整行双击、QLineEdit 聚焦边框回归；移除 Qt6 不兼容的 `CE_FocusRect`。
+- 2026-06-17：修复全局下拉框样式回归：
+  - 根因：上一轮 `QComboBox::drop-down` 内嵌紫色胶囊在 Windows/Qt 样式下只渲染成右侧孤立色块，且 SVG 箭头没有按预期显示。
+  - 改为参考图样式：QComboBox 整体白底圆角，右侧下拉区透明，只显示低饱和小三角；弹出列表白底圆角，选中项浅灰。
+  - 移除未使用的 `images/chevron-down.svg` 与 qrc 引用。
+  - 已通过 `scripts/build-release.ps1` 重建，并通过 `ctest`。
+- 2026-06-17：二次根治 QComboBox/SpinBox 紫色短条：
+  - 根因进一步确认：Qt QSS 在 Windows 后端不稳定支持 CSS border 三角，`QComboBox::down-arrow` 与 `QSpinBox::*-arrow` 的透明边框三角被渲染成紫色短条。
+  - 删除 QComboBox/SpinBox 所有自绘箭头与右侧子控件背景规则，保留外框、圆角、hover/focus 与下拉列表样式，由 Qt 原生箭头接管。
+  - 已通过 `scripts/build-release.ps1`、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。
+- 2026-06-17：修复全局下拉框重影：
+  - 根因：`AppProxyStyle::drawComplexControl(CC_ComboBox)` 中先由 Qt 绘制了当前值，又额外调用 `CE_ComboBoxLabel` 手工补画一次，导致文字叠影。
+  - 修复：移除重复的 `CE_ComboBoxLabel` 绘制，仅保留自绘输入底板、右侧胶囊与箭头；下拉列表继续使用 `comboPopup` 定向样式。
+  - 已通过 `scripts/build-release.ps1`、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。
+- 2026-06-17：修复 Linux 服务器监控/远程文件页 SSH 异常：
+  - 根因：Windows OpenSSH 对 `ControlMaster/ControlPath/ControlPersist` 连接复用支持不稳定，触发 `getsockname failed: Not a socket`，监控、文件列表等共用 SSH 调用均受影响。
+  - 修复：`SshClient` 在 Windows 下不再注入 OpenSSH ControlMaster 复用参数；非 Windows 保持原复用行为。
+  - 新增 `SshClientTest` 覆盖 Windows SSH 参数生成；已通过 `scripts/build-release.ps1` 与 Qt 自带 `ctest`。
+- 2026-06-17：修复项目配置「路径与目录」源码路径行 label/value 错位：
+  - 根因：`QStackedWidget` 取隐藏 GitHub 两行表单的最大 sizeHint，导致 Local 单行源码路径行高被撑大，label 顶部对齐而非与输入框视觉居中。
+  - 修复：`ProjectDialog` 在来源切换和初始化时按当前页 sizeHint 固定 `m_sourceStack` 高度。
+  - 已通过 `scripts/build-release.ps1` 重建；补齐 Qt/MinGW PATH 后通过 `ctest --test-dir build-release --output-on-failure`，并刷新 `dist/windows/deploy-hub.exe`。
+- 2026-06-18：完成部署/远程操作增强：
+  - 服务器新建默认值：Linux `root` + `/home`，Windows `administrator` + `D:/psmp`；切换系统时保守更新默认字段。
+  - 服务器监控进程表支持 PID/CPU/内存数值排序，并新增 PID/命令行模糊搜索。
+  - 远程操作改为右侧 Tab：默认终端，文件列表独立撑满；目录树/文件列表右键可在终端打开并 `cd` 到目录。
+  - 终端输入改为在终端区域直接输入，保留 Ctrl+C/重连。
+  - 一键部署新增 JDK 选择与管理，JDK 配置持久化到 `config/jdk-profiles.json`，选择自定义 JDK 时注入 `JAVA_HOME` 和 `PATH`。
+  - 运行状态刷新改为可提示/复用会话密码；部署开始后立即把真实日志路径带回页面。
+  - 新增 `JdkProfileStoreTest`；已通过 Release 构建与 `ctest`。
+- 2026-06-18：修复远程操作终端交互与空间问题：
+  - `TerminalTextEdit` 改为正式头文件类，修复 automoc/类型不一致导致的编译问题。
+  - 终端焦点样式使用专用 2px 雾灰紫边框；点击终端即可获得焦点。
+  - 直接键盘输入会写入终端进程；Enter 发送 `\r`，Backspace/Tab/方向键按终端控制序列发送；无选区时 Ctrl+C 发送中断，有选区时保留复制。
+  - Browse 模式压缩外层留白并增大 splitter 最小高度，终端 tab 撑满更多操作空间。
+  - 新增 `RemoteTerminalWidgetTest` 覆盖键盘输入字节；已通过 Release 构建、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。
+- 2026-06-18：继续修复远程终端可用性：
+  - 根因：终端控件仍是只读文本框外观，缺少输入光标/鼠标输入态；Browse 模式 splitter 最小高度过大，小窗口会裁到底部。
+  - 修复：`TerminalTextEdit` 改为非只读但拦截本地编辑，显示 I-beam 鼠标和粗文本光标；普通输入/Enter/方向键/Paste 发给远端，Ctrl+C 无选区时中断，有选区时复制。
+  - 布局：Browse 对话框最小高度降低，splitter 最小高度改为可收缩，缓解最小化/小窗口底部遮挡。
+  - 视觉：远程操作 tab、目录树、文件表和终端配色调整为 MobaXterm 参考方向，终端深蓝黑背景、绿色文本、琥珀焦点边框。
+- 2026-06-18：修复远程终端无输出与状态栏样式：
+  - 根因：终端流解析把 `\r\n` 中的 `\r` 当成行首覆写，刚写入的命令输出被立刻清空。
+  - 修复：`TerminalStream` 跳过 CRLF 中的 `\r`，仅保留裸 `\r` 的提示符覆写语义；SSH 进程改为 `Unbuffered` 读取。
+  - 终端头栏改为一行：`状态圆点 + 终端 + 状态文字`；绿色发光圆点=已连接，红色=异常/断开，灰色=连接中。
+  - 下拉框重影：隐藏 QComboBox 内部 lineEdit，由 `CE_ComboBoxLabel` 统一绘制一次文本。
+  - 新增 `TerminalStream` 单测；已通过 Release 构建与 `ctest`。
+- 2026-06-18：远程文件浏览器增强：
+  - 右键菜单/QInputDialog/QMessageBox 统一浅色样式，修复菜单文字不可见。
+  - 文件列表支持拖入本地文件上传，底部显示进度条与状态文字。
+  - 文件列表/目录树右键菜单：查看、编辑、在终端打开、上传、重命名、复制、剪切、删除、属性、粘贴、新建目录。
+  - 远程复制/剪切/粘贴（cp/mv）与重命名；新服务器默认启用 rename 操作。
+  - 已通过 Release 构建与 `ctest`。
+- 2026-06-18：远程操作页按截图继续优化：
+  - 终端状态圆点、标题、状态文字、Ctrl+C、重连按钮移到 tab 右侧；终端 tab 内容区只保留终端本体。
+  - 终端配色从偏亮绿/黄焦点调整为深蓝黑背景、柔和绿色文本、绿色焦点边框，更接近 MobaXterm/xterm 观感。
+  - 当前 Qt 安装未提供 WebEngine/qtermwidget，未强行嵌入 xterm.js/qtermwidget；现有终端逻辑继续封装在 `RemoteTerminalWidget`，后续接真实终端库可替换该控件边界。
+  - 查看远程文件改为 `RemoteFileViewerDialog`：默认读取最后 100 行，可输入行数重新加载；加载异步执行，显示“思考中....”避免 UI 卡住。
+  - 新增远程读取 `readFileTail` 能力（SSH 使用 `tail -n`，Stub 使用内存截尾）和 `RemoteFileBrowserTest`；已通过 Release 构建、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。
+- 2026-06-18：修复 QComboBox/select 文本重影回归：
+  - 根因：`AppProxyStyle::drawComplexControl(CC_ComboBox)` 里重新加入了 `drawControl(CE_ComboBoxLabel)`，而 Qt/隐藏 lineEdit 路径已经绘制当前值，导致文字重复。
+  - 修复：仅保留 ComboBox 底板、右侧胶囊和箭头绘制，不再额外绘制 `CE_ComboBoxLabel`。
+  - 新增 `AppStyleTest::comboBoxTextIsNotPaintedTwice` 静态回归检查，防止该分支再次调用 `CE_ComboBoxLabel`；已通过 Release 构建、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。
+- 2026-06-18：修复一键部署页部署日志读取项目配置日志路径：
+  - 根因：日志下拉只扫描本地 `config/logs` 和最近部署记录，未把项目配置 `deploy.logDir` 作为远程日志来源接入查看链路。
+  - 修复：部署页日志下拉会加入 `deploy.logDir/*.log`；一键查看识别 Linux `/home/...` 与 Windows `D:/...` 远程路径，`*.log` 会自动选择目录内最近修改的 `.log` 并默认读取最后 100 行。
+  - Windows WinRM 新增只读日志浏览器，仅服务部署日志查看；远程文件浏览页仍保持原 Linux SSH 文件管理边界。
+  - `RemoteFileViewerDialog` 支持持有临时远程浏览器并等待后台读取结束，避免关闭窗口时留下异步指针风险。
+  - 新增 `DeployLogPathOptionsTest` 路径识别覆盖；已通过 Release 构建、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。
+- 2026-06-18：修复一键部署日志区域混淆与 Maven 构建失败乱码：
+  - 「应用日志」下拉固定显示项目 `deploy.logDir` 远程路径；Deploy Hub 本地部署日志仅写入下方「部署输出」与 `config/logs/`。
+  - Windows 下 cmd 输出优先系统编码（GBK），避免 `'mvn' 不是内部或外部命令` 显示乱码。
+  - 修复 Maven PATH 注入覆盖系统 PATH 的问题；配置 Maven 目录后使用 `mvn.cmd` 绝对路径；未找到 mvn 时给出明确提示。
+  - 默认 Linux 状态命令改用 `[x]pattern` 防自匹配，并用 `kill -0` 校验 PID 存活；配置了 `targetJarPath` 时仅匹配 `java -jar` 进程。
+  - Windows 默认状态命令排除 powershell/winrs 自身，配置了 `targetJarPath` 时仅匹配 `java.exe -jar`。
+  - 新增 `ProjectServiceConfigTest` 状态命令生成覆盖；已通过 Release 构建与 `ctest`。
+  - 构建输出从强制 UTF-8 改为先 UTF-8、失败后系统编码解码，缓解 Windows Maven/GBK 输出乱码；构建失败完整 stdout/stderr 写入部署日志。
+  - 项目配置新增自定义启动/停止/重启命令、目标 JAR、备份策略和备份目录；一键部署上传到目标 JAR，默认把旧包备份到远端项目 `bak/原名-版本.bak.jar`，也支持直接替换。
+  - 项目构建支持“上传已有 JAR”模式，跳过本地构建直接上传并重启；设置页新增 Maven 目录、本地仓库和配置目录覆盖，配置目录默认仍为程序目录 `config/` 且变更需重启生效。
+  - 新增 `ProjectServiceConfigTest`、`AppSettingsStoreTest`、`ProcessOutputDecoderTest` 并扩展 `ConfigValidatorTest`；已通过 Release 构建、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deploy-hub.local/schemas/server-config.schema.json",
+  "title": "DeployHubServerConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "os",
+    "host",
+    "port",
+    "username",
+    "auth",
+    "defaultRemoteBaseDir"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "os": {
+      "type": "string",
+      "enum": ["linux", "windows"]
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "username": {
+      "type": "string",
+      "minLength": 1
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["system-keychain", "manual", "ssh-key"]
+        },
+        "credentialRef": {
+          "type": ["string", "null"]
+        },
+        "sshPrivateKeyPath": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "defaultRemoteBaseDir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Default parent path for remote application deployments on this server"
+    },
+    "ssh": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "knownHostsPolicy": {
+          "type": "string",
+          "enum": ["strict-with-prompt"]
+        }
+      }
+    },
+    "winrm": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["scheme", "tlsVerify", "trustedCertFingerprint"],
+      "properties": {
+        "scheme": {
+          "type": "string",
+          "enum": ["https", "http"]
+        },
+        "tlsVerify": {
+          "type": "boolean",
+          "default": true
+        },
+        "trustedCertFingerprint": {
+          "type": ["string", "null"],
+          "description": "SHA-1 certificate thumbprint: 40 hex digits, no colons (Windows cert store style)",
+          "pattern": "^([0-9A-Fa-f]{40})?$"
+        }
+      }
+    },
+    "remoteFiles": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "defaultBrowsePath": {
+          "type": "string",
+          "minLength": 1,
+          "default": "/"
+        },
+        "uploadTempDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": "/tmp/deploy-hub-uploads"
+        },
+        "maxUploadSizeMb": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 500
+        },
+        "operations": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "listDir": { "type": "boolean", "default": true },
+            "read": { "type": "boolean", "default": true },
+            "write": { "type": "boolean", "default": true },
+            "mkdir": { "type": "boolean", "default": true },
+            "upload": { "type": "boolean", "default": true },
+            "delete": { "type": "boolean", "default": true },
+            "rename": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    },
+    "monitoring": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "processListLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20
+        },
+        "allowKillProcess": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "os": { "const": "linux" } },
+        "required": ["os"]
+      },
+      "then": {
+        "properties": {
+          "port": { "default": 22 },
+          "winrm": { "const": null },
+          "ssh": {
+            "type": "object",
+            "required": ["knownHostsPolicy"]
+          }
+        },
+        "not": {
+          "properties": {
+            "ssh": { "const": null }
+          },
+          "required": ["ssh"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "os": { "const": "windows" } },
+        "required": ["os"]
+      },
+      "then": {
+        "properties": {
+          "port": { "default": 5986 },
+          "ssh": { "const": null },
+          "remoteFiles": { "const": null },
+          "auth": {
+            "properties": {
+              "mode": {
+                "enum": ["system-keychain", "manual"]
+              },
+              "sshPrivateKeyPath": {
+                "const": null
+              }
+            }
+          }
+        },
+        "required": ["winrm"]
+      }
+    }
+  ]
+}

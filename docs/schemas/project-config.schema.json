@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deploy-hub.local/schemas/project-config.schema.json",
+  "title": "DeployHubProjectConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "type",
+    "source",
+    "build",
+    "deploy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "java-maven",
+        "frontend-static",
+        "python",
+        "custom"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["local", "github"]
+        },
+        "localPath": {
+          "type": ["string", "null"]
+        },
+        "repoUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "local" } },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["localPath"],
+            "properties": {
+              "localPath": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "github" } },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["repoUrl", "ref"]
+          }
+        }
+      ]
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "location",
+        "workingDir",
+        "command",
+        "artifactPath",
+        "artifactMatchPolicy",
+        "env",
+        "timeoutSec"
+      ],
+      "properties": {
+        "location": {
+          "type": "string",
+          "const": "local"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["build", "prebuilt-jar"],
+          "default": "build"
+        },
+        "workingDir": {
+          "type": "string",
+          "default": "."
+        },
+        "command": {
+          "type": "string"
+        },
+        "artifactPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prebuiltJarPath": {
+          "type": "string"
+        },
+        "artifactMatchPolicy": {
+          "type": "string",
+          "enum": ["fail-if-multiple", "newest"],
+          "default": "fail-if-multiple"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "timeoutSec": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 600
+        }
+      }
+    },
+    "deploy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serverId",
+        "remoteBaseDir",
+        "failureStrategy"
+      ],
+      "properties": {
+        "serverId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "remoteBaseDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "restartScript": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureStrategy": {
+          "type": "string",
+          "enum": ["keep", "rollback"]
+        },
+        "logDir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Remote application log directory on the target server"
+        },
+        "serviceMatch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Process command line keyword used to identify the running service"
+        },
+        "startCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stopCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "restartCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "statusCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetJarPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backupPolicy": {
+          "type": "string",
+          "enum": ["backup", "replace"],
+          "default": "backup"
+        },
+        "backupDir": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

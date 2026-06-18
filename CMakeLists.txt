@@ -1,0 +1,178 @@
+cmake_minimum_required(VERSION 3.21)
+
+project(deploy_hub VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Sql Test Svg Concurrent)
+
+qt_standard_project_setup()
+
+add_library(deploy_hub_core
+    src/adapters/build/LocalBuilder.cpp
+    src/adapters/git/GitSourceProvider.cpp
+    src/adapters/remote/RemoteExecutor.cpp
+    src/adapters/remote/RemoteFileBrowser.cpp
+    src/adapters/remote/RemoteMonitor.cpp
+    src/adapters/remote/RemoteMonitorCommon.cpp
+    src/adapters/ssh/SftpRemoteFileBrowser.cpp
+    src/adapters/ssh/SshClient.cpp
+    src/adapters/ssh/SshRemoteExecutor.cpp
+    src/adapters/ssh/SshRemoteMonitor.cpp
+    src/adapters/winrm/WinRmClient.cpp
+    src/adapters/winrm/WinRmLogFileBrowser.cpp
+    src/adapters/winrm/WinRmRemoteExecutor.cpp
+    src/adapters/winrm/WinRmRemoteMonitor.cpp
+    src/core/DeploymentState.cpp
+    src/core/DeploymentRecord.cpp
+    src/core/DeployJob.cpp
+    src/core/DeployOrchestrator.cpp
+    src/core/Version.cpp
+    src/infra/ArtifactMatcher.cpp
+    src/infra/AppSettingsStore.cpp
+    src/infra/ConfigValidator.cpp
+    src/infra/ConfigStore.cpp
+    src/infra/CredentialSessionCache.cpp
+    src/infra/CredentialStore.cpp
+    src/infra/DataPaths.cpp
+    src/infra/JdkProfileStore.cpp
+    src/infra/LocalLogCatalog.cpp
+    src/infra/LogPath.cpp
+    src/infra/LogSanitizer.cpp
+    src/infra/LogWriter.cpp
+    src/infra/ProcessOutputDecoder.cpp
+    src/infra/ProjectServiceConfig.cpp
+)
+
+target_include_directories(deploy_hub_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(deploy_hub_core
+    PUBLIC
+        Qt6::Core
+        Qt6::Sql
+)
+
+qt_add_executable(deploy-hub WIN32
+    resources/app.qrc
+    src/app/main.cpp
+    src/infra/AppBranding.cpp
+    src/ui/AppStyle.cpp
+    src/ui/AppStyle.h
+    src/ui/PageLayout.cpp
+    src/ui/PageLayout.h
+    src/ui/DeployWorker.cpp
+    src/ui/DeployWorker.h
+    src/ui/DeploymentLogDialog.cpp
+    src/ui/DeploymentLogDialog.h
+    src/ui/DeployLogPathOptions.cpp
+    src/ui/DeployLogPathOptions.h
+    src/ui/JdkProfileDialog.cpp
+    src/ui/JdkProfileDialog.h
+    src/ui/MainWindow.cpp
+    src/ui/MainWindow.h
+    src/ui/ProjectDialog.cpp
+    src/ui/ProjectDialog.h
+    src/ui/ServerDialog.cpp
+    src/ui/ServerDialog.h
+    src/ui/ProjectManagerWidget.cpp
+    src/ui/ProjectManagerWidget.h
+    src/ui/ServerManagerWidget.cpp
+    src/ui/ServerManagerWidget.h
+    src/ui/ServerMonitorDialog.cpp
+    src/ui/ServerMonitorDialog.h
+    src/ui/PathPickerWidget.cpp
+    src/ui/PathPickerWidget.h
+    src/ui/RemoteFileBrowserDialog.cpp
+    src/ui/RemoteFileBrowserDialog.h
+    src/ui/RemoteFileEditorDialog.cpp
+    src/ui/RemoteFileEditorDialog.h
+    src/ui/RemoteFileViewerDialog.cpp
+    src/ui/RemoteFileViewerDialog.h
+    src/ui/RemoteTerminalWidget.cpp
+    src/ui/RemoteTerminalWidget.h
+    src/ui/TerminalStream.cpp
+    src/ui/TerminalStream.h
+    src/ui/RemoteCredentialResolver.cpp
+    src/ui/RemoteCredentialResolver.h
+    src/ui/RemoteUiHelpers.cpp
+    src/ui/RemoteUiHelpers.h
+)
+
+target_link_libraries(deploy-hub
+    PRIVATE
+        deploy_hub_core
+        Qt6::Widgets
+        Qt6::Gui
+        Qt6::Svg
+        Qt6::Concurrent
+)
+
+enable_testing()
+
+qt_add_executable(deploy_hub_tests
+    tests/unit/main.cpp
+    tests/unit/AppSettingsStoreTest.cpp
+    tests/unit/AppSettingsStoreTest.h
+    tests/unit/AppStyleTest.cpp
+    tests/unit/AppStyleTest.h
+    tests/unit/ArtifactMatcherTest.cpp
+    tests/unit/ArtifactMatcherTest.h
+    tests/unit/ConfigStoreTest.cpp
+    tests/unit/ConfigStoreTest.h
+    tests/unit/ConfigValidatorTest.cpp
+    tests/unit/ConfigValidatorTest.h
+    tests/unit/DeployJobTest.cpp
+    tests/unit/DeployJobTest.h
+    tests/unit/DeployLogPathOptionsTest.cpp
+    tests/unit/DeployLogPathOptionsTest.h
+    tests/unit/DeployOrchestratorTest.cpp
+    tests/unit/DeployOrchestratorTest.h
+    tests/unit/DeploymentRecordTest.cpp
+    tests/unit/DeploymentRecordTest.h
+    tests/unit/GitSourceProviderTest.cpp
+    tests/unit/GitSourceProviderTest.h
+    tests/unit/JdkProfileStoreTest.cpp
+    tests/unit/JdkProfileStoreTest.h
+    tests/unit/LocalLogCatalogTest.cpp
+    tests/unit/LocalLogCatalogTest.h
+    tests/unit/LogPathTest.cpp
+    tests/unit/LogPathTest.h
+    tests/unit/LogSanitizerTest.cpp
+    tests/unit/LogSanitizerTest.h
+    tests/unit/ProcessOutputDecoderTest.cpp
+    tests/unit/ProcessOutputDecoderTest.h
+    tests/unit/ProjectServiceConfigTest.cpp
+    tests/unit/ProjectServiceConfigTest.h
+    tests/unit/RemoteFileBrowserTest.cpp
+    tests/unit/RemoteFileBrowserTest.h
+    tests/unit/RemoteTerminalWidgetTest.cpp
+    tests/unit/RemoteTerminalWidgetTest.h
+    tests/unit/SshClientTest.cpp
+    tests/unit/SshClientTest.h
+    tests/unit/VersionTest.cpp
+    tests/unit/VersionTest.h
+    src/ui/RemoteTerminalWidget.cpp
+    src/ui/RemoteTerminalWidget.h
+    src/ui/DeployLogPathOptions.cpp
+    src/ui/DeployLogPathOptions.h
+    src/ui/AppStyle.cpp
+    src/ui/AppStyle.h
+    src/ui/TerminalStream.cpp
+    src/ui/TerminalStream.h
+    src/adapters/remote/StubRemoteVfs.cpp
+    src/adapters/remote/StubRemoteVfs.h
+)
+
+target_link_libraries(deploy_hub_tests
+    PRIVATE
+        deploy_hub_core
+        Qt6::Test
+        Qt6::Widgets
+)
+
+add_test(NAME deploy_hub_tests COMMAND deploy_hub_tests)

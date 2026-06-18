@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deploy-hub.local/schemas/deployment-record.schema.json",
+  "title": "DeployHubDeploymentRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "projectId",
+    "serverId",
+    "version",
+    "status",
+    "startedAt",
+    "logPath"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "serverId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]{8}-[0-9]{6}$"
+    },
+    "remoteVersionDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactNames": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "building",
+        "uploading",
+        "restarting",
+        "success",
+        "failed",
+        "rollbacking",
+        "rolled_back",
+        "rollback_failed",
+        "canceled"
+      ]
+    },
+    "failureStep": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "validate",
+        "building",
+        "uploading",
+        "current_switch",
+        "restarting",
+        "rollback"
+      ]
+    },
+    "failureReason": {
+      "type": ["string", "null"]
+    },
+    "rolledBackFrom": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{8}-[0-9]{6}$"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "logPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Relative path from application dataDir, e.g. logs/<deploy-id>.log",
+      "pattern": "^logs/[a-zA-Z0-9._-]+\\.log$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "success" } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["remoteVersionDir", "artifactNames", "finishedAt"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "failed" } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["failureStep", "failureReason", "finishedAt"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "rolled_back" } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": [
+          "remoteVersionDir",
+          "artifactNames",
+          "failureStep",
+          "failureReason",
+          "rolledBackFrom",
+          "finishedAt"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "rollback_failed" } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": [
+          "failureStep",
+          "failureReason",
+          "rolledBackFrom",
+          "finishedAt"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "canceled" } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["finishedAt"]
+      }
+    }
+  ]
+}

@@ -64,6 +64,12 @@ QString remoteBaseDirFromProject(const QJsonObject &project)
     return normalizedRemoteLogPath(deploy.value(QStringLiteral("remoteBaseDir")).toString());
 }
 
+QString defaultRemoteLogPath(const QJsonObject &project)
+{
+    const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
+    return normalizedRemoteLogPath(deploy.value(QStringLiteral("logDir")).toString());
+}
+
 QStringList defaultRemoteLogGlobPatterns()
 {
     return {QStringLiteral("*.log"), QStringLiteral("*.txt")};
@@ -173,16 +179,56 @@ QStringList parseDiscoveredLogDirectories(const QString &output)
     return directories;
 }
 
-QStringList remoteLogPathOptionsFromDiscovered(const QJsonObject &project, const QStringList &discovered)
+QStringList parseDiscoveredLogFiles(const QString &output)
+{
+    QStringList files;
+    const QStringList lines = output.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        appendUnique(&files, normalizedRemoteLogPath(line));
+    }
+    return files;
+}
+
+QStringList mergeRemoteLogDirectories(const QJsonObject &project, const QStringList &discovered)
 {
     QStringList directories = discovered;
     for (const QString &directory : candidateRemoteLogDirectories(project)) {
         appendUnique(&directories, directory);
     }
-    if (directories.isEmpty()) {
-        return deployLogPathOptionsForProject(project);
+    return directories;
+}
+
+QString remoteDiscoverLogFilesCommand(const QJsonObject &server, const QStringList &directories)
+{
+    QStringList normalizedDirectories;
+    for (const QString &directory : directories) {
+        appendUnique(&normalizedDirectories, normalizedRemoteLogPath(directory));
     }
-    return buildRemoteLogPathOptions(directories, defaultRemoteLogGlobPatterns());
+    if (normalizedDirectories.isEmpty()) {
+        return {};
+    }
+
+    if (server.value(QStringLiteral("os")).toString() == QStringLiteral("windows")) {
+        QStringList blocks;
+        for (const QString &directory : normalizedDirectories) {
+            const QString nativeDir = QDir::toNativeSeparators(directory);
+            blocks.append(QStringLiteral(
+                "Get-ChildItem -LiteralPath %1 -File -Include *.log,*.txt -Recurse -Depth 1 -ErrorAction SilentlyContinue | "
+                "ForEach-Object { $_.LastWriteTime.ToUnixTimeSeconds().ToString() + ' ' + $_.FullName.Replace('\\','/') }")
+                .arg(powerShellSingleQuote(nativeDir)));
+        }
+        return QStringLiteral("powershell -NoProfile -Command \"%1 | Sort-Object { [double]($_ -split ' ',2)[0] } -Descending | "
+                              "ForEach-Object { ($_ -split ' ',2)[1] }\"")
+            .arg(blocks.join(QStringLiteral("; ")));
+    }
+
+    QStringList findBlocks;
+    for (const QString &directory : normalizedDirectories) {
+        findBlocks.append(QStringLiteral(
+            "find %1 -maxdepth 2 -type f \\( -iname '*.log' -o -iname '*.txt' \\) -printf '%%T@ %%p\\n' 2>/dev/null")
+            .arg(shellQuoteSingle(directory)));
+    }
+    return QStringLiteral("{ %1; } | sort -nr | cut -d' ' -f2-").arg(findBlocks.join(QStringLiteral("; ")));
 }
 
 QString sshTailLatestMatchingFileCommand(const RemoteLogGlobSpec &spec, int lineCount)

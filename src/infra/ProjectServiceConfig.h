@@ -33,5 +33,5 @@ QString remoteProjectBackupPath(const QJsonObject &project,
                                 const QString &artifactFileName,
                                 const QString &version);
 QString pgrepSafePattern(const QString &pattern);
-QString defaultLinuxServiceStatusCommand(const ProjectServiceConfig &service);
-QString defaultWindowsServiceStatusCommand(const ProjectServiceConfig &service);
+QString defaultLinuxServiceStatusCommand(const QJsonObject &project);
+QString defaultWindowsServiceStatusCommand(const QJsonObject &project);

@@ -87,7 +87,7 @@ ServiceStatusResult WinRmRemoteMonitor::queryServiceStatus(const QJsonObject &se
     const ProjectServiceConfig service = projectServiceConfig(projectConfig);
     WinRmClient client(m_context);
     const QString commandText = service.statusCommand.isEmpty()
-        ? defaultWindowsServiceStatusCommand(service)
+        ? defaultWindowsServiceStatusCommand(projectConfig)
         : renderProjectServiceCommand(service.statusCommand, projectConfig);
     const RemoteCommandResult command = client.execute(commandText, 30);
 

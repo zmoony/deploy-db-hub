@@ -11,6 +11,7 @@ struct RemoteLogGlobSpec {
 };
 
 QString normalizedRemoteLogPath(QString path);
+QString defaultRemoteLogPath(const QJsonObject &project);
 QString remoteBaseDirFromProject(const QJsonObject &project);
 QStringList defaultRemoteLogGlobPatterns();
 QStringList candidateRemoteLogDirectories(const QJsonObject &project);
@@ -19,7 +20,9 @@ QStringList deployLogPathOptionsForProject(const QJsonObject &project);
 RemoteLogGlobSpec parseRemoteLogGlobPath(const QString &path);
 bool isRemoteDeployLogPath(const QString &path);
 QString remoteDiscoverLogDirectoriesCommand(const QJsonObject &server, const QString &remoteBaseDir);
+QString remoteDiscoverLogFilesCommand(const QJsonObject &server, const QStringList &directories);
 QStringList parseDiscoveredLogDirectories(const QString &output);
-QStringList remoteLogPathOptionsFromDiscovered(const QJsonObject &project, const QStringList &discovered);
+QStringList parseDiscoveredLogFiles(const QString &output);
+QStringList mergeRemoteLogDirectories(const QJsonObject &project, const QStringList &discovered);
 QString sshTailLatestMatchingFileCommand(const RemoteLogGlobSpec &spec, int lineCount);
 QString winRmTailLatestMatchingFileCommand(const RemoteLogGlobSpec &spec, int lineCount);

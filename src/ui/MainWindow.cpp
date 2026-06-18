@@ -522,12 +522,14 @@ QWidget *MainWindow::createDeployPage()
     logForm->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_logPathInput = new QComboBox;
     m_logPathInput->setEditable(true);
+    m_logPathInput->setInsertPolicy(QComboBox::NoInsert);
     m_logPathInput->setProperty("manualEdit", true);
     m_logPathInput->setMinimumWidth(360);
     PageLayout::configureFormInput(m_logPathInput);
     if (QLineEdit *logPathEditor = m_logPathInput->lineEdit()) {
+        logPathEditor->setReadOnly(false);
         logPathEditor->setPlaceholderText(
-            QStringLiteral("/home/app/logs/*.log 或 *.txt，支持自定义输入"));
+            QStringLiteral("选择或输入远程日志文件路径，例如 /home/app/logs/app.log"));
     }
     m_refreshLogListButton = new QPushButton(QStringLiteral("刷新列表"));
     m_viewLogButton = new QPushButton(QStringLiteral("一键查看"));
@@ -934,6 +936,38 @@ void MainWindow::refreshDeploymentTables()
     refreshDashboardTabData(&deployments);
 }
 
+void MainWindow::applyRemoteLogPathOptions(const QStringList &options, const QString &preferred)
+{
+    if (m_logPathInput == nullptr) {
+        return;
+    }
+
+    QStringList merged = options;
+    if (!preferred.isEmpty() && !merged.contains(preferred)) {
+        merged.prepend(preferred);
+    }
+
+    m_logPathInput->clear();
+    m_logPathInput->addItems(merged);
+    m_logPathInput->setProperty("manualEdit", true);
+    m_logPathInput->setInsertPolicy(QComboBox::NoInsert);
+    if (QLineEdit *editor = m_logPathInput->lineEdit()) {
+        editor->setReadOnly(false);
+    }
+
+    const QString pick = preferred.isEmpty() && !merged.isEmpty() ? merged.first() : preferred;
+    if (pick.isEmpty()) {
+        return;
+    }
+
+    const int index = m_logPathInput->findText(pick);
+    if (index >= 0) {
+        m_logPathInput->setCurrentIndex(index);
+    } else {
+        m_logPathInput->setEditText(pick);
+    }
+}
+
 void MainWindow::refreshLocalLogFiles()
 {
     if (m_logPathInput == nullptr) {
@@ -941,32 +975,23 @@ void MainWindow::refreshLocalLogFiles()
     }
 
     const QString current = m_logPathInput->currentText().trimmed();
+    QString preferred = current;
     QStringList options;
     if (m_deployProject != nullptr && m_deployProject->count() > 0) {
         QJsonObject project;
         QString error;
         if (m_store->getProject(m_deployProject->currentData().toString(), &project, &error)) {
-            options.append(deployLogPathOptionsForProject(project));
+            const QString configured = defaultRemoteLogPath(project);
+            if (current.isEmpty() && !configured.isEmpty()) {
+                preferred = configured;
+            }
+            if (!configured.isEmpty()) {
+                options.append(configured);
+            }
         }
     }
-    options.removeDuplicates();
-    if (!current.isEmpty() && !options.contains(current)) {
-        options.prepend(current);
-    }
 
-    m_logPathInput->clear();
-    m_logPathInput->addItems(options);
-    if (!current.isEmpty()) {
-        const int index = m_logPathInput->findText(current);
-        if (index >= 0) {
-            m_logPathInput->setCurrentIndex(index);
-        } else {
-            m_logPathInput->setEditText(current);
-        }
-    } else if (!options.isEmpty()) {
-        m_logPathInput->setCurrentIndex(0);
-    }
-
+    applyRemoteLogPathOptions(options, preferred);
     refreshRemoteLogPathOptions();
 }
 
@@ -988,6 +1013,8 @@ void MainWindow::refreshRemoteLogPathOptions()
         return;
     }
 
+    const QString configuredDefault = defaultRemoteLogPath(project);
+
     RemoteConnectionContext context =
         RemoteCredentialResolver::resolve(server, m_credentials.get(), m_sessionCache.get(), this, true);
     const QJsonObject auth = server.value(QStringLiteral("auth")).toObject();
@@ -997,7 +1024,7 @@ void MainWindow::refreshRemoteLogPathOptions()
     }
 
     auto *watcher = new QFutureWatcher<QStringList>(this);
-    connect(watcher, &QFutureWatcher<QStringList>::finished, this, [this, watcher, generation, current]() {
+    connect(watcher, &QFutureWatcher<QStringList>::finished, this, [this, watcher, generation, current, configuredDefault]() {
         watcher->deleteLater();
         if (generation != m_remoteLogRefreshGeneration) {
             return;
@@ -1008,26 +1035,12 @@ void MainWindow::refreshRemoteLogPathOptions()
             return;
         }
 
-        const QString keep = m_logPathInput->currentText().trimmed().isEmpty()
-            ? current
-            : m_logPathInput->currentText().trimmed();
-        QStringList merged = remoteOptions;
-        if (!keep.isEmpty() && !merged.contains(keep)) {
-            merged.prepend(keep);
+        const QString typed = m_logPathInput->currentText().trimmed();
+        QString preferred = typed.isEmpty() ? current : typed;
+        if (preferred.isEmpty() && !configuredDefault.isEmpty()) {
+            preferred = configuredDefault;
         }
-
-        m_logPathInput->clear();
-        m_logPathInput->addItems(merged);
-        if (!keep.isEmpty()) {
-            const int index = m_logPathInput->findText(keep);
-            if (index >= 0) {
-                m_logPathInput->setCurrentIndex(index);
-            } else {
-                m_logPathInput->setEditText(keep);
-            }
-        } else if (!merged.isEmpty()) {
-            m_logPathInput->setCurrentIndex(0);
-        }
+        applyRemoteLogPathOptions(remoteOptions, preferred);
     });
 
     const QJsonObject projectCopy = project;
@@ -1045,13 +1058,27 @@ void MainWindow::refreshRemoteLogPathOptions()
             return QStringList{};
         }
 
-        const RemoteCommandResult result = executor->execute(discoverCommand, 20);
-        if (!result.ok) {
-            return QStringList{};
+        const RemoteCommandResult dirResult = executor->execute(discoverCommand, 20);
+        QStringList directories = mergeRemoteLogDirectories(
+            projectCopy,
+            dirResult.ok ? parseDiscoveredLogDirectories(dirResult.stdoutText) : QStringList{});
+        if (directories.isEmpty()) {
+            directories = candidateRemoteLogDirectories(projectCopy);
         }
 
-        return remoteLogPathOptionsFromDiscovered(
-            projectCopy, parseDiscoveredLogDirectories(result.stdoutText));
+        const QString discoverFilesCommand = remoteDiscoverLogFilesCommand(serverCopy, directories);
+        if (discoverFilesCommand.isEmpty()) {
+            const QString configured = defaultRemoteLogPath(projectCopy);
+            return configured.isEmpty() ? QStringList{} : QStringList{configured};
+        }
+
+        const RemoteCommandResult fileResult = executor->execute(discoverFilesCommand, 30);
+        QStringList files = fileResult.ok ? parseDiscoveredLogFiles(fileResult.stdoutText) : QStringList{};
+        const QString configured = defaultRemoteLogPath(projectCopy);
+        if (!configured.isEmpty() && !files.contains(configured)) {
+            files.prepend(configured);
+        }
+        return files;
     }));
 }
 
@@ -1068,12 +1095,11 @@ void MainWindow::refreshDeployLogPath()
         return;
     }
 
-    const QStringList options = deployLogPathOptionsForProject(project);
-    if (options.isEmpty()) {
+    const QString logPath = defaultRemoteLogPath(project);
+    if (logPath.isEmpty()) {
         return;
     }
 
-    const QString logPath = options.first();
     const int index = m_logPathInput->findText(logPath);
     if (index >= 0) {
         m_logPathInput->setCurrentIndex(index);

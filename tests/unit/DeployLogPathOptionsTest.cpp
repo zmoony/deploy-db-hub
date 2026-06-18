@@ -6,7 +6,18 @@
 #include <QJsonObject>
 #include <QTest>
 
-void DeployLogPathOptionsTest::includesProjectDeployLogDirGlob()
+void DeployLogPathOptionsTest::returnsConfiguredLogPathAsDefault()
+{
+    const QJsonObject project{
+        {QStringLiteral("deploy"), QJsonObject{
+            {QStringLiteral("logDir"), QStringLiteral("/home/app/logs/app.log")}
+        }}
+    };
+
+    QCOMPARE(defaultRemoteLogPath(project), QStringLiteral("/home/app/logs/app.log"));
+}
+
+void DeployLogPathOptionsTest::normalizesConfiguredDirectoryLogDir()
 {
     const QJsonObject project{
         {QStringLiteral("deploy"), QJsonObject{
@@ -14,26 +25,19 @@ void DeployLogPathOptionsTest::includesProjectDeployLogDirGlob()
         }}
     };
 
-    const QStringList options = deployLogPathOptionsForProject(project);
-    QCOMPARE(options.size(), 2);
-    QVERIFY(options.contains(QStringLiteral("/home/app/logs/*.log")));
-    QVERIFY(options.contains(QStringLiteral("/home/app/logs/*.txt")));
+    QCOMPARE(defaultRemoteLogPath(project), QStringLiteral("/home/app/logs"));
 }
 
-void DeployLogPathOptionsTest::includesRemoteBaseDirLogCandidates()
+void DeployLogPathOptionsTest::buildsRemoteLogFileDiscoveryCommand()
 {
-    const QJsonObject project{
-        {QStringLiteral("deploy"), QJsonObject{
-            {QStringLiteral("remoteBaseDir"), QStringLiteral("/home/wva/wva-gateway")},
-            {QStringLiteral("logDir"), QStringLiteral("/home/wva/wva-gateway/logs/wva-gateway.log")}
-        }}
-    };
+    const QJsonObject server{{QStringLiteral("os"), QStringLiteral("linux")}};
+    const QString command = remoteDiscoverLogFilesCommand(
+        server, {QStringLiteral("/home/wva/wva-gateway/logs")});
 
-    const QStringList options = deployLogPathOptionsForProject(project);
-    QVERIFY(options.contains(QStringLiteral("/home/wva/wva-gateway/logs/*.log")));
-    QVERIFY(options.contains(QStringLiteral("/home/wva/wva-gateway/log/*.log")));
-    QVERIFY(options.contains(QStringLiteral("/home/wva/wva-gateway/logs/*.txt")));
-    QVERIFY(!options.contains(QStringLiteral("/home/wva/wva-gateway/logs/wva-gateway.log/*.log")));
+    QVERIFY(command.contains(QStringLiteral("find '/home/wva/wva-gateway/logs'")));
+    QVERIFY(command.contains(QStringLiteral("*.log")));
+    QVERIFY(command.contains(QStringLiteral("*.txt")));
+    QVERIFY(!command.contains(QStringLiteral("/*.log")));
 }
 
 void DeployLogPathOptionsTest::parsesRemoteLogGlobPath()
@@ -46,10 +50,9 @@ void DeployLogPathOptionsTest::parsesRemoteLogGlobPath()
 
 void DeployLogPathOptionsTest::detectsRemoteLogPaths()
 {
-    QVERIFY(isRemoteDeployLogPath(QStringLiteral("/home/app/logs/*.log")));
-    QVERIFY(isRemoteDeployLogPath(QStringLiteral("/home/app/logs/*.txt")));
     QVERIFY(isRemoteDeployLogPath(QStringLiteral("/home/app/logs/app.log")));
-    QVERIFY(isRemoteDeployLogPath(QStringLiteral("D:/psmp/logs/*.log")));
+    QVERIFY(isRemoteDeployLogPath(QStringLiteral("/home/app/logs/*.txt")));
+    QVERIFY(isRemoteDeployLogPath(QStringLiteral("D:/psmp/logs/app.log")));
     QVERIFY(isRemoteDeployLogPath(QStringLiteral("D:\\psmp\\logs\\app.log")));
     QVERIFY(!isRemoteDeployLogPath(QStringLiteral("logs/deploy-001.log")));
 }

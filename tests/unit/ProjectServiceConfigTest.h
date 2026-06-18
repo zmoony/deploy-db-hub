@@ -13,6 +13,7 @@ private slots:
     void pgrepSafePatternAvoidsSelfMatch();
     void buildsLinuxStatusCommandWithBracketPattern();
     void buildsLinuxStatusCommandForTargetJar();
+    void buildsLinuxStatusCommandForLatestJarInRemoteBaseDir();
     void buildsWindowsStatusCommandExcludesShell();
     void detectsLocalRestartScriptPath();
     void buildsRestartPlanForLocalScript();

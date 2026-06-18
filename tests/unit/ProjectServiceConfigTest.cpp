@@ -54,8 +54,12 @@ void ProjectServiceConfigTest::pgrepSafePatternAvoidsSelfMatch()
 
 void ProjectServiceConfigTest::buildsLinuxStatusCommandWithBracketPattern()
 {
-    const ProjectServiceConfig service = projectServiceConfig(project());
-    const QString command = defaultLinuxServiceStatusCommand(service);
+    QJsonObject configured = project();
+    QJsonObject deploy = configured.value(QStringLiteral("deploy")).toObject();
+    deploy.remove(QStringLiteral("remoteBaseDir"));
+    configured.insert(QStringLiteral("deploy"), deploy);
+
+    const QString command = defaultLinuxServiceStatusCommand(configured);
     QVERIFY(command.contains(QStringLiteral("[y]z-wwa-gateway")));
     QVERIFY(command.contains(QStringLiteral("kill -0")));
     QVERIFY(command.contains(QStringLiteral("echo STOPPED")));
@@ -68,14 +72,27 @@ void ProjectServiceConfigTest::buildsLinuxStatusCommandForTargetJar()
     deploy.insert(QStringLiteral("targetJarPath"), QStringLiteral("/home/yz-wwa-gateway/app.jar"));
     configured.insert(QStringLiteral("deploy"), deploy);
 
-    const QString command = defaultLinuxServiceStatusCommand(projectServiceConfig(configured));
+    const QString command = defaultLinuxServiceStatusCommand(configured);
     QVERIFY(command.contains(QStringLiteral("[j]ava.*-jar.*[a]pp.jar")));
+    QVERIFY(command.contains(QStringLiteral("[a]pp.jar")));
+}
+
+void ProjectServiceConfigTest::buildsLinuxStatusCommandForLatestJarInRemoteBaseDir()
+{
+    const QString command = defaultLinuxServiceStatusCommand(project());
+    QVERIFY(command.contains(QStringLiteral("latest_jar=")));
+    QVERIFY(command.contains(QStringLiteral("/home/yz-wwa-gateway")));
+    QVERIFY(!command.contains(QStringLiteral("[y]z-wwa-gateway")));
 }
 
 void ProjectServiceConfigTest::buildsWindowsStatusCommandExcludesShell()
 {
-    const ProjectServiceConfig service = projectServiceConfig(project());
-    const QString command = defaultWindowsServiceStatusCommand(service);
+    QJsonObject configured = project();
+    QJsonObject deploy = configured.value(QStringLiteral("deploy")).toObject();
+    deploy.remove(QStringLiteral("remoteBaseDir"));
+    configured.insert(QStringLiteral("deploy"), deploy);
+
+    const QString command = defaultWindowsServiceStatusCommand(configured);
     QVERIFY(command.contains(QStringLiteral("powershell*")));
     QVERIFY(command.contains(QStringLiteral("winrs*")));
 }

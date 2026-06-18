@@ -56,6 +56,7 @@ private:
     void appendLog(const QString &stage, const QString &message);
     void openDeploymentLog(const QString &relativePath);
     void openRemoteDeploymentLog(const QString &remotePath);
+    void applyRemoteLogPathOptions(const QStringList &options, const QString &preferred);
     QString selectedHistoryLogPath() const;
     void applyDeploymentMetrics(const QVector<StoredRecord> &deployments);
     void refreshDashboardTabData(const QVector<StoredRecord> *deployments = nullptr);

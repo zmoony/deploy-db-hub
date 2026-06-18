@@ -183,40 +183,74 @@ QString pgrepSafePattern(const QString &pattern)
     return QStringLiteral("[%1]%2").arg(pattern.at(0)).arg(pattern.mid(1));
 }
 
-QString defaultLinuxServiceStatusCommand(const ProjectServiceConfig &service)
+QString defaultLinuxServiceStatusCommand(const QJsonObject &project)
 {
-    QString pgrepPattern;
+    const ProjectServiceConfig service = projectServiceConfig(project);
+    const QString remoteBaseDir = normalizedRemotePath(
+        project.value(QStringLiteral("deploy")).toObject().value(QStringLiteral("remoteBaseDir")).toString());
+
+    QString command = QStringLiteral(
+        "check() { for pid in $(pgrep -f -- \"$1\" 2>/dev/null); do "
+        "if kill -0 \"$pid\" 2>/dev/null; then echo RUNNING:$pid; exit 0; fi; done; }; ");
+
     if (!service.targetJarPath.isEmpty()) {
         const QString jarName = QFileInfo(service.targetJarPath).fileName();
-        pgrepPattern = QStringLiteral("[j]ava.*-jar.*%1").arg(pgrepSafePattern(jarName));
-    } else {
-        pgrepPattern = pgrepSafePattern(service.serviceMatch);
+        command += QStringLiteral("check %1; check %2; ")
+                       .arg(shellQuoteSingle(QStringLiteral("[j]ava.*-jar.*") + pgrepSafePattern(jarName)),
+                            shellQuoteSingle(pgrepSafePattern(jarName)));
+    } else if (!remoteBaseDir.isEmpty()) {
+        command += QStringLiteral(
+            "latest_jar=$(find %1 -maxdepth 1 -type f -name '*.jar' -printf '%%T@ %%f\\n' 2>/dev/null | "
+            "sort -nr | head -n 1 | cut -d' ' -f2-); "
+            "if [ -n \"$latest_jar\" ]; then "
+            "  jar_pat=$(printf '%%s' \"$latest_jar\" | sed 's/^\\(.\\)/[\\1]/'); "
+            "  check \"$jar_pat\"; "
+            "fi; ")
+            .arg(shellQuoteSingle(remoteBaseDir));
     }
 
-    return QStringLiteral(
-        "for pid in $(pgrep -f -- %1 2>/dev/null); do "
-        "if kill -0 \"$pid\" 2>/dev/null; then echo RUNNING:$pid; exit 0; fi; "
-        "done; echo STOPPED")
-        .arg(shellQuoteSingle(pgrepPattern));
+    if (!service.serviceMatch.isEmpty() && service.targetJarPath.isEmpty() && remoteBaseDir.isEmpty()) {
+        command += QStringLiteral("check %1; ").arg(shellQuoteSingle(pgrepSafePattern(service.serviceMatch)));
+    }
+
+    command += QStringLiteral("echo STOPPED");
+    return command;
 }
 
-QString defaultWindowsServiceStatusCommand(const ProjectServiceConfig &service)
+QString defaultWindowsServiceStatusCommand(const QJsonObject &project)
 {
-    const QString matchLiteral = service.targetJarPath.isEmpty()
-        ? service.serviceMatch
-        : QFileInfo(service.targetJarPath).fileName();
-    const QString match = shellQuoteSingle(matchLiteral);
+    const ProjectServiceConfig service = projectServiceConfig(project);
+    const QString remoteBaseDir = normalizedRemotePath(
+        project.value(QStringLiteral("deploy")).toObject().value(QStringLiteral("remoteBaseDir")).toString());
+
     if (!service.targetJarPath.isEmpty()) {
+        const QString match = shellQuoteSingle(QFileInfo(service.targetJarPath).fileName());
         return QStringLiteral(
             "powershell -NoProfile -Command \""
             "$match = %1; "
             "$p = Get-CimInstance Win32_Process | Where-Object { "
-            "$_.Name -eq 'java.exe' -and $_.CommandLine -like ('*' + $match + '*') -and $_.CommandLine -like '*-jar*' "
+            "$_.Name -eq 'java.exe' -and $_.CommandLine -like ('*' + $match + '*') "
             "} | Select-Object -First 1; "
             "if ($null -eq $p) { 'STOPPED' } else { 'RUNNING:' + $p.ProcessId }\"")
             .arg(match);
     }
 
+    if (!remoteBaseDir.isEmpty()) {
+        const QString nativeBase = QDir::toNativeSeparators(remoteBaseDir);
+        return QStringLiteral(
+            "powershell -NoProfile -Command \""
+            "$base = %1; "
+            "$latest = Get-ChildItem -LiteralPath $base -Filter '*.jar' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1; "
+            "if ($null -eq $latest) { 'STOPPED'; exit 0 }; "
+            "$match = $latest.Name; "
+            "$p = Get-CimInstance Win32_Process | Where-Object { "
+            "$_.Name -eq 'java.exe' -and $_.CommandLine -like ('*' + $match + '*') "
+            "} | Select-Object -First 1; "
+            "if ($null -eq $p) { 'STOPPED' } else { 'RUNNING:' + $p.ProcessId }\"")
+            .arg(shellQuoteSingle(nativeBase));
+    }
+
+    const QString match = shellQuoteSingle(service.serviceMatch);
     return QStringLiteral(
         "powershell -NoProfile -Command \""
         "$match = %1; "

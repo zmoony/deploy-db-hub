@@ -92,7 +92,7 @@ ServiceStatusResult SshRemoteMonitor::queryServiceStatus(const QJsonObject &serv
 
     const ProjectServiceConfig service = projectServiceConfig(projectConfig);
     const QString commandText = service.statusCommand.isEmpty()
-        ? defaultLinuxServiceStatusCommand(service)
+        ? defaultLinuxServiceStatusCommand(projectConfig)
         : renderProjectServiceCommand(service.statusCommand, projectConfig);
     const RemoteCommandResult command = m_client.execute(commandText, 20);
 

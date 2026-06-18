@@ -7,8 +7,9 @@ class DeployLogPathOptionsTest final : public QObject
     Q_OBJECT
 
 private slots:
-    void includesProjectDeployLogDirGlob();
-    void includesRemoteBaseDirLogCandidates();
+    void returnsConfiguredLogPathAsDefault();
+    void normalizesConfiguredDirectoryLogDir();
+    void buildsRemoteLogFileDiscoveryCommand();
     void parsesRemoteLogGlobPath();
     void detectsRemoteLogPaths();
 };

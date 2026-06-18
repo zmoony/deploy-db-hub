@@ -247,7 +247,6 @@ public:
             const bool arrowHover = (option->activeSubControls & QStyle::SC_ComboBoxArrow) != 0 || hover;
             drawControlPill(painter, arrowRect, arrowHover, enabled);
             drawChevron(painter, arrowRect.adjusted(0, 1, -3, 0), false, enabled);
-
             return;
         }
 
@@ -310,8 +309,12 @@ protected:
             if (auto *combo = qobject_cast<QComboBox *>(watched)) {
                 combo->setMaxVisibleItems(12);
                 applyComboPopupStyle(combo->view());
+                if (!combo->isEditable()) {
+                    combo->setEditable(true);
+                }
                 if (QLineEdit *lineEdit = combo->lineEdit()) {
-                    lineEdit->hide();
+                    lineEdit->setFrame(false);
+                    lineEdit->setReadOnly(!combo->property("manualEdit").toBool());
                 }
             }
             if (auto *spin = qobject_cast<QSpinBox *>(watched)) {

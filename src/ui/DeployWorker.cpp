@@ -15,11 +15,11 @@
 #include "infra/JdkProfileStore.h"
 #include "infra/ProjectServiceConfig.h"
 
-#include <QMap>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonObject>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
 
 #include <algorithm>
 
@@ -140,10 +140,11 @@ QString applyMavenToCommand(QString command, const QString &mavenExecutable)
     if (mavenExecutable.isEmpty() || !trimmed.startsWith(QStringLiteral("mvn"))) {
         return command;
     }
+    const QString nativeExecutable = QDir::toNativeSeparators(mavenExecutable);
 #ifdef Q_OS_WIN
-    const QString quoted = QStringLiteral("\"%1\"").arg(mavenExecutable);
+    const QString quoted = QStringLiteral("\"%1\"").arg(nativeExecutable);
 #else
-    const QString quoted = QStringLiteral("'%1'").arg(mavenExecutable);
+    const QString quoted = QStringLiteral("'%1'").arg(nativeExecutable);
 #endif
     if (trimmed == QStringLiteral("mvn")) {
         return quoted;
@@ -154,10 +155,38 @@ QString applyMavenToCommand(QString command, const QString &mavenExecutable)
     return command;
 }
 
-QString friendlyBuildFailureMessage(const QString &output)
+QString appendMavenRepositoryArg(QString command, const QString &repository)
+{
+    if (repository.trimmed().isEmpty() || !command.contains(QStringLiteral("mvn"))) {
+        return command;
+    }
+    const QString normalized = QDir::fromNativeSeparators(repository.trimmed());
+    if (normalized.contains(QLatin1Char(' '))) {
+        return command + QStringLiteral(" -Dmaven.repo.local=\"%1\"").arg(normalized);
+    }
+    return command + QStringLiteral(" -Dmaven.repo.local=%1").arg(normalized);
+}
+
+QString friendlyBuildFailureMessage(const QString &output, bool usedResolvedMaven)
 {
     const QString lower = output.toLower();
-    if (output.contains(QStringLiteral("mvn"))
+    const bool javaMissing = lower.contains(QStringLiteral("java"))
+        && (lower.contains(QStringLiteral("not recognized"))
+            || output.contains(QStringLiteral("不是内部或外部命令"))
+            || output.contains(QStringLiteral("JAVA_HOME")));
+    if (javaMissing) {
+        return QStringLiteral(
+            "未找到 Java 运行环境。请在一键部署页选择已配置的 JDK（不要选「系统默认环境」），"
+            "或确认 JDK 的 bin 目录已加入系统 PATH。");
+    }
+
+    if (usedResolvedMaven) {
+        return output;
+    }
+
+    static const QRegularExpression bareMvnPattern(
+        QStringLiteral(R"((^|[\r\n'"])mvn(['"\s]|$))"));
+    if (bareMvnPattern.match(output).hasMatch()
         && (lower.contains(QStringLiteral("not recognized"))
             || output.contains(QStringLiteral("不是内部或外部命令"))
             || output.contains(QStringLiteral("No such file or directory")))) {
@@ -334,6 +363,7 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
         AppSettingsStore(AppSettingsStore::defaultSettingsFile()).load(&settings, &settingsError);
         const QProcessEnvironment systemEnv = QProcessEnvironment::systemEnvironment();
         const QString mavenExecutable = resolveMavenExecutable(settings);
+        bool usedResolvedMaven = false;
         if (!settings.mavenHome.isEmpty()) {
             request.environment.insert(QStringLiteral("MAVEN_HOME"), settings.mavenHome);
             request.environment.insert(QStringLiteral("M2_HOME"), settings.mavenHome);
@@ -353,9 +383,10 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
         }
         if (!mavenExecutable.isEmpty()) {
             request.command = applyMavenToCommand(request.command, mavenExecutable);
+            usedResolvedMaven = true;
         }
-        if (!settings.mavenRepository.isEmpty() && request.command.contains(QStringLiteral("mvn"))) {
-            request.command += QStringLiteral(" -Dmaven.repo.local=\"%1\"").arg(settings.mavenRepository);
+        if (!settings.mavenRepository.isEmpty()) {
+            request.command = appendMavenRepositoryArg(request.command, settings.mavenRepository);
             emit logLine(QStringLiteral("BUILD"), QStringLiteral("使用 Maven 仓库：%1").arg(settings.mavenRepository));
         }
 
@@ -377,20 +408,27 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
                      25);
                 return;
             }
-            JdkProfileStore::applyToEnvironment(*it, &request.environment);
+            request.environment.insert(QStringLiteral("JAVA_HOME"), QDir::fromNativeSeparators(it->path));
+            prependPathEntry(systemEnv, &request.environment, QDir(it->path).filePath(QStringLiteral("bin")));
             emit logLine(QStringLiteral("BUILD"),
                          QStringLiteral("使用 JDK：%1 (%2)").arg(it->version, it->path));
             writeDeploymentLog(&deployment,
                                QStringLiteral("[BUILD] jdk: %1 %2").arg(it->version, it->path),
                                &error);
+        } else if (command.contains(QStringLiteral("mvn"))) {
+            emit logLine(QStringLiteral("BUILD"),
+                         QStringLiteral("提示：当前使用系统默认 JDK，若构建失败请在一键部署页选择具体 JDK"));
         }
+
+        emit logLine(QStringLiteral("BUILD"), QStringLiteral("实际命令：%1").arg(request.command));
+        writeDeploymentLog(&deployment, QStringLiteral("[BUILD] resolved command: ") + request.command, &error);
 
         const BuildResult buildResult = LocalBuilder().run(request);
         if (!buildResult.ok) {
-            const QString output = friendlyBuildFailureMessage(
-                buildResult.stderrText.trimmed().isEmpty()
-                    ? buildResult.stdoutText.trimmed()
-                    : buildResult.stderrText.trimmed());
+            const QString rawOutput = buildResult.stderrText.trimmed().isEmpty()
+                ? buildResult.stdoutText.trimmed()
+                : buildResult.stderrText.trimmed();
+            const QString output = friendlyBuildFailureMessage(rawOutput, usedResolvedMaven);
             if (!buildResult.stdoutText.trimmed().isEmpty()) {
                 writeDeploymentLog(&deployment, QStringLiteral("[BUILD:stdout]\n") + buildResult.stdoutText.trimmed(), &error);
             }

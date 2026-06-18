@@ -141,3 +141,6 @@
 - 2026-06-18：Git 初始化并上传：
   - 新增 `.gitignore`，排除 `build*/`、`dist/`、`deps/`、`Testing/`、运行时配置/日志和临时输出。
   - 初始化 `main` 分支，提交 `67c2566 Initial Deploy Hub project` 已推送到 `git@github2.com:zmoony/deploy-db-hub.git`。
+- 2026-06-18：根据当前功能编写根目录 `README.md`：
+  - 覆盖项目定位、主要功能、技术栈、目录结构、环境要求、构建测试打包、基本使用流程、配置数据、文档索引与当前边界。
+  - 本轮同时准备上传现有未提交代码改动：ComboBox 文本渲染修复、Maven/JDK 构建命令优化和对应测试更新。

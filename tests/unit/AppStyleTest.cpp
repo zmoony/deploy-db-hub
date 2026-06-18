@@ -33,12 +33,10 @@ void AppStyleTest::comboBoxTextIsNotPaintedTwice()
 {
     const QString source = readAppStyleSource();
     QVERIFY2(!source.isEmpty(), "failed to read AppStyle.cpp");
-
-    const QRegularExpression comboBranch(
-        QStringLiteral("if \\(control == QStyle::CC_ComboBox\\) \\{(?<body>.*?)\\n\\s*return;"),
-        QRegularExpression::DotMatchesEverythingOption);
-    const QRegularExpressionMatch match = comboBranch.match(source);
-    QVERIFY2(match.hasMatch(), "failed to locate CC_ComboBox draw branch");
-    QVERIFY2(!match.captured(QStringLiteral("body")).contains(QStringLiteral("CE_ComboBoxLabel")),
-             "CC_ComboBox branch must not draw CE_ComboBoxLabel; Qt already paints the current text");
+    QVERIFY2(!source.contains(QStringLiteral("lineEdit->hide()")),
+             "ComboBox lineEdit must stay visible");
+    QVERIFY2(!source.contains(QStringLiteral("CE_ComboBoxLabel")),
+             "ComboBox text must come from lineEdit only to avoid ghosting");
+    QVERIFY2(source.contains(QStringLiteral("setReadOnly")),
+             "non-manual ComboBox lineEdit should be read-only");
 }

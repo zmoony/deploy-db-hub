@@ -7,3 +7,4 @@
 - 2026-06-18: Moved terminal status/actions to the tab bar right side, freed the whole terminal tab body for terminal output, added async remote file tail viewer with default last 100 lines, and added tail read regression coverage.
 - 2026-06-18: Fixed QComboBox duplicate text rendering regression by removing the extra CE_ComboBoxLabel paint from the CC_ComboBox branch, added AppStyle regression coverage, rebuilt, tested, and refreshed Windows package.
 - 2026-06-18: Initialized Git on `main`, added `.gitignore`, committed the initial project as `67c2566`, and pushed to `git@github2.com:zmoony/deploy-db-hub.git`.
+- 2026-06-18: Added root `README.md` based on current implemented features, build/test scripts, runtime configuration, documentation map, and V1 boundaries.

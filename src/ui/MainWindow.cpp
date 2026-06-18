@@ -489,6 +489,7 @@ QWidget *MainWindow::createDeployPage()
     logForm->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_logPathInput = new QComboBox;
     m_logPathInput->setEditable(true);
+    m_logPathInput->setProperty("manualEdit", true);
     m_logPathInput->setMinimumWidth(360);
     PageLayout::configureFormInput(m_logPathInput);
     m_refreshLogListButton = new QPushButton(QStringLiteral("刷新列表"));

@@ -164,6 +164,28 @@ void ConfigStoreTest::getsLatestDeploymentForProject()
     QCOMPARE(latest.value(QStringLiteral("id")).toString(), QStringLiteral("deploy-newer"));
 }
 
+void ConfigStoreTest::clearsAllDeployments()
+{
+    QTemporaryDir temp;
+    ConfigStore store(temp.filePath(QStringLiteral("test.db")));
+    QString error;
+    QVERIFY(store.open(&error));
+    QVERIFY(store.upsertDeployment(pendingDeployment(), &error));
+
+    auto second = pendingDeployment();
+    second[QStringLiteral("id")] = QStringLiteral("deploy-second");
+    second[QStringLiteral("logPath")] = LogPath::relativePath(QStringLiteral("deploy-second"));
+    QVERIFY(store.upsertDeployment(second, &error));
+
+    int removedCount = 0;
+    QVERIFY(store.clearAllDeployments(&removedCount, &error));
+    QCOMPARE(removedCount, 2);
+
+    QVector<StoredRecord> records;
+    QVERIFY(store.listDeployments(&records, &error));
+    QCOMPARE(records.size(), 0);
+}
+
 void ConfigStoreTest::opensSameDatabaseFromWorkerThread()
 {
     QTemporaryDir temp;

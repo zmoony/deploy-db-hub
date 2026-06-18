@@ -3,6 +3,12 @@
 #include <QString>
 #include <QStringList>
 
+struct LocalLogCleanupResult {
+    int removedFiles = 0;
+    int failedFiles = 0;
+    qint64 freedBytes = 0;
+};
+
 class LocalLogCatalog final
 {
 public:
@@ -11,4 +17,6 @@ public:
     static QStringList listRelativeLogFiles();
     static QString loadContent(const QString &relativePath, QString *error);
     static bool canOpen(const QString &relativePath);
+    static LocalLogCleanupResult clearDirectory(const QString &directory);
+    static LocalLogCleanupResult clearAll();
 };

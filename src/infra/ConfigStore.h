@@ -31,6 +31,7 @@ public:
     bool getServer(const QString &id, QJsonObject *config, QString *error) const;
     bool deleteProject(const QString &id, QString *error);
     bool deleteServer(const QString &id, QString *error);
+    bool clearAllDeployments(int *removedCount, QString *error);
 
 private:
     QString m_databasePath;

@@ -36,11 +36,13 @@ private slots:
     void refreshDeploymentTables();
     void refreshDeployLogPath();
     void refreshLocalLogFiles();
+    void refreshRemoteLogPathOptions();
     void refreshServiceStatus();
     void startDeployment();
     void onDeploymentFinished(bool ok, const QString &summary, const QString &logRelativePath);
     void viewDeploymentLog();
     void viewHistoryLog();
+    void clearDeploymentHistory();
     void manageJdkProfiles();
     void saveSettings();
 
@@ -92,8 +94,10 @@ private:
     QTableWidget *m_recentTable = nullptr;
     QTableWidget *m_historyTable = nullptr;
     QPushButton *m_historyViewLogButton = nullptr;
+    QPushButton *m_clearHistoryButton = nullptr;
     QLineEdit *m_configDirInput = nullptr;
     QLineEdit *m_mavenHomeInput = nullptr;
     QLineEdit *m_mavenRepoInput = nullptr;
     bool m_deployRunning = false;
+    int m_remoteLogRefreshGeneration = 0;
 };

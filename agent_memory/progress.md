@@ -127,7 +127,15 @@
   - Windows WinRM 新增只读日志浏览器，仅服务部署日志查看；远程文件浏览页仍保持原 Linux SSH 文件管理边界。
   - `RemoteFileViewerDialog` 支持持有临时远程浏览器并等待后台读取结束，避免关闭窗口时留下异步指针风险。
   - 新增 `DeployLogPathOptionsTest` 路径识别覆盖；已通过 Release 构建、`ctest`，并刷新 `dist/windows/deploy-hub.exe`。
-- 2026-06-18：修复一键部署日志区域混淆与 Maven 构建失败乱码：
+- 2026-06-18：远程日志路径模糊匹配与通配符查看：
+  - 新增 `RemoteLogPath`：在项目 `remoteBaseDir` 下候选 `log`/`logs` 目录，生成 `*.log`/`*.txt` 选项；配置的 `logDir` 若为文件路径则取父目录。
+  - 「刷新列表」异步 SSH/WinRM 扫描远端 `log`/`logs` 子目录并填充下拉；输入框 `manualEdit` 保留自定义路径。
+  - SSH/WinRM `readFileTail` 支持任意 `目录/*.log|*.txt` 通配，自动 tail 最近修改的匹配文件。
+  - 扩展 `DeployLogPathOptionsTest`；Release 构建与 `ctest` 已通过。
+- 2026-06-18：部署/历史记录一键清空：
+  - `ConfigStore::clearAllDeployments` 清空 SQLite 部署索引；`LocalLogCatalog::clearAll` 删除 `config/logs/*.log` 释放磁盘。
+  - 历史记录页、仪表盘「部署」「日志」页新增「清空记录」按钮，二次确认后刷新列表；部署进行中禁止清空。
+  - 新增相关单测；Release 构建与 `ctest` 已通过。
   - 「应用日志」下拉固定显示项目 `deploy.logDir` 远程路径；Deploy Hub 本地部署日志仅写入下方「部署输出」与 `config/logs/`。
   - Windows 下 cmd 输出优先系统编码（GBK），避免 `'mvn' 不是内部或外部命令` 显示乱码。
   - 修复 Maven PATH 注入覆盖系统 PATH 的问题；配置 Maven 目录后使用 `mvn.cmd` 绝对路径；未找到 mvn 时给出明确提示。

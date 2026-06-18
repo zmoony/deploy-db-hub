@@ -71,3 +71,29 @@ bool LocalLogCatalog::canOpen(const QString &relativePath)
     const QString absolute = absolutePath(relativePath);
     return !absolute.isEmpty() && QFile::exists(absolute);
 }
+
+LocalLogCleanupResult LocalLogCatalog::clearDirectory(const QString &directory)
+{
+    LocalLogCleanupResult result;
+    QDir dir(directory);
+    if (!dir.exists()) {
+        return result;
+    }
+
+    const QFileInfoList files = dir.entryInfoList({QStringLiteral("*.log")}, QDir::Files);
+    for (const QFileInfo &info : files) {
+        const qint64 size = info.size();
+        if (QFile::remove(info.absoluteFilePath())) {
+            result.removedFiles++;
+            result.freedBytes += size;
+        } else {
+            result.failedFiles++;
+        }
+    }
+    return result;
+}
+
+LocalLogCleanupResult LocalLogCatalog::clearAll()
+{
+    return clearDirectory(DataPaths::logsDir());
+}

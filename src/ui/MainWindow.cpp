@@ -5,6 +5,8 @@
 #include "infra/AppSettingsStore.h"
 #include "infra/JdkProfileStore.h"
 #include "infra/LocalLogCatalog.h"
+#include "infra/RemoteLogPath.h"
+#include "adapters/remote/RemoteExecutor.h"
 #include "adapters/remote/RemoteFileBrowser.h"
 #include "ui/RemoteCredentialResolver.h"
 #include "adapters/remote/RemoteMonitor.h"
@@ -21,7 +23,9 @@
 #include "ui/ServerManagerWidget.h"
 #include "infra/AppBranding.h"
 
+#include <QFutureWatcher>
 #include <QButtonGroup>
+#include <QtConcurrent/QtConcurrent>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
@@ -44,6 +48,21 @@
 #include <QTableWidget>
 #include <QThread>
 #include <QVBoxLayout>
+
+namespace {
+
+QString formatByteSize(qint64 bytes)
+{
+    if (bytes < 1024) {
+        return QStringLiteral("%1 B").arg(bytes);
+    }
+    if (bytes < 1024 * 1024) {
+        return QStringLiteral("%1 KB").arg(bytes / 1024.0, 0, 'f', 1);
+    }
+    return QStringLiteral("%1 MB").arg(bytes / (1024.0 * 1024.0), 0, 'f', 1);
+}
+
+}
 
 #include <utility>
 
@@ -357,7 +376,14 @@ QWidget *MainWindow::createDashboardPage()
     auto *recentLayout = new QVBoxLayout(recentPanel);
     recentLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
     recentLayout->setSpacing(PageLayout::Space12);
-    recentLayout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("最近部署"), recentPanel));
+    auto *recentHeader = new QHBoxLayout;
+    recentHeader->setContentsMargins(0, 0, 0, 0);
+    recentHeader->addWidget(PageLayout::makeSectionLabel(QStringLiteral("最近部署"), recentPanel));
+    recentHeader->addStretch();
+    auto *dashboardClearButton = new QPushButton(QStringLiteral("清空记录"));
+    connect(dashboardClearButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
+    recentHeader->addWidget(dashboardClearButton);
+    recentLayout->addLayout(recentHeader);
     recentLayout->addWidget(PageLayout::wrapTableSection(
         recentTable,
         &m_recentDeploymentsEmpty,
@@ -408,7 +434,14 @@ QWidget *MainWindow::createDashboardPage()
     auto *logPanelLayout = new QVBoxLayout(logPanel);
     logPanelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
     logPanelLayout->setSpacing(PageLayout::Space12);
-    logPanelLayout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("部署日志索引"), logPanel));
+    auto *logHeader = new QHBoxLayout;
+    logHeader->setContentsMargins(0, 0, 0, 0);
+    logHeader->addWidget(PageLayout::makeSectionLabel(QStringLiteral("部署日志索引"), logPanel));
+    logHeader->addStretch();
+    auto *dashboardLogClearButton = new QPushButton(QStringLiteral("清空记录"));
+    connect(dashboardLogClearButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
+    logHeader->addWidget(dashboardLogClearButton);
+    logPanelLayout->addLayout(logHeader);
     logPanelLayout->addWidget(PageLayout::wrapTableSection(
         m_dashboardLogTable,
         &m_dashboardLogsEmpty,
@@ -492,6 +525,10 @@ QWidget *MainWindow::createDeployPage()
     m_logPathInput->setProperty("manualEdit", true);
     m_logPathInput->setMinimumWidth(360);
     PageLayout::configureFormInput(m_logPathInput);
+    if (QLineEdit *logPathEditor = m_logPathInput->lineEdit()) {
+        logPathEditor->setPlaceholderText(
+            QStringLiteral("/home/app/logs/*.log 或 *.txt，支持自定义输入"));
+    }
     m_refreshLogListButton = new QPushButton(QStringLiteral("刷新列表"));
     m_viewLogButton = new QPushButton(QStringLiteral("一键查看"));
     m_viewLogButton->setObjectName(QStringLiteral("primaryButton"));
@@ -573,9 +610,12 @@ QWidget *MainWindow::createHistoryPage()
     m_historyViewLogButton = new QPushButton(QStringLiteral("查看日志"));
     m_historyViewLogButton->setObjectName(QStringLiteral("primaryButton"));
     connect(m_historyViewLogButton, &QPushButton::clicked, this, &MainWindow::viewHistoryLog);
+    m_clearHistoryButton = new QPushButton(QStringLiteral("清空记录"));
+    connect(m_clearHistoryButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
     auto *historyToolbar = new QHBoxLayout;
     historyToolbar->setContentsMargins(0, 0, 0, PageLayout::Space8);
     historyToolbar->addStretch();
+    historyToolbar->addWidget(m_clearHistoryButton);
     historyToolbar->addWidget(m_historyViewLogButton);
 
     layout->addLayout(historyToolbar);
@@ -901,7 +941,6 @@ void MainWindow::refreshLocalLogFiles()
     }
 
     const QString current = m_logPathInput->currentText().trimmed();
-    m_logPathInput->clear();
     QStringList options;
     if (m_deployProject != nullptr && m_deployProject->count() > 0) {
         QJsonObject project;
@@ -911,13 +950,109 @@ void MainWindow::refreshLocalLogFiles()
         }
     }
     options.removeDuplicates();
-    m_logPathInput->addItems(options);
-    if (!options.isEmpty()) {
-        const int index = current.isEmpty() ? 0 : m_logPathInput->findText(current);
-        m_logPathInput->setCurrentIndex(index >= 0 ? index : 0);
-    } else if (!current.isEmpty()) {
-        m_logPathInput->setEditText(current);
+    if (!current.isEmpty() && !options.contains(current)) {
+        options.prepend(current);
     }
+
+    m_logPathInput->clear();
+    m_logPathInput->addItems(options);
+    if (!current.isEmpty()) {
+        const int index = m_logPathInput->findText(current);
+        if (index >= 0) {
+            m_logPathInput->setCurrentIndex(index);
+        } else {
+            m_logPathInput->setEditText(current);
+        }
+    } else if (!options.isEmpty()) {
+        m_logPathInput->setCurrentIndex(0);
+    }
+
+    refreshRemoteLogPathOptions();
+}
+
+void MainWindow::refreshRemoteLogPathOptions()
+{
+    if (m_logPathInput == nullptr || m_deployProject == nullptr || m_deployProject->count() == 0
+        || m_deployServer == nullptr || m_deployServer->count() == 0) {
+        return;
+    }
+
+    const QString current = m_logPathInput->currentText().trimmed();
+    const int generation = ++m_remoteLogRefreshGeneration;
+
+    QJsonObject project;
+    QJsonObject server;
+    QString error;
+    if (!m_store->getProject(m_deployProject->currentData().toString(), &project, &error)
+        || !m_store->getServer(m_deployServer->currentData().toString(), &server, &error)) {
+        return;
+    }
+
+    RemoteConnectionContext context =
+        RemoteCredentialResolver::resolve(server, m_credentials.get(), m_sessionCache.get(), this, true);
+    const QJsonObject auth = server.value(QStringLiteral("auth")).toObject();
+    if (auth.value(QStringLiteral("mode")).toString() != QStringLiteral("ssh-key")
+        && context.password.isEmpty()) {
+        return;
+    }
+
+    auto *watcher = new QFutureWatcher<QStringList>(this);
+    connect(watcher, &QFutureWatcher<QStringList>::finished, this, [this, watcher, generation, current]() {
+        watcher->deleteLater();
+        if (generation != m_remoteLogRefreshGeneration) {
+            return;
+        }
+
+        const QStringList remoteOptions = watcher->result();
+        if (remoteOptions.isEmpty()) {
+            return;
+        }
+
+        const QString keep = m_logPathInput->currentText().trimmed().isEmpty()
+            ? current
+            : m_logPathInput->currentText().trimmed();
+        QStringList merged = remoteOptions;
+        if (!keep.isEmpty() && !merged.contains(keep)) {
+            merged.prepend(keep);
+        }
+
+        m_logPathInput->clear();
+        m_logPathInput->addItems(merged);
+        if (!keep.isEmpty()) {
+            const int index = m_logPathInput->findText(keep);
+            if (index >= 0) {
+                m_logPathInput->setCurrentIndex(index);
+            } else {
+                m_logPathInput->setEditText(keep);
+            }
+        } else if (!merged.isEmpty()) {
+            m_logPathInput->setCurrentIndex(0);
+        }
+    });
+
+    const QJsonObject projectCopy = project;
+    const QJsonObject serverCopy = server;
+    const RemoteConnectionContext contextCopy = context;
+    watcher->setFuture(QtConcurrent::run([projectCopy, serverCopy, contextCopy]() {
+        auto executor = createRemoteExecutor(contextCopy);
+        if (!executor) {
+            return QStringList{};
+        }
+
+        const QString base = remoteBaseDirFromProject(projectCopy);
+        const QString discoverCommand = remoteDiscoverLogDirectoriesCommand(serverCopy, base);
+        if (discoverCommand.isEmpty()) {
+            return QStringList{};
+        }
+
+        const RemoteCommandResult result = executor->execute(discoverCommand, 20);
+        if (!result.ok) {
+            return QStringList{};
+        }
+
+        return remoteLogPathOptionsFromDiscovered(
+            projectCopy, parseDiscoveredLogDirectories(result.stdoutText));
+    }));
 }
 
 void MainWindow::refreshDeployLogPath()
@@ -986,7 +1121,7 @@ void MainWindow::openDeploymentLog(const QString &relativePath)
     if (trimmed.isEmpty()) {
         QMessageBox::information(this,
                                  QStringLiteral("查看日志"),
-                                 QStringLiteral("请选择或输入日志文件，例如 logs/deploy-xxx.log 或 /home/app/logs/*.log"));
+                                 QStringLiteral("请选择或输入日志路径，例如 /home/app/logs/*.log 或 /home/app/logs/*.txt"));
         return;
     }
     if (isRemoteDeployLogPath(trimmed)) {
@@ -1082,6 +1217,69 @@ void MainWindow::viewHistoryLog()
         return;
     }
     openDeploymentLog(logPath);
+}
+
+void MainWindow::clearDeploymentHistory()
+{
+    if (m_deployRunning) {
+        QMessageBox::information(this,
+                                 QStringLiteral("无法清空"),
+                                 QStringLiteral("部署进行中，请等待完成后再清空记录。"));
+        return;
+    }
+
+    QVector<StoredRecord> deployments;
+    QString error;
+    if (!m_store->listDeployments(&deployments, &error)) {
+        QMessageBox::warning(this, QStringLiteral("清空失败"), error);
+        return;
+    }
+
+    const int recordCount = deployments.size();
+    const int logFileCount = LocalLogCatalog::listRelativeLogFiles().size();
+    if (recordCount == 0 && logFileCount == 0) {
+        QMessageBox::information(this,
+                                 QStringLiteral("无需清空"),
+                                 QStringLiteral("当前没有部署记录或本地部署日志。"));
+        return;
+    }
+
+    const auto answer = QMessageBox::question(
+        this,
+        QStringLiteral("确认清空"),
+        QStringLiteral("确定清空全部 %1 条部署记录，并删除本地 %2 个部署日志文件？\n\n"
+                       "此操作不可恢复，不会删除远端服务器上的文件。")
+            .arg(recordCount)
+            .arg(logFileCount),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+
+    int removedRecords = 0;
+    if (!m_store->clearAllDeployments(&removedRecords, &error)) {
+        QMessageBox::warning(this, QStringLiteral("清空失败"), error);
+        return;
+    }
+
+    const LocalLogCleanupResult logResult = LocalLogCatalog::clearAll();
+    if (m_log != nullptr) {
+        m_log->clear();
+    }
+
+    refreshDeploymentTables();
+    refreshDashboard();
+
+    QString summary = QStringLiteral("已清空 %1 条部署记录，删除 %2 个日志文件，释放约 %3")
+                          .arg(removedRecords)
+                          .arg(logResult.removedFiles)
+                          .arg(formatByteSize(logResult.freedBytes));
+    if (logResult.failedFiles > 0) {
+        summary += QStringLiteral("（%1 个日志文件删除失败）").arg(logResult.failedFiles);
+    }
+    statusBar()->showMessage(summary, 8000);
+    QMessageBox::information(this, QStringLiteral("清空完成"), summary);
 }
 
 void MainWindow::startDeployment()

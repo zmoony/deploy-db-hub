@@ -341,3 +341,35 @@ bool ConfigStore::deleteServer(const QString &id, QString *error)
     }
     return query.numRowsAffected() > 0;
 }
+
+bool ConfigStore::clearAllDeployments(int *removedCount, QString *error)
+{
+    QSqlDatabase db = QSqlDatabase::database(m_connectionName);
+    QSqlQuery countQuery(db);
+    if (!countQuery.exec(QStringLiteral("select count(*) from deployments"))) {
+        if (error) {
+            *error = countQuery.lastError().text();
+        }
+        return false;
+    }
+    if (!countQuery.next()) {
+        if (error) {
+            *error = QStringLiteral("failed to count deployments");
+        }
+        return false;
+    }
+
+    const int count = countQuery.value(0).toInt();
+    QSqlQuery deleteQuery(db);
+    if (!deleteQuery.exec(QStringLiteral("delete from deployments"))) {
+        if (error) {
+            *error = deleteQuery.lastError().text();
+        }
+        return false;
+    }
+
+    if (removedCount != nullptr) {
+        *removedCount = count;
+    }
+    return true;
+}

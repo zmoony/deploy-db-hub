@@ -79,3 +79,26 @@ void ProjectServiceConfigTest::buildsWindowsStatusCommandExcludesShell()
     QVERIFY(command.contains(QStringLiteral("powershell*")));
     QVERIFY(command.contains(QStringLiteral("winrs*")));
 }
+
+void ProjectServiceConfigTest::detectsLocalRestartScriptPath()
+{
+    QVERIFY(isLocalRestartScriptPath(QStringLiteral("D:/project/scripts/restart-java.sh"),
+                                    QStringLiteral("D:/project/app")));
+    QVERIFY(isLocalRestartScriptPath(QStringLiteral("scripts/restart.sh"),
+                                    QStringLiteral("D:/project/app")));
+    QVERIFY(!isLocalRestartScriptPath(QStringLiteral("/home/app/restart.sh"),
+                                      QStringLiteral("D:/project/app")));
+}
+
+void ProjectServiceConfigTest::buildsRestartPlanForLocalScript()
+{
+    QJsonObject configured = project();
+    QJsonObject deploy = configured.value(QStringLiteral("deploy")).toObject();
+    deploy.insert(QStringLiteral("restartScript"), QStringLiteral("D:/tools/restart-java.sh"));
+    configured.insert(QStringLiteral("deploy"), deploy);
+
+    const RestartExecutionPlan plan = buildRestartExecutionPlan(configured, QStringLiteral("D:/project/app"));
+    QVERIFY(plan.requiresScriptUpload);
+    QCOMPARE(plan.localScriptPath, QStringLiteral("D:/tools/restart-java.sh"));
+    QCOMPARE(plan.remoteCommand, QStringLiteral("bash '/home/yz-wwa-gateway/restart-java.sh'"));
+}

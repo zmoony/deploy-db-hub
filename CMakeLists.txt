@@ -44,6 +44,7 @@ add_library(deploy_hub_core
     src/infra/LogWriter.cpp
     src/infra/ProcessOutputDecoder.cpp
     src/infra/ProjectServiceConfig.cpp
+    src/infra/RemoteLogPath.cpp
 )
 
 target_include_directories(deploy_hub_core
@@ -69,8 +70,6 @@ qt_add_executable(deploy-hub WIN32
     src/ui/DeployWorker.h
     src/ui/DeploymentLogDialog.cpp
     src/ui/DeploymentLogDialog.h
-    src/ui/DeployLogPathOptions.cpp
-    src/ui/DeployLogPathOptions.h
     src/ui/JdkProfileDialog.cpp
     src/ui/JdkProfileDialog.h
     src/ui/MainWindow.cpp
@@ -158,8 +157,6 @@ qt_add_executable(deploy_hub_tests
     tests/unit/VersionTest.h
     src/ui/RemoteTerminalWidget.cpp
     src/ui/RemoteTerminalWidget.h
-    src/ui/DeployLogPathOptions.cpp
-    src/ui/DeployLogPathOptions.h
     src/ui/AppStyle.cpp
     src/ui/AppStyle.h
     src/ui/TerminalStream.cpp

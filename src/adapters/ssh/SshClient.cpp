@@ -1,6 +1,7 @@
 #include "adapters/ssh/SshClient.h"
 
 #include "infra/DataPaths.h"
+#include "infra/RemoteLogPath.h"
 
 #include <QDir>
 #include <QFile>
@@ -505,16 +506,9 @@ RemoteFileReadResult SshClient::readFileTail(const QString &remotePath, int line
     const QString normalized = normalizeRemotePath(remotePath);
     const int count = qMax(1, lineCount);
     QString commandText = QStringLiteral("tail -n %1 -- %2").arg(count).arg(remoteShellQuote(normalized));
-    if (normalized.endsWith(QStringLiteral("/*.log"))) {
-        QString logDir = normalized.left(normalized.size() - QStringLiteral("/*.log").size());
-        if (logDir.isEmpty()) {
-            logDir = QStringLiteral("/");
-        }
-        commandText = QStringLiteral(
-            "latest=$(find %1 -maxdepth 1 -type f -name '*.log' -printf '%%T@ %%p\\n' 2>/dev/null | sort -nr | head -n 1 | cut -d' ' -f2-); "
-            "if [ -z \"$latest\" ]; then echo '未找到日志文件：%2' >&2; exit 1; fi; "
-            "tail -n %3 -- \"$latest\"")
-            .arg(remoteShellQuote(logDir), normalized, QString::number(count));
+    const RemoteLogGlobSpec globSpec = parseRemoteLogGlobPath(normalized);
+    if (globSpec.isGlob()) {
+        commandText = sshTailLatestMatchingFileCommand(globSpec, count);
     }
     const RemoteCommandResult command = execute(commandText, 30);
     if (!command.ok) {

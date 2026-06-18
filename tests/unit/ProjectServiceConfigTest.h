@@ -14,4 +14,6 @@ private slots:
     void buildsLinuxStatusCommandWithBracketPattern();
     void buildsLinuxStatusCommandForTargetJar();
     void buildsWindowsStatusCommandExcludesShell();
+    void detectsLocalRestartScriptPath();
+    void buildsRestartPlanForLocalScript();
 };

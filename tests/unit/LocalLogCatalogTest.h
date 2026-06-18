@@ -9,4 +9,5 @@ class LocalLogCatalogTest final : public QObject
 private slots:
     void acceptsLogsRelativePath();
     void rejectsInvalidRelativePath();
+    void clearsLogFilesInDirectory();
 };

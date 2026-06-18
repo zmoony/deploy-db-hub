@@ -93,6 +93,64 @@ QString replaceRemoteFileCommand(const QString &os, const QString &path)
     return QStringLiteral("rm -f %1").arg(shellQuote(normalized));
 }
 
+QString makeRemoteScriptExecutableCommand(const QString &os, const QString &remotePath)
+{
+    if (os == QStringLiteral("windows")) {
+        return {};
+    }
+    return QStringLiteral("chmod +x %1").arg(shellQuote(QDir::fromNativeSeparators(remotePath)));
+}
+
+ServiceControlResult executeProjectRestart(const QJsonObject &server,
+                                           const QJsonObject &project,
+                                           const QString &projectRoot,
+                                           const QString &remoteArtifactPath,
+                                           RemoteExecutor *executor)
+{
+    ServiceControlResult result;
+    if (executor == nullptr) {
+        result.error = QStringLiteral("远程执行器不可用");
+        return result;
+    }
+
+    const RestartExecutionPlan plan = buildRestartExecutionPlan(project, projectRoot);
+    if (plan.remoteCommand.isEmpty()) {
+        result.error = QStringLiteral("未配置重启命令或本地重启脚本");
+        return result;
+    }
+
+    if (plan.requiresScriptUpload) {
+        if (!QFileInfo::exists(plan.localScriptPath)) {
+            result.error = QStringLiteral("本地重启脚本不存在：%1").arg(plan.localScriptPath);
+            return result;
+        }
+        const QString remoteScriptPath = remoteRestartScriptPath(project, plan.localScriptPath);
+        const UploadResult upload = executor->uploadFile(plan.localScriptPath, remoteScriptPath);
+        if (!upload.ok) {
+            result.error = QStringLiteral("上传重启脚本失败：%1").arg(upload.error);
+            return result;
+        }
+        const QString os = server.value(QStringLiteral("os")).toString();
+        const QString chmodCommand = makeRemoteScriptExecutableCommand(os, remoteScriptPath);
+        if (!chmodCommand.isEmpty()) {
+            const RemoteCommandResult chmod = executor->execute(chmodCommand, 20);
+            if (!chmod.ok) {
+                result.error = chmod.error.isEmpty() ? chmod.stderrText.trimmed() : chmod.error;
+                return result;
+            }
+        }
+    }
+
+    const QString commandText = renderProjectServiceCommand(plan.remoteCommand, project, remoteArtifactPath);
+    const RemoteCommandResult command = executor->execute(commandText, 120);
+    result.ok = command.ok;
+    result.output = command.stdoutText.trimmed();
+    result.error = command.ok
+        ? QString()
+        : (command.error.isEmpty() ? command.stderrText.trimmed() : command.error);
+    return result;
+}
+
 QString tailLines(const QString &text, int maxLines)
 {
     const QStringList lines = text.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
@@ -155,16 +213,16 @@ QString applyMavenToCommand(QString command, const QString &mavenExecutable)
     return command;
 }
 
-QString appendMavenRepositoryArg(QString command, const QString &repository)
+void applyMavenRepositoryEnvironment(const QString &repository, QMap<QString, QString> *environment)
 {
-    if (repository.trimmed().isEmpty() || !command.contains(QStringLiteral("mvn"))) {
-        return command;
+    if (repository.trimmed().isEmpty() || environment == nullptr) {
+        return;
     }
     const QString normalized = QDir::fromNativeSeparators(repository.trimmed());
-    if (normalized.contains(QLatin1Char(' '))) {
-        return command + QStringLiteral(" -Dmaven.repo.local=\"%1\"").arg(normalized);
-    }
-    return command + QStringLiteral(" -Dmaven.repo.local=%1").arg(normalized);
+    const QString repoArg = QStringLiteral("-Dmaven.repo.local=%1").arg(normalized);
+    const QString existing = environment->value(QStringLiteral("MAVEN_OPTS"));
+    environment->insert(QStringLiteral("MAVEN_OPTS"),
+                        existing.isEmpty() ? repoArg : existing + QLatin1Char(' ') + repoArg);
 }
 
 QString friendlyBuildFailureMessage(const QString &output, bool usedResolvedMaven)
@@ -386,7 +444,7 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
             usedResolvedMaven = true;
         }
         if (!settings.mavenRepository.isEmpty()) {
-            request.command = appendMavenRepositoryArg(request.command, settings.mavenRepository);
+            applyMavenRepositoryEnvironment(settings.mavenRepository, &request.environment);
             emit logLine(QStringLiteral("BUILD"), QStringLiteral("使用 Maven 仓库：%1").arg(settings.mavenRepository));
         }
 
@@ -534,7 +592,19 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
     writeDeploymentLog(&deployment, QStringLiteral("[UPLOAD] completed"), &error);
 
     auto monitor = createRemoteMonitor(m_connectionContext);
-    const ServiceControlResult restart = monitor->restartService(server, project);
+    const RestartExecutionPlan restartPlan = buildRestartExecutionPlan(project, projectRoot);
+    ServiceControlResult restart;
+    if (!restartPlan.remoteCommand.isEmpty()) {
+        if (restartPlan.requiresScriptUpload) {
+            emit logLine(QStringLiteral("RESTART"),
+                         QStringLiteral("上传本地重启脚本：%1 -> %2")
+                             .arg(restartPlan.localScriptPath,
+                                  remoteRestartScriptPath(project, restartPlan.localScriptPath)));
+        }
+        restart = executeProjectRestart(server, project, projectRoot, remoteArtifact, executor.get());
+    } else {
+        restart = monitor->restartService(server, project);
+    }
     if (!restart.ok) {
         const QString restartError = restart.error.isEmpty() ? QStringLiteral("服务重启失败") : restart.error;
         emit logLine(QStringLiteral("RESTART"), restartError);

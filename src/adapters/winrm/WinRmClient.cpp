@@ -1,5 +1,7 @@
 #include "adapters/winrm/WinRmClient.h"
 
+#include "infra/RemoteLogPath.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -190,19 +192,9 @@ RemoteFileReadResult WinRmClient::readFileTail(const QString &remotePath, int li
 
     const int count = qMax(1, lineCount);
     QString command;
-    if (normalized.endsWith(QStringLiteral("/*.log"))) {
-        QString logDir = normalized.left(normalized.size() - QStringLiteral("/*.log").size());
-        if (logDir.isEmpty()) {
-            logDir = QStringLiteral(".");
-        }
-        command = QStringLiteral("powershell -NoProfile -Command \""
-                                 "$latest = Get-ChildItem -LiteralPath %1 -Filter '*.log' -File | "
-                                 "Sort-Object LastWriteTime -Descending | Select-Object -First 1; "
-                                 "if ($null -eq $latest) { Write-Error '未找到日志文件：%2'; exit 1 }; "
-                                 "Get-Content -LiteralPath $latest.FullName -Tail %3\"")
-            .arg(powerShellSingleQuote(QDir::toNativeSeparators(logDir)),
-                 normalized,
-                 QString::number(count));
+    const RemoteLogGlobSpec globSpec = parseRemoteLogGlobPath(normalized);
+    if (globSpec.isGlob()) {
+        command = winRmTailLatestMatchingFileCommand(globSpec, count);
     } else {
         command = QStringLiteral("powershell -NoProfile -Command \""
                                  "Get-Content -LiteralPath %1 -Tail %2\"")

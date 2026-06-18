@@ -13,5 +13,6 @@ private slots:
     void rejectsDeploymentWithInvalidLogPath();
     void listsDeploymentsInStartedAtOrder();
     void getsLatestDeploymentForProject();
+    void clearsAllDeployments();
     void opensSameDatabaseFromWorkerThread();
 };

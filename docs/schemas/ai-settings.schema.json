@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deploy-hub.local/schemas/ai-settings.schema.json",
+  "title": "DeployHubAiSettings",
+  "description": "AI 辅助功能非敏感配置。API Key 通过 credentialRef 存入 CredentialStore，不得写入本文件。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "apiBaseUrl",
+    "model",
+    "credentialRef",
+    "rememberKey"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "apiBaseUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "OpenAI 兼容 API 根路径，例如 https://api.openai.com/v1"
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "chat/completions 使用的模型名"
+    },
+    "credentialRef": {
+      "type": "string",
+      "minLength": 1,
+      "description": "CredentialStore 中 API Key 的逻辑引用，默认 deploy-hub/ai-api-key"
+    },
+    "rememberKey": {
+      "type": "boolean",
+      "description": "为 true 时 UI 保存将 Key 写入 CredentialStore；为 false 时移除已存 Key"
+    }
+  }
+}

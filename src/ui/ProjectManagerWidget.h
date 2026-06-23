@@ -2,6 +2,7 @@
 
 #include <QWidget>
 
+class QJsonObject;
 class ConfigStore;
 class QLabel;
 class QTableWidget;
@@ -15,6 +16,7 @@ public:
 
     int projectCount() const;
     QStringList projectIds() const;
+    static QJsonObject makeQuickAddDraft(const QJsonObject &sourceProject);
 
 signals:
     void projectsChanged();
@@ -22,6 +24,7 @@ signals:
 private slots:
     void reload();
     void addProject();
+    void quickAddProject();
     void editProject();
     void deleteProject();
     void refreshSelectedServiceStatus();

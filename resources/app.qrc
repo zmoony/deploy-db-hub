@@ -2,5 +2,7 @@
     <qresource prefix="/">
         <file alias="images/icon.svg">../images/icon.svg</file>
         <file alias="images/icon.png">../images/icon.png</file>
+        <file alias="images/dashboard-hero.png">../images/dashboard-hero.png</file>
+        <file alias="images/dashboard-hero-visual.png">../images/dashboard-hero-visual.png</file>
     </qresource>
 </RCC>

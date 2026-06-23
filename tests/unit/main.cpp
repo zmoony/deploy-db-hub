@@ -3,6 +3,7 @@
 #include "ArtifactMatcherTest.h"
 #include "ConfigStoreTest.h"
 #include "ConfigValidatorTest.h"
+#include "CommonToolsTest.h"
 #include "DeployJobTest.h"
 #include "DeployLogPathOptionsTest.h"
 #include "DeployOrchestratorTest.h"
@@ -12,7 +13,11 @@
 #include "LocalLogCatalogTest.h"
 #include "LogPathTest.h"
 #include "LogSanitizerTest.h"
+#include "MainWindowStartupTest.h"
+#include "PageLayoutTest.h"
 #include "ProcessOutputDecoderTest.h"
+#include "ProjectManagerWidgetTest.h"
+#include "ServiceNodeConnectionTest.h"
 #include "ProjectServiceConfigTest.h"
 #include "RemoteFileBrowserTest.h"
 #include "RemoteTerminalWidgetTest.h"
@@ -50,6 +55,7 @@ int main(int argc, char **argv)
     status |= runTest<ArtifactMatcherTest>("ArtifactMatcherTest", argc, argv);
     status |= runTest<ConfigStoreTest>("ConfigStoreTest", argc, argv);
     status |= runTest<ConfigValidatorTest>("ConfigValidatorTest", argc, argv);
+    status |= runTest<CommonToolsTest>("CommonToolsTest", argc, argv);
     status |= runTest<DeployLogPathOptionsTest>("DeployLogPathOptionsTest", argc, argv);
     status |= runTest<DeploymentRecordTest>("DeploymentRecordTest", argc, argv);
     status |= runTest<DeployOrchestratorTest>("DeployOrchestratorTest", argc, argv);
@@ -59,7 +65,11 @@ int main(int argc, char **argv)
     status |= runTest<LocalLogCatalogTest>("LocalLogCatalogTest", argc, argv);
     status |= runTest<LogPathTest>("LogPathTest", argc, argv);
     status |= runTest<LogSanitizerTest>("LogSanitizerTest", argc, argv);
+    status |= runTest<MainWindowStartupTest>("MainWindowStartupTest", argc, argv);
+    status |= runTest<PageLayoutTest>("PageLayoutTest", argc, argv);
     status |= runTest<ProcessOutputDecoderTest>("ProcessOutputDecoderTest", argc, argv);
+    status |= runTest<ProjectManagerWidgetTest>("ProjectManagerWidgetTest", argc, argv);
+    status |= runTest<ServiceNodeConnectionTest>("ServiceNodeConnectionTest", argc, argv);
     status |= runTest<ProjectServiceConfigTest>("ProjectServiceConfigTest", argc, argv);
     status |= runTest<RemoteFileBrowserTest>("RemoteFileBrowserTest", argc, argv);
     status |= runTest<RemoteTerminalWidgetTest>("RemoteTerminalWidgetTest", argc, argv);

@@ -57,6 +57,7 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     toolbar->setSpacing(PageLayout::Space12);
     auto *addButton = new QPushButton(QStringLiteral("新建项目"));
     addButton->setObjectName(QStringLiteral("primaryButton"));
+    auto *quickAddButton = new QPushButton(QStringLiteral("快速添加"));
     auto *editButton = new QPushButton(QStringLiteral("编辑"));
     auto *deleteButton = new QPushButton(QStringLiteral("删除"));
     deleteButton->setObjectName(QStringLiteral("dangerButton"));
@@ -65,6 +66,7 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     auto *startButton = new QPushButton(QStringLiteral("启动服务"));
     auto *stopButton = new QPushButton(QStringLiteral("关闭服务"));
     toolbar->addWidget(addButton);
+    toolbar->addWidget(quickAddButton);
     toolbar->addWidget(editButton);
     toolbar->addWidget(deleteButton);
     toolbar->addWidget(refreshButton);
@@ -82,6 +84,7 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
         QStringLiteral("暂无项目。点击「新建项目」添加第一个部署配置。")), 1);
 
     connect(addButton, &QPushButton::clicked, this, &ProjectManagerWidget::addProject);
+    connect(quickAddButton, &QPushButton::clicked, this, &ProjectManagerWidget::quickAddProject);
     connect(editButton, &QPushButton::clicked, this, &ProjectManagerWidget::editProject);
     connect(deleteButton, &QPushButton::clicked, this, &ProjectManagerWidget::deleteProject);
     connect(refreshButton, &QPushButton::clicked, this, &ProjectManagerWidget::reload);
@@ -126,6 +129,16 @@ QStringList ProjectManagerWidget::projectIds() const
         ids.append(m_table->item(row, 0)->text());
     }
     return ids;
+}
+
+QJsonObject ProjectManagerWidget::makeQuickAddDraft(const QJsonObject &sourceProject)
+{
+    QJsonObject draft = sourceProject;
+    const QString sourceId = sourceProject.value(QStringLiteral("id")).toString();
+    const QString sourceName = sourceProject.value(QStringLiteral("name")).toString();
+    draft.insert(QStringLiteral("id"), sourceId + QStringLiteral("-copy"));
+    draft.insert(QStringLiteral("name"), sourceName + QStringLiteral(" Copy"));
+    return draft;
 }
 
 QString ProjectManagerWidget::selectedProjectId() const
@@ -219,6 +232,48 @@ void ProjectManagerWidget::addProject()
 
     const QJsonObject project = dialog.project();
     if (!m_store->upsertProject(project.value(QStringLiteral("id")).toString(), project, &error)) {
+        QMessageBox::warning(this, QStringLiteral("保存失败"), error);
+        return;
+    }
+
+    reload();
+    emit projectsChanged();
+}
+
+void ProjectManagerWidget::quickAddProject()
+{
+    const QString id = selectedProjectId();
+    if (id.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("未选择"), QStringLiteral("请先选择要复制的项目。"));
+        return;
+    }
+
+    QVector<StoredRecord> servers;
+    QString error;
+    if (!m_store->listServers(&servers, &error)) {
+        QMessageBox::warning(this, QStringLiteral("无法快速添加"), error);
+        return;
+    }
+    if (servers.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("请先添加服务器"), QStringLiteral("项目部署需要绑定目标服务器，请先在「服务器管理」中新增。"));
+        return;
+    }
+
+    QJsonObject project;
+    if (!m_store->getProject(id, &project, &error)) {
+        QMessageBox::warning(this, QStringLiteral("加载失败"), error);
+        return;
+    }
+
+    ProjectDialog dialog(servers, this);
+    dialog.setProject(makeQuickAddDraft(project), false);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const QJsonObject added = dialog.project();
+    const QString addedId = added.value(QStringLiteral("id")).toString();
+    if (!m_store->upsertProject(addedId, added, &error)) {
         QMessageBox::warning(this, QStringLiteral("保存失败"), error);
         return;
     }

@@ -18,7 +18,7 @@ class ServerManagerWidget final : public QWidget
     Q_OBJECT
 
 public:
-    explicit ServerManagerWidget(ConfigStore *store, QWidget *parent = nullptr);
+    explicit ServerManagerWidget(ConfigStore *store, QWidget *parent = nullptr, bool showPageHeader = true);
 
     int serverCount() const;
     QStringList serverIds() const;

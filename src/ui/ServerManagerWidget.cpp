@@ -21,19 +21,26 @@
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
 
-ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent)
+ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent, bool showPageHeader)
     : QWidget(parent)
     , m_store(store)
     , m_credentials(new CredentialStore(DataPaths::credentialsFile()))
     , m_sessionCache(new CredentialSessionCache())
 {
     auto *layout = new QVBoxLayout(this);
-    PageLayout::applyPage(layout);
+    if (showPageHeader) {
+        PageLayout::applyPage(layout);
+    } else {
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(PageLayout::Space12);
+    }
 
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("服务器管理"),
-        QStringLiteral("维护 Linux SSH / Windows WinRM 连接信息与默认部署目录。"),
-        this));
+    if (showPageHeader) {
+        layout->addWidget(PageLayout::makeHeaderBlock(
+            QStringLiteral("服务器管理"),
+            QStringLiteral("维护 Linux SSH / Windows WinRM 连接信息与默认部署目录。"),
+            this));
+    }
 
     auto *toolbarWidget = new QWidget(this);
     auto *toolbar = new QHBoxLayout(toolbarWidget);
@@ -180,6 +187,7 @@ void ServerManagerWidget::reload()
 void ServerManagerWidget::addServer()
 {
     ServerDialog dialog(this);
+    dialog.setCredentialStore(m_credentials);
     dialog.setServer(QJsonObject{
         {QStringLiteral("id"), QStringLiteral("prod-linux-1")},
         {QStringLiteral("name"), QStringLiteral("Prod Linux 1")},
@@ -226,6 +234,7 @@ void ServerManagerWidget::editServer()
 
     const QString ref = credentialRefFor(server);
     ServerDialog dialog(this);
+    dialog.setCredentialStore(m_credentials);
     dialog.setServer(server, true, !ref.isEmpty() && m_credentials->has(ref));
     if (dialog.exec() != QDialog::Accepted) {
         return;

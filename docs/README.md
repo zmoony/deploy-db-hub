@@ -1,6 +1,6 @@
 # Deploy Hub 文档索引
 
-> 最后更新：2026-06-15
+> 最后更新：2026-06-22
 
 ## 文档地图
 
@@ -9,6 +9,7 @@
 | [deploy-hub-prd.md](./deploy-hub-prd.md) | 产品、测试、业务方 | 做什么：用户、功能、UI、数据契约、验收 |
 | [deploy-hub-technical-design.md](./deploy-hub-technical-design.md) | 开发、架构 | 怎么做：模块、存储、协议、CI、安全实现 |
 | [schemas/](./schemas/) | 开发、工具链 | JSON Schema，配置校验与代码生成参考 |
+| [superpowers/plans/](./superpowers/plans/) | 开发 | 功能实现计划（通用工具、AI 辅助等） |
 | [decisions/](./decisions/) | 全员 | 架构决策记录（ADR） |
 | [guides/](./guides/) | 运维、验收 | 目标机 SSH / WinRM 环境搭建 |
 | [templates/](./templates/) | 运维、开发 | restart 脚本模板（Java / Nginx / 静态） |
@@ -21,6 +22,7 @@
 2. **准备服务器** → [guides/ssh-linux-setup.md](./guides/ssh-linux-setup.md) 或 [guides/winrm-setup.md](./guides/winrm-setup.md) + [templates/](./templates/)
 3. **开始开发** → [dev-setup.md](./dev-setup.md) + 技术设计全文 + `schemas/`
 4. **验收** → PRD 测试计划（P0/P1 表）
+5. **增量功能** → [superpowers/plans/2026-06-22-ai-assist-integration.md](./superpowers/plans/2026-06-22-ai-assist-integration.md)（AI 辅助接入）
 
 ## 术语表
 

@@ -1,6 +1,9 @@
 #include "ui/RemoteUiHelpers.h"
 
+#include <QApplication>
 #include <QMessageBox>
+#include <QPointer>
+#include <QThread>
 
 HostKeyPromptHandler makeHostKeyPromptHandler(QWidget *parent)
 {
@@ -16,5 +19,34 @@ HostKeyPromptHandler makeHostKeyPromptHandler(QWidget *parent)
             return false;
         }
         return true;
+    };
+}
+
+HostKeyPromptHandler makeThreadSafeHostKeyPromptHandler(QWidget *parent)
+{
+    QPointer<QWidget> parentGuard(parent);
+    return [parentGuard](const QString &fingerprintSha256, QString *error) {
+        if (QThread::currentThread() == qApp->thread()) {
+            return makeHostKeyPromptHandler(parentGuard.data())(fingerprintSha256, error);
+        }
+
+        struct PromptState {
+            bool accepted = false;
+            QString error;
+        } state;
+
+        QMetaObject::invokeMethod(qApp, [&]() {
+            QWidget *dialogParent = parentGuard.data();
+            if (dialogParent == nullptr) {
+                state.error = QStringLiteral("窗口已关闭");
+                return;
+            }
+            state.accepted = makeHostKeyPromptHandler(dialogParent)(fingerprintSha256, &state.error);
+        }, Qt::BlockingQueuedConnection);
+
+        if (!state.accepted && error != nullptr && error->isEmpty()) {
+            *error = state.error;
+        }
+        return state.accepted;
     };
 }

@@ -1,8 +1,12 @@
 #include "ui/ServerDialog.h"
 
+#include "adapters/remote/RemoteExecutor.h"
+#include "adapters/ssh/SshClient.h"
 #include "infra/ConfigValidator.h"
+#include "infra/CredentialStore.h"
 #include "ui/PageLayout.h"
 #include "ui/RemoteCredentialResolver.h"
+#include "ui/RemoteUiHelpers.h"
 #include "ui/PathPickerWidget.h"
 #include "ui/RemoteFileBrowserDialog.h"
 #include "infra/AppBranding.h"
@@ -11,6 +15,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QFutureWatcher>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -20,6 +25,8 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QVBoxLayout>
+#include <QSignalBlocker>
+#include <QtConcurrent>
 
 namespace {
 
@@ -71,6 +78,22 @@ QJsonObject defaultMonitoringConfig()
     };
 }
 
+RemoteCommandResult runConnectionTest(const RemoteConnectionContext &context,
+                                      const HostKeyPromptHandler &hostKeyPrompt)
+{
+    const QString os = context.serverConfig.value(QStringLiteral("os")).toString();
+    if (os == QStringLiteral("linux")) {
+        SshClient client(context, hostKeyPrompt);
+        return client.execute(QStringLiteral("echo deploy-hub-ping"), 10);
+    }
+
+    auto executor = createRemoteExecutor(context);
+    if (!executor) {
+        return RemoteCommandResult{false, -1, {}, {}, QStringLiteral("不支持的远程协议")};
+    }
+    return executor->testConnection();
+}
+
 }
 
 ServerDialog::ServerDialog(QWidget *parent)
@@ -78,7 +101,11 @@ ServerDialog::ServerDialog(QWidget *parent)
 {
     setWindowTitle(QStringLiteral("服务器配置"));
     setModal(true);
-    PageLayout::applyModalDialog(this);
+    PageLayout::applyRemoteToolDialog(this,
+                                      PageLayout::DialogMinWidth,
+                                      640,
+                                      PageLayout::DialogDefaultWidth,
+                                      680);
     AppBranding::applyWindowIcon(this);
     buildUi();
 }
@@ -146,19 +173,36 @@ void ServerDialog::buildUi()
     auto *passwordForm = new QFormLayout(passwordPanel);
     PageLayout::applyInlineForm(passwordForm);
     passwordForm->setContentsMargins(0, 0, 0, 0);
+    auto *passwordRow = new QWidget;
+    auto *passwordRowLayout = new QHBoxLayout(passwordRow);
+    passwordRowLayout->setContentsMargins(0, 0, 0, 0);
+    passwordRowLayout->setSpacing(PageLayout::Space12);
     m_password = new QLineEdit;
     m_password->setEchoMode(QLineEdit::Password);
     m_password->setPlaceholderText(QStringLiteral("输入登录密码"));
+    PageLayout::configureFormInput(m_password);
+    m_passwordVisibilityButton = new QPushButton(QStringLiteral("显示"));
+    m_passwordVisibilityButton->setCheckable(true);
+    m_passwordVisibilityButton->setFixedWidth(48);
+    m_passwordVisibilityButton->setMinimumHeight(PageLayout::DialogFieldHeight);
+    connect(m_passwordVisibilityButton, &QPushButton::toggled, this, [this](bool visible) {
+        m_password->setEchoMode(visible ? QLineEdit::Normal : QLineEdit::Password);
+        m_passwordVisibilityButton->setText(visible ? QStringLiteral("隐藏") : QStringLiteral("显示"));
+    });
+    passwordRowLayout->addWidget(m_password, 1);
+    passwordRowLayout->addWidget(m_passwordVisibilityButton);
     m_rememberPassword = new QCheckBox(QStringLiteral("记住密码"));
     m_rememberPassword->setChecked(true);
-    PageLayout::configureFormInput(m_password);
-    passwordForm->addRow(QStringLiteral("密码"), m_password);
+    passwordForm->addRow(QStringLiteral("密码"), passwordRow);
     auto *rememberRow = new QWidget;
     auto *rememberLayout = new QHBoxLayout(rememberRow);
     rememberLayout->setContentsMargins(0, 0, 0, 0);
     rememberLayout->addWidget(m_rememberPassword);
     rememberLayout->addStretch();
+    m_testConnectionButton = new QPushButton(QStringLiteral("测试连接"));
+    rememberLayout->addWidget(m_testConnectionButton);
     passwordForm->addRow(QString(), rememberRow);
+    connect(m_testConnectionButton, &QPushButton::clicked, this, &ServerDialog::onTestConnection);
 
     auto *manualPanel = new QLabel(QStringLiteral("部署时将提示输入密码，不会保存到本机。"));
     manualPanel->setWordWrap(true);
@@ -222,6 +266,11 @@ void ServerDialog::buildUi()
     syncAuthFields();
 }
 
+void ServerDialog::setCredentialStore(CredentialStore *store)
+{
+    m_credentialStore = store;
+}
+
 void ServerDialog::setServer(const QJsonObject &server, bool editMode, bool hasStoredPassword)
 {
     m_editMode = editMode;
@@ -252,6 +301,12 @@ void ServerDialog::setServer(const QJsonObject &server, bool editMode, bool hasS
     }
 
     m_password->clear();
+    m_password->setEchoMode(QLineEdit::Password);
+    if (m_passwordVisibilityButton != nullptr) {
+        const QSignalBlocker blocker(m_passwordVisibilityButton);
+        m_passwordVisibilityButton->setChecked(false);
+        m_passwordVisibilityButton->setText(QStringLiteral("显示"));
+    }
     if (hasStoredPassword) {
         m_password->setPlaceholderText(QStringLiteral("已保存密码，留空表示不修改"));
     } else {
@@ -358,6 +413,45 @@ QJsonObject ServerDialog::draftServerConfig() const
     return draft;
 }
 
+bool ServerDialog::buildConnectionContext(RemoteConnectionContext *context, QString *error) const
+{
+    if (context == nullptr) {
+        return false;
+    }
+
+    if (m_host->text().trimmed().isEmpty()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("请先填写主机地址。");
+        }
+        return false;
+    }
+    if (m_username->text().trimmed().isEmpty()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("请先填写用户名。");
+        }
+        return false;
+    }
+
+    context->serverConfig = draftServerConfig();
+    if (!m_password->text().isEmpty()) {
+        context->password = m_password->text();
+    } else {
+        const RemoteConnectionContext resolved =
+            RemoteCredentialResolver::resolve(context->serverConfig, m_credentialStore, nullptr, nullptr, false);
+        context->password = resolved.password;
+    }
+
+    const QString authUiMode = m_authMode->currentData().toString();
+    if (authUiMode == QStringLiteral("password") && context->password.isEmpty()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("请先输入服务器密码。");
+        }
+        return false;
+    }
+
+    return true;
+}
+
 void ServerDialog::browseRemoteBaseDir()
 {
     if (m_os->currentData().toString() != QStringLiteral("linux")) {
@@ -373,11 +467,9 @@ void ServerDialog::browseRemoteBaseDir()
     }
 
     RemoteConnectionContext context;
-    context.serverConfig = draftServerConfig();
-    if (!m_password->text().isEmpty()) {
-        context.password = m_password->text();
-    } else {
-        context = RemoteCredentialResolver::resolve(context.serverConfig, nullptr, nullptr, this);
+    if (!buildConnectionContext(&context, nullptr)) {
+        QMessageBox::warning(this, QStringLiteral("无法浏览"), QStringLiteral("请先填写主机、用户名和密码。"));
+        return;
     }
 
     const QString authMode = context.serverConfig.value(QStringLiteral("auth")).toObject()
@@ -455,6 +547,66 @@ void ServerDialog::syncAuthFields()
     if (m_sshKeyRow != nullptr) {
         m_sshKeyRow->setVisible(authUiMode == QStringLiteral("ssh-key") && linux);
     }
+    if (m_testConnectionButton != nullptr) {
+        m_testConnectionButton->setVisible(authUiMode == QStringLiteral("password"));
+    }
+}
+
+void ServerDialog::onTestConnection()
+{
+    RemoteConnectionContext context;
+    QString error;
+    if (!buildConnectionContext(&context, &error)) {
+        QMessageBox::warning(this, QStringLiteral("无法测试连接"), error);
+        return;
+    }
+
+    const ValidationResult validation = ConfigValidator::validateServer(context.serverConfig);
+    if (!validation.ok) {
+        QMessageBox::warning(this, QStringLiteral("配置无效"), validation.errors.join(QStringLiteral("\n")));
+        return;
+    }
+
+    const int generation = ++m_testConnectionGeneration;
+    const QString originalLabel = m_testConnectionButton->text();
+    m_testConnectionButton->setEnabled(false);
+    m_testConnectionButton->setText(QStringLiteral("测试中..."));
+
+    const HostKeyPromptHandler hostKeyPrompt = makeThreadSafeHostKeyPromptHandler(this);
+    auto *watcher = new QFutureWatcher<RemoteCommandResult>(this);
+    connect(watcher, &QFutureWatcher<RemoteCommandResult>::finished, this, [this, watcher, generation, originalLabel]() {
+        watcher->deleteLater();
+        if (generation != m_testConnectionGeneration) {
+            return;
+        }
+
+        m_testConnectionButton->setEnabled(true);
+        m_testConnectionButton->setText(originalLabel);
+
+        const RemoteCommandResult result = watcher->result();
+        if (result.ok) {
+            const QString detail = result.stdoutText.trimmed();
+            const QString message = detail.isEmpty()
+                ? QStringLiteral("已成功连接到服务器。")
+                : QStringLiteral("已成功连接到服务器。\n\n%1").arg(detail);
+            QMessageBox::information(this, QStringLiteral("连接成功"), message);
+            return;
+        }
+
+        QString failure = result.error.trimmed();
+        if (failure.isEmpty()) {
+            failure = result.stderrText.trimmed();
+        }
+        if (failure.isEmpty()) {
+            failure = QStringLiteral("连接失败，请检查主机、端口、用户名和密码。");
+        }
+        QMessageBox::warning(this, QStringLiteral("连接失败"), failure);
+    });
+
+    const RemoteConnectionContext contextCopy = context;
+    watcher->setFuture(QtConcurrent::run([contextCopy, hostKeyPrompt]() {
+        return runConnectionTest(contextCopy, hostKeyPrompt);
+    }));
 }
 
 void ServerDialog::onAccept()

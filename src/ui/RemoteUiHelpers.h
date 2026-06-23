@@ -5,3 +5,4 @@
 #include <QWidget>
 
 HostKeyPromptHandler makeHostKeyPromptHandler(QWidget *parent);
+HostKeyPromptHandler makeThreadSafeHostKeyPromptHandler(QWidget *parent);

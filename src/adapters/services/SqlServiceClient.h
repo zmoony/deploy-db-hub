@@ -1,0 +1,16 @@
+#pragma once
+
+#include "infra/ServiceNodeConnection.h"
+
+#include "adapters/services/RedisServiceClient.h"
+
+#include <QString>
+
+class SqlServiceClient final
+{
+public:
+    static ServiceResult ping(const ServiceEndpoint &endpoint, const QString &productKey);
+    static ServiceResult listSchemas(const ServiceEndpoint &endpoint, const QString &productKey);
+    static ServiceResult listTables(const ServiceEndpoint &endpoint, const QString &productKey, const QString &schema);
+    static ServiceResult executeQuery(const ServiceEndpoint &endpoint, const QString &productKey, const QString &sql);
+};

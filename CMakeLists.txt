@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Sql Test Svg Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Sql Test Svg Concurrent Network)
 
 qt_standard_project_setup()
 
@@ -45,6 +45,16 @@ add_library(deploy_hub_core
     src/infra/ProcessOutputDecoder.cpp
     src/infra/ProjectServiceConfig.cpp
     src/infra/RemoteLogPath.cpp
+    src/infra/ServiceInstanceStore.cpp
+    src/infra/ServiceNodeConnection.cpp
+    src/infra/ServiceDefaults.cpp
+    src/tools/CommonTools.cpp
+    src/tools/CommonTools.h
+    src/adapters/services/RedisServiceClient.cpp
+    src/adapters/services/ElasticsearchServiceClient.cpp
+    src/adapters/services/SqlServiceClient.cpp
+    src/adapters/services/KafkaServiceClient.cpp
+    src/adapters/services/ServiceBroker.cpp
 )
 
 target_include_directories(deploy_hub_core
@@ -56,6 +66,7 @@ target_link_libraries(deploy_hub_core
     PUBLIC
         Qt6::Core
         Qt6::Sql
+        Qt6::Network
 )
 
 qt_add_executable(deploy-hub WIN32
@@ -68,6 +79,14 @@ qt_add_executable(deploy-hub WIN32
     src/ui/PageLayout.h
     src/ui/DeployWorker.cpp
     src/ui/DeployWorker.h
+    src/ui/CommonToolsWidget.cpp
+    src/ui/CommonToolsWidget.h
+    src/ui/HttpRequestWidget.cpp
+    src/ui/HttpRequestWidget.h
+    src/ui/MiniWebSocket.cpp
+    src/ui/MiniWebSocket.h
+    src/ui/WebSocketToolWidget.cpp
+    src/ui/WebSocketToolWidget.h
     src/ui/DeploymentLogDialog.cpp
     src/ui/DeploymentLogDialog.h
     src/ui/JdkProfileDialog.cpp
@@ -82,6 +101,24 @@ qt_add_executable(deploy-hub WIN32
     src/ui/ProjectManagerWidget.h
     src/ui/ServerManagerWidget.cpp
     src/ui/ServerManagerWidget.h
+    src/ui/ServiceHubWidget.cpp
+    src/ui/ServiceHubWidget.h
+    src/ui/BigDataManagerWidget.cpp
+    src/ui/BigDataManagerWidget.h
+    src/ui/DatabaseManagerWidget.cpp
+    src/ui/DatabaseManagerWidget.h
+    src/ui/ServiceNodeTypes.cpp
+    src/ui/ServiceNodeTypes.h
+    src/ui/ServiceNodeDialog.cpp
+    src/ui/ServiceNodeDialog.h
+    src/ui/ServiceInstanceDialog.cpp
+    src/ui/ServiceInstanceDialog.h
+    src/ui/ServiceProductPanel.cpp
+    src/ui/ServiceProductPanel.h
+    src/ui/ServiceSqlDialog.cpp
+    src/ui/ServiceSqlDialog.h
+    src/ui/ServiceContentDialog.cpp
+    src/ui/ServiceContentDialog.h
     src/ui/ServerMonitorDialog.cpp
     src/ui/ServerMonitorDialog.h
     src/ui/PathPickerWidget.cpp
@@ -125,6 +162,8 @@ qt_add_executable(deploy_hub_tests
     tests/unit/ConfigStoreTest.h
     tests/unit/ConfigValidatorTest.cpp
     tests/unit/ConfigValidatorTest.h
+    tests/unit/CommonToolsTest.cpp
+    tests/unit/CommonToolsTest.h
     tests/unit/DeployJobTest.cpp
     tests/unit/DeployJobTest.h
     tests/unit/DeployLogPathOptionsTest.cpp
@@ -143,8 +182,16 @@ qt_add_executable(deploy_hub_tests
     tests/unit/LogPathTest.h
     tests/unit/LogSanitizerTest.cpp
     tests/unit/LogSanitizerTest.h
+    tests/unit/MainWindowStartupTest.cpp
+    tests/unit/MainWindowStartupTest.h
+    tests/unit/PageLayoutTest.cpp
+    tests/unit/PageLayoutTest.h
     tests/unit/ProcessOutputDecoderTest.cpp
     tests/unit/ProcessOutputDecoderTest.h
+    tests/unit/ProjectManagerWidgetTest.cpp
+    tests/unit/ProjectManagerWidgetTest.h
+    tests/unit/ServiceNodeConnectionTest.cpp
+    tests/unit/ServiceNodeConnectionTest.h
     tests/unit/ProjectServiceConfigTest.cpp
     tests/unit/ProjectServiceConfigTest.h
     tests/unit/RemoteFileBrowserTest.cpp
@@ -161,6 +208,21 @@ qt_add_executable(deploy_hub_tests
     src/ui/AppStyle.h
     src/ui/TerminalStream.cpp
     src/ui/TerminalStream.h
+    src/tools/CommonTools.h
+    src/infra/AppBranding.cpp
+    src/infra/AppBranding.h
+    src/ui/PageLayout.cpp
+    src/ui/PageLayout.h
+    src/ui/PathPickerWidget.cpp
+    src/ui/PathPickerWidget.h
+    src/ui/ProjectDialog.cpp
+    src/ui/ProjectDialog.h
+    src/ui/ProjectManagerWidget.cpp
+    src/ui/ProjectManagerWidget.h
+    src/ui/RemoteCredentialResolver.cpp
+    src/ui/RemoteCredentialResolver.h
+    src/ui/RemoteUiHelpers.cpp
+    src/ui/RemoteUiHelpers.h
     src/adapters/remote/StubRemoteVfs.cpp
     src/adapters/remote/StubRemoteVfs.h
 )
@@ -170,6 +232,8 @@ target_link_libraries(deploy_hub_tests
         deploy_hub_core
         Qt6::Test
         Qt6::Widgets
+        Qt6::Concurrent
+        Qt6::Svg
 )
 
 add_test(NAME deploy_hub_tests COMMAND deploy_hub_tests)

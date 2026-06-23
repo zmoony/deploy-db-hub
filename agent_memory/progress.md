@@ -152,3 +152,99 @@
 - 2026-06-18：根据当前功能编写根目录 `README.md`：
   - 覆盖项目定位、主要功能、技术栈、目录结构、环境要求、构建测试打包、基本使用流程、配置数据、文档索引与当前边界。
   - 本轮同时准备上传现有未提交代码改动：ComboBox 文本渲染修复、Maven/JDK 构建命令优化和对应测试更新。
+- 2026-06-22：项目管理页新增「快速添加」：
+  - 选中已有项目后可复制完整配置作为新建项目草稿，默认 ID 为 `<原ID>-copy`、名称为 `<原名称> Copy`，后续仍走正常新建保存与校验。
+  - 新增 `ProjectManagerWidgetTest` 覆盖复制草稿行为；已通过 `deploy_hub_tests.exe`、`ctest --test-dir build-release --output-on-failure`、Release 应用构建与 `scripts/package-windows.ps1` 打包。
+- 2026-06-22：服务管理全功能接入：
+  - 持久化：`config/service-instances.json`（`ServiceInstanceStore`），实例/节点/描述 metadata 重启保留。
+  - 连接层：`ServiceNodeConnection` 解析 info 字段；`ServiceBroker` 统一测试/加载/操作。
+  - Kafka：Linux SSH + 安装路径调用 `kafka-topics.sh` / `kafka-consumer-groups.sh` / console-consumer（主题/消费组/最新数据/增删/导出）。
+  - Redis：RESP 直连（PING/KEYS/TYPE/TTL/GET/HGETALL）。
+  - Elasticsearch：HTTP `_cat/indices`、`_search`、Kibana 链接。
+  - PostgreSQL/Oracle：`QPSQL`/`QOCI` 驱动可用时 schema/表/SQL 查询；Oracle 需本机 OCI 驱动。
+  - UI：异步加载详情表、测试连接、SQL/内容查看对话框、schema 下拉、双击行快速查询。
+  - 新增 `ServiceNodeConnectionTest`；Release 构建与 `ctest` 已通过。
+- 2026-06-22：服务管理配置页对齐参考 UI：
+  - `ServiceNodeDialog`：添加/编辑节点（所属实例、服务器下拉+刷新、信息/安装路径/存储路径、填写说明）。
+  - `ServiceInstanceDialog` + `ServiceProductPanel`：实例列表 → 双击进入详情（状态条、子 Tab、工具栏、数据表）；Kafka/ES/DB 各 Tab 列与参考一致，节点管理可 CRUD。
+  - 信息字段格式说明按参考（ES/Kafka/Redis/Oracle/PG）；实例数据暂内存，待后续持久化与真实连接。
+  - 已通过 Release 构建与 `ctest`。
+- 2026-06-22：服务管理模块增加顶部大类切换：
+  - 侧栏「服务器管理」改为「服务管理」；新增 `ServiceHubWidget` 容器，顶部 Tab：服务器 / 大数据 / 数据库。
+  - 原有 `ServerManagerWidget` 嵌入「服务器」Tab；新增 `BigDataManagerWidget`（Kafka/Redis/Elasticsearch）与 `DatabaseManagerWidget`（Oracle/PostgreSQL）UI 骨架，含连接列表、运维/内容查看或 SQL 查询区域占位。
+  - `PageLayout::makeTabBar` 复用仪表盘 Tab 样式；已通过 Release 构建与 `ctest`。
+  - 对话框默认高度提升至最小 640px / 默认 680px；密码框右侧增加「显示/隐藏」切换。
+- 2026-06-22：主界面改为顶层模块导航：
+  - 顶部主模块：通用工具 / 部署工具 / 大数据 / 数据库；左侧导航随当前模块切换。
+  - 部署工具内含仪表盘、项目管理、服务器管理、一键部署、历史记录、设置；大数据和数据库从原服务管理子 Tab 升为顶层模块。
+  - 新增 `CommonToolsWidget` 与 `CommonTools`：提供 13 个通用工具入口，已实现 JSON 格式化、行级文本差异、文本 Base64、正则匹配、Cron 基础解析、时间戳转换、HTML 特殊字符表、HTTP 状态码、Hex 转字符串、轻量 HTTP 请求调试、JSON 示例生成 Mock、手机号/邮箱/身份证脱敏等 MVP 能力。
+  - 新增 `CommonToolsTest`；已通过 `scripts/build-release.ps1`、`ctest --test-dir build-release --output-on-failure`，并验证 Release 应用可启动。
+- 2026-06-22：修正顶部模块下的二级导航布局：
+  - 通用工具、大数据、数据库的二级项统一移动到主窗口左侧导航；内容区不再显示内嵌工具列表或产品 Tab，减少左侧空白与重复导航。
+  - 大数据左侧直接切换 Kafka / Redis / Elasticsearch；数据库左侧直接切换 Oracle / PostgreSQL。
+  - 主窗口默认尺寸调整为 1464x820；已通过 Release 构建、`ctest` 和应用启动验证。
+- 2026-06-22：按截图继续修正三处布局：
+  - 通用工具内容区移除内嵌 13 项工具列表，左侧主导航直接列出 JSON/差异/图片/Base64 等工具项。
+  - 大数据/数据库内容区移除顶部产品 Tab，左侧主导航直接列出 Kafka/Redis/Elasticsearch 与 Oracle/PostgreSQL。
+  - 服务器相关提示文案同步为「部署工具 → 服务器管理」；Release 构建、`ctest`、应用启动验证通过。
+- 2026-06-22：AI 辅助接入方案文档化：`docs/superpowers/plans/2026-06-22-ai-assist-integration.md` + `docs/schemas/ai-settings.schema.json`；待代码实现。
+- 2026-06-22：按参考图完成主界面 UI 风格优化, 不改功能：
+  - 左侧导航改为深色侧栏（`#1E293B` / hover `#334155` / 选中 `#4F46E5`）, 补 Deploy Hub 品牌头与底部分隔区。
+  - 顶部模块与仪表盘 Tab 改为白底胶囊按钮, 选中态 `#6366F1` 白字。
+  - 仪表盘总览 Hero 改为 160px 紫色渐变大 Banner, 显示项目/服务器/失败/在线率与右侧云-服务器图示风格。
+  - 四个统计卡片增加图标、强数字、18px 圆角和 hover 阴影；资源概览从表格改为状态列表；操作面板改为 2x2 快捷操作区。
+  - 已通过 `scripts/build-release.ps1`、Qt 自带 `ctest --test-dir build-release --output-on-failure --verbose`、`deploy_hub_tests.exe` 和 Release 应用启动验证。
+- 2026-06-22：修复项目启动多弹框：
+  - 启动构造、项目/服务器下拉联动、选择器刷新统一改为静默刷新远程日志与服务状态, 不再自动弹服务器密码或 host key 确认框。
+  - 用户主动点击「刷新列表」「刷新状态」、查看日志、部署等操作仍允许按需弹框。
+  - 新增 `MainWindowStartupTest` 静态回归检查启动/自动刷新必须传递 prompt 策略；已通过 Release 构建、Qt 自带 `ctest --test-dir build-release --output-on-failure --verbose`、`deploy_hub_tests.exe` 和 Release 应用启动验证。
+- 2026-06-23：修正主界面左右布局与启动静默刷新：
+  - 根布局改为「左侧深色导航 + 右侧内容区」; 顶部模块 Tab 移入右侧内容区顶部, 不再横跨侧栏上方。
+  - 默认进入「部署工具 → 仪表盘」, 与参考图一致。
+  - `refreshServiceStatus(false)` 在静默模式下直接显示「未检测」, 不再因已保存密码而同步 SSH 探测; 构造函数不再触发服务状态远程检查。
+  - 扩展 `MainWindowStartupTest` 回归上述行为; 本机 Qt 路径不可用, 未能重新编译验证。
+- 2026-06-23：修复 dist 启动多临时弹窗：
+  - 移除 `CommonToolsWidget::takeToolPage`、`BigDataManagerWidget::takeSectionPage`、`DatabaseManagerWidget::takeSectionPage` 与 `PageLayout::wrapContentPanel` 中的提前 `page->show()`。
+  - 新增 `PageLayoutTest::pageTransferDoesNotShowDetachedPages` 静态回归测试，防止页面转移时再次提前显示为顶层窗口。
+  - 修正 `MainWindowStartupTest` 中构造函数静默刷新断言，并让服务状态凭据解析继续传递 `allowPrompt` 策略。
+  - 已通过 `scripts/build-release.ps1`、Qt 自带 `ctest --test-dir build-release --output-on-failure --verbose`，并刷新 `dist/windows/deploy-hub.exe`；dist exe 启动验证返回 `started-ok`。
+- 2026-06-23：按参考图继续收敛首页仪表盘布局：
+  - 仪表盘首页改为首屏非滚动承载，默认 1464x820 下完整显示 Hero、统计卡、资源概览和快速操作。
+  - Hero 改为 132px 淡紫横幅，右侧使用从参考图裁出的 `images/dashboard-hero-visual.png` 科技插画，代码绘制兜底读取 exe 同级 `images/`。
+  - 统计卡改为上方「图标方块 + 标题/数量」左右结构，下方显示简要说明。
+  - 资源概览恢复为两列表格；快速操作改为左侧 icon 方块、右侧主标题/副标题、末尾箭头。
+  - 已通过 `scripts/build-release.ps1`、`ctest --test-dir build-release --output-on-failure --verbose`，刷新 `dist/windows/deploy-hub.exe` 并截图确认首屏无纵向滚动。
+- 2026-06-23：通用工具改造（第 1 批，分批进行中）：
+  - JSON 格式化改为树形查看器（`buildJsonViewerPage`）：左侧输入右侧 `QTreeWidget`，支持格式化、全部展开/折叠、按键或值搜索、复制格式化结果，值按类型着色（数字玫红/字符串绿/布尔紫/null 橙）。
+  - 正则改为 `buildRegexPage`：独立正则框 + 文本框 + 大小写/多行/点匹配换行选项，结果用树展示每处匹配与分组（含命名分组、未参与匹配标注）；核心新增 `runRegularExpression` 返回结构化匹配。
+  - 时间戳改为 `buildTimestampPage`：默认实时展示当前毫秒（每秒刷新）+ 复制；支持毫秒/秒切换、时间戳→时间、时间→时间戳与自定义格式；核心新增 `currentTimestampMs`/`timestampToDateText`/`dateTextToTimestampMs`。
+  - HTML 特殊字符改为 `buildHtmlEntityPage`：实体表（双击复制实体）+ 文本编码/解码/复制；核心新增 `htmlEncode`/`htmlDecode`（含命名实体与十进制/十六进制数字实体）。
+  - HTTP 状态码改为 `buildHttpStatusPage`：关键字过滤 + 双击复制「编码 含义」。
+  - 移除 `buildReferencePage`/`fillReferenceTable`；扩展 `CommonToolsTest`（正则分组、HTML 编解码、时间戳双向）。
+  - 注意：本会话 Shell 不可用，未能本机编译/`ctest`，需在本机执行 `scripts/build-release.ps1` 验证。
+- 2026-06-23：通用工具改造（第 2、3 批，功能全部落地，仍待本机编译）：
+  - 文本比较 `buildDiffPage`：左源右对比并排，支持选择本地文件/粘贴/交换/复制，输入即自动对比，不同的行整行标红（`QTextEdit::ExtraSelection` + `FullWidthSelection`），左右滚动条联动；核心新增 `diffLineIndices`（LCS 行级差异，超大输入回退按行号比较）。
+  - Cron `buildCronPage`：支持 5~7 段（秒 分 时 日 月 周 年），字段输入框「由字段生成」、常用预设按钮、解析说明、未来 10 次执行时间列表；核心新增 `analyzeCron`（字段解析 `* ? , - /`、dom/dow OR 语义、按字段快速推进求下次执行）。
+  - 图片 Base64 `buildImageBase64Page`：本地图片选择 + 网络 URL 下载，预览缩放，图片↔Base64 双向（data URI），Base64 文本框自动换行、复制、清空。
+  - WebSocket：新增手写 `MiniWebSocket`（RFC6455，基于 QTcpSocket/QSslSocket，不依赖 Qt WebSockets 模块；握手、文本/ping/pong/close、客户端掩码、分片重组）+ `WebSocketToolWidget`（连接/断开/发送/接收日志、回车发送）。
+  - HTTP 请求：新增 `HttpRequestWidget` 替换旧页——方法/URL/请求头表格（增删行）/Body/响应（状态+响应头+体）；左侧按分组的历史树，支持加载/删除/清空、复制为 cURL；历史持久化到 `config/http-history.json`（发送即记录，最多 100 条）。
+  - `CMakeLists.txt` 新增 `HttpRequestWidget`/`MiniWebSocket`/`WebSocketToolWidget` 到可执行目标；`CommonToolsTest` 增加行级差异与 Cron 下次执行用例。
+  - 仍需本机执行 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure` 验证（本会话 Shell 不可用）。
+- 2026-06-23：对标 DevToys / IT-Tools 补充 7 个高频通用工具（纯 Qt，无新依赖）：
+  - UUID 生成（批量/大写/去横线）、哈希计算（MD5/SHA1/SHA256/SHA512）、URL 编解码、Base64 文本（补回文本能力）、JWT 解析（header/payload 解码不验签）、进制转换（2/8/10/16）、命名转换（camel/Pascal/snake/kebab/CONSTANT/Title）。
+  - 核心新增 `generateUuids`/`computeHashes`/`urlEncode`/`urlDecode`/`decodeJwt`/`convertNumberBase`/`convertCase`（`CommonTools`），UI 在 `CommonToolsWidget` 新增 7 个页面与 `toolLabels`（总数 13→20）。
+  - `CommonToolsTest` 增加 6 个用例（UUID/哈希/URL/JWT/进制/命名）。
+  - 仍待本机 `scripts/build-release.ps1` + `ctest` 验证（本会话 Shell 不可用）。
+- 2026-06-23：大数据 Kafka 模块功能完善（基于 SSH + kafka-*.sh，适配 2.7.0）：
+  - 默认安装路径 `ServiceDefaults` 改为 `/usr/local/wiscom/kafka_2.13-2.7.0`（端口 18103、存储 /data/kafka 原已匹配）。
+  - `KafkaServiceClient` 新增 describeAllTopics（一次 describe 全主题取分区/副本）、topicOffsets（GetOffsetShell `--broker-list` 无 --topic 取全分区 offset，支持 -1/-2/时间戳；2.7 用 --broker-list 而非 --bootstrap-server）、describeConsumerGroups（--all-groups --describe 解析每分区 current/logEnd/lag）、produce（console-producer 写消息）、nodeStatus（ss/pgrep 判状态 + df -P -B1 取磁盘总量 + 数据目录）、viewConfig（cat server.properties）。
+  - `ServiceBroker` Topic 加载重写：分区/副本/消费者组数/数据总量(latest-earliest)/今日/昨日/近7日（按 startOfDay 时间戳查 offset 差分，缺失分区回退 latest 即 0）；ConsumerGroup 聚合每组 偏移量总量/消费偏移量/消费积压；Kafka Node 分支按节点端口/存储路径探测状态/磁盘/数据目录；runAction 增 数据写入(produce)、消费明细(按组过滤分区明细)、节点 参数详情(viewConfig)。
+  - `ServiceProductPanel`：Kafka Topic 工具栏加「数据写入」；ConsumerGroup 列改 消费者组/偏移量总量/消费偏移量/消费积压；Node 列改 节点IP/端口/状态/数据目录/磁盘总量；rowColumnsForTab 改为按产品取列；Kafka Node tab 走异步探测（其他产品仍离线）、离线回退也按 Kafka 列填 IP/端口/数据目录；双击主题=最新数据、双击消费者组=消费明细、双击节点=参数详情；数据写入多行输入。
+  - 节点添加本就存在（双击实例进详情 →「节点管理(Node)」→「添加节点」）。
+  - 注意：① 仍需本机 `scripts/build-release.ps1` 编译验证（本会话 Shell 不可用）；② 按天数量依赖 broker 消息时间戳与 retention，过期段会偏小；③ 打开实例触发 ~7 次 SSH+JVM，较慢但异步不卡 UI；④ 多节点跨服务器时节点探测以主节点 SSH 通道为准，同机/单节点准确。
+- 2026-06-23：一键部署页改左右布局（`MainWindow::createDeployPage`）：左列 = 部署配置 + 服务状态 + 应用日志（`configColumn`，宽 420~560，底部 stretch）；右列 = 执行区（顶部「部署执行」标题 + 「开始部署」按钮，下方进度条 + 部署输出 `m_log` 占满）。页面设 `fitFirstScreen=true`，由 `addModule` 用 `wrapContentPanel` 包裹，免纵向滚动。
+  - 关于「除部署工具外其他 tab 右侧空白」：已全链路核查源码——`addModuleFromPages` 取页/标签计数一致（通用工具 20、大数据 3、数据库 2），`showModule/onModuleChanged/onNavigationChanged` 接线正确，当前源码可正常切换。推断现象来自旧打包未重新编译。需本机 `scripts/build-release.ps1` 重新构建验证（本会话 Shell 不可用）。
+- 2026-06-23：通用工具页面 UI 修复（纯布局/QSS，无行为变更，本会话 Shell 不可用未编译）：
+  - Cron 表达式：构建器 7 个字段（秒/分/时/日/月/周/年）原每个套用 `configureFormInput` 强制 240px 最小宽导致整行溢出横向滚动，改为 `setMinimumWidth(56)`，字段仍按 stretch 均分填满。
+  - HTTP 请求调试：左侧历史栏在白底卡片上无背景/边框、空树不可见且按钮被顶到底部，新增 `#httpHistoryPanel` 样式（浅灰底+边框+圆角+内边距+树白底边框）、`setMinimumWidth(200)`、`setChildrenCollapsible(false)`、`setSizes({260,760})`。
+  - JSON 格式化：① 选中行 value 消失——根因 QStyledItemDelegate 仅把 ForegroundRole 写入 Text 而非 HighlightedText，选中态文字回退白色不可见；加 `#jsonTree::item:selected{background:#E0E7FF;color:#0F172A}` 修复。② 选中复制——右键菜单(复制值/键/键:值)+Ctrl+C 复制当前项值。③ 一键清空——工具栏新增「清空」按钮清空输入/树/搜索。

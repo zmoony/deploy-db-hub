@@ -1,14 +1,19 @@
 #include "ui/PageLayout.h"
 
+#include <QButtonGroup>
 #include <QComboBox>
 #include <QGuiApplication>
 #include <QHBoxLayout>
+#include <QPushButton>
+#include <QStackedWidget>
 #include <QAbstractItemView>
 #include <QAbstractSpinBox>
 #include <QDialog>
 #include <QFormLayout>
 #include <QFrame>
+#include <QMainWindow>
 #include <QLabel>
+#include <QListWidget>
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QScreen>
@@ -17,6 +22,39 @@
 #include <QVBoxLayout>
 
 namespace {
+
+class SidebarNavigationList final : public QListWidget
+{
+public:
+    explicit SidebarNavigationList(QWidget *parent = nullptr)
+        : QListWidget(parent)
+    {
+        setObjectName(QStringLiteral("sidebarNav"));
+        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        setFrameShape(QFrame::NoFrame);
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        return {PageLayout::SidebarNavWidth, 0};
+    }
+};
+
+void centerWindowOnAvailableScreen(QWidget *window, const QRect &available)
+{
+    const QPoint frameOffset = window->pos() - window->frameGeometry().topLeft();
+    QSize frameSize = window->frameGeometry().size();
+    if (frameSize.width() <= 0 || frameSize.height() <= 0) {
+        frameSize = window->size();
+    }
+
+    int x = available.x() + (available.width() - frameSize.width()) / 2;
+    int y = available.y() + (available.height() - frameSize.height()) / 2;
+    x = qBound(available.left(), x, qMax(available.left(), available.right() - frameSize.width() + 1));
+    y = qBound(available.top(), y, qMax(available.top(), available.bottom() - frameSize.height() + 1));
+    window->move(QPoint(x, y) + frameOffset);
+}
 
 void configureStaticLabel(QLabel *label)
 {
@@ -117,9 +155,22 @@ void fitWindowToScreen(QWidget *window, int preferredWidth, int preferredHeight,
     if (minSize.height() > maxH) {
         window->setMinimumHeight(maxH);
     }
+
+    window->resize(width, height);
+    centerWindowOnAvailableScreen(window, available);
 }
 
-void enableResizableWindow(QWidget *window)
+void applyMainWindowGeometry(QMainWindow *window)
+{
+    if (window == nullptr) {
+        return;
+    }
+
+    window->setMinimumSize(MainWindowMinWidth, MainWindowMinHeight);
+    fitWindowToScreen(window, MainWindowDefaultWidth, MainWindowDefaultHeight);
+}
+
+void enableResizableWindow(QWidget *window, bool applyExpandingPolicy)
 {
     if (window == nullptr) {
         return;
@@ -130,7 +181,9 @@ void enableResizableWindow(QWidget *window)
     flags |= Qt::WindowMinMaxButtonsHint;
     flags |= Qt::WindowSystemMenuHint;
     window->setWindowFlags(flags);
-    window->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    if (applyExpandingPolicy) {
+        window->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
     if (auto *dialog = qobject_cast<QDialog *>(window)) {
         dialog->setSizeGripEnabled(true);
     }
@@ -238,6 +291,39 @@ QWidget *makeHeaderBlock(const QString &title, const QString &subtitle, QWidget 
     return block;
 }
 
+QWidget *makeTabBar(const QStringList &labels,
+                    QWidget *parent,
+                    QButtonGroup **groupOut,
+                    QStackedWidget *stack,
+                    int defaultIndex)
+{
+    auto *tabBar = new QWidget(parent);
+    tabBar->setObjectName(QStringLiteral("dashboardTabBar"));
+    auto *tabLayout = new QHBoxLayout(tabBar);
+    tabLayout->setContentsMargins(4, 4, 4, 4);
+    tabLayout->setSpacing(Space8);
+
+    auto *tabGroup = new QButtonGroup(tabBar);
+    tabGroup->setExclusive(true);
+    for (int i = 0; i < labels.size(); ++i) {
+        auto *button = new QPushButton(labels.at(i), tabBar);
+        button->setObjectName(QStringLiteral("tabButton"));
+        button->setCheckable(true);
+        button->setChecked(i == defaultIndex);
+        tabGroup->addButton(button, i);
+        tabLayout->addWidget(button);
+    }
+    tabLayout->addStretch();
+
+    if (groupOut != nullptr) {
+        *groupOut = tabGroup;
+    }
+    if (stack != nullptr) {
+        QObject::connect(tabGroup, &QButtonGroup::idClicked, stack, &QStackedWidget::setCurrentIndex);
+    }
+    return tabBar;
+}
+
 QWidget *wrapContentPanel(QWidget *page)
 {
     auto *panel = new QFrame;
@@ -245,7 +331,82 @@ QWidget *wrapContentPanel(QWidget *page)
     auto *panelLayout = new QVBoxLayout(panel);
     panelLayout->setContentsMargins(0, 0, 0, 0);
     panelLayout->setSpacing(0);
-    panelLayout->addWidget(page);
+    if (page != nullptr) {
+        page->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        panelLayout->addWidget(page, 1);
+    }
+    return panel;
+}
+
+QWidget *wrapScrollableContentPanel(QWidget *page)
+{
+    auto *scroll = new QScrollArea;
+    scroll->setObjectName(QStringLiteral("contentScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    scroll->setAttribute(Qt::WA_StyledBackground, true);
+    scroll->setWidget(wrapContentPanel(page));
+    return scroll;
+}
+
+QListWidget *createSidebarNavigationList(QWidget *parent)
+{
+    return new SidebarNavigationList(parent);
+}
+
+QWidget *wrapSidebarNavigation(QListWidget *navigation)
+{
+    if (navigation == nullptr) {
+        return nullptr;
+    }
+
+    auto *panel = new QFrame;
+    panel->setObjectName(QStringLiteral("sidebarNavPanel"));
+    panel->setFixedWidth(SidebarNavWidth);
+    panel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    panel->setAttribute(Qt::WA_StyledBackground, true);
+
+    auto *panelLayout = new QVBoxLayout(panel);
+    panelLayout->setContentsMargins(Space12, Space16, Space12, Space16);
+    panelLayout->setSpacing(Space12);
+
+    auto *brand = new QWidget(panel);
+    brand->setObjectName(QStringLiteral("sidebarBrand"));
+    auto *brandLayout = new QHBoxLayout(brand);
+    brandLayout->setContentsMargins(0, 0, 0, 0);
+    brandLayout->setSpacing(Space8);
+    auto *brandMark = new QLabel(QStringLiteral("D"), brand);
+    brandMark->setObjectName(QStringLiteral("sidebarBrandMark"));
+    brandMark->setAlignment(Qt::AlignCenter);
+    auto *brandTitle = new QLabel(QStringLiteral("Deploy Hub"), brand);
+    brandTitle->setObjectName(QStringLiteral("sidebarBrandTitle"));
+    brandLayout->addWidget(brandMark);
+    brandLayout->addWidget(brandTitle, 1);
+    panelLayout->addWidget(brand);
+
+    navigation->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    panelLayout->addWidget(navigation, 1);
+
+    auto *divider = new QFrame(panel);
+    divider->setObjectName(QStringLiteral("sidebarDivider"));
+    divider->setFrameShape(QFrame::HLine);
+    panelLayout->addWidget(divider);
+
+    auto *footer = new QWidget(panel);
+    footer->setObjectName(QStringLiteral("sidebarFooter"));
+    auto *footerLayout = new QVBoxLayout(footer);
+    footerLayout->setContentsMargins(0, 0, 0, 0);
+    footerLayout->setSpacing(Space8);
+    auto *settings = new QLabel(QStringLiteral("⚙  设置"), footer);
+    settings->setObjectName(QStringLiteral("sidebarFooterText"));
+    auto *admin = new QLabel(QStringLiteral("Admin"), footer);
+    admin->setObjectName(QStringLiteral("sidebarUserText"));
+    footerLayout->addWidget(settings);
+    footerLayout->addWidget(admin);
+    panelLayout->addWidget(footer);
     return panel;
 }
 

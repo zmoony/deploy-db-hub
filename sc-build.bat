@@ -1,0 +1,1 @@
+ powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1

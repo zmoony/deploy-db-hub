@@ -1,6 +1,7 @@
 # Build outputs
 build*/
 Testing/
+.superpowers/
 
 # Packaged artifacts
 dist/
@@ -16,6 +17,7 @@ workspace/
 
 # Temporary output
 test-output.txt
+test-*.txt
 
 # IDE and OS files
 .vs/

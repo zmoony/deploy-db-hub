@@ -1,6 +1,6 @@
 # Deploy Hub
 
-Deploy Hub 是一个基于 C++17 和 Qt 6 Widgets 的桌面部署工具，目标是把个人开发者和小团队常见的发布流程收敛到一个可视化客户端里：
+Deploy Hub 是一个基于 C++17 和 Qt 6 的桌面部署工具，QML 构建主壳 + Widget 业务页渐进迁移。目标是把个人开发者和小团队常见的发布流程收敛到一个可视化客户端里：
 
 ```text
 选择项目 -> 本地构建或选择已有产物 -> 上传到服务器 -> 执行启动/重启命令 -> 查看日志和历史
@@ -14,7 +14,7 @@ Deploy Hub 是一个基于 C++17 和 Qt 6 Widgets 的桌面部署工具，目标
 - 项目管理：维护 Local/GitHub 项目、构建命令、产物路径、目标服务器、远端目录、日志目录、启动/停止/重启命令、备份策略。
 - 服务器管理：维护 Linux/Windows 服务器，支持默认目录、账号、端口和凭据配置。
 - 一键部署：支持本地构建、上传已有 JAR、Maven 目录/本地仓库配置、JDK 配置选择、部署输出实时查看。
-- 远程操作：Linux 通过系统 OpenSSH 执行命令、文件浏览、上传、编辑、删除、重命名、复制/剪切/粘贴；Windows 通过 `winrs` 执行命令并支持部署日志只读查看。
+- 远程操作：Linux 通过 libssh 执行命令、SFTP 文件浏览、上传、编辑、删除、重命名；Windows 通过 WinRM + libcurl 执行命令并支持部署日志只读查看。
 - 服务器监控：查看 CPU、内存、磁盘和进程列表，支持 PID/CPU/内存排序与 PID/命令行搜索。
 - 日志与历史：本地部署日志写入 `config/logs/`；应用日志可从项目配置的远程日志目录读取，默认查看最后 100 行。
 - 配置存储：项目、服务器、部署记录使用 SQLite；JDK 配置写入 `config/jdk-profiles.json`。
@@ -25,14 +25,14 @@ Deploy Hub 是一个基于 C++17 和 Qt 6 Widgets 的桌面部署工具，目标
 | 项 | 说明 |
 |----|------|
 | 语言 | C++17 |
-| UI | Qt 6 Widgets |
+| UI | Qt 6 Quick（QML 主壳）+ Widgets（业务页渐进迁移） |
 | 构建 | CMake 3.21+ |
 | 存储 | SQLite + 本地日志文件 |
 | 测试 | Qt Test + CTest |
-| Linux 远程 | 当前实现使用系统 `ssh` / `scp` / `sftp` |
-| Windows 远程 | 当前实现使用 `winrs` |
+| Linux 远程 | libssh + SFTP |
+| Windows 远程 | WinRM + libcurl |
 
-> 设计文档中的长期目标是 Linux 走 libssh、Windows 走 libcurl + 平台认证能力。当前代码已先用系统 OpenSSH 和 `winrs` 打通真实操作闭环。
+> Windows 远程默认路线为 WinRM + libcurl + 平台认证能力；Linux 远程默认路线为 libssh。
 
 ## 目录结构
 

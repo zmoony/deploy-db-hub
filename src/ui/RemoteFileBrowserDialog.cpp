@@ -785,7 +785,7 @@ void RemoteFileBrowserDialog::goBookmark()
 void RemoteFileBrowserDialog::openFileEditor(const QString &remotePath, bool readOnly)
 {
     if (readOnly) {
-        RemoteFileViewerDialog viewer(m_browser.get(), remotePath, this);
+        RemoteFileViewerDialog viewer(m_browser.get(), remotePath, nullptr, nullptr, this);
         viewer.exec();
         return;
     }

@@ -55,6 +55,10 @@ void applySettingsObject(const QJsonObject &object, AppSettings *settings)
     settings->configDirOverride = QDir::fromNativeSeparators(object.value(QStringLiteral("configDir")).toString().trimmed());
     settings->mavenHome = QDir::fromNativeSeparators(object.value(QStringLiteral("mavenHome")).toString().trimmed());
     settings->mavenRepository = QDir::fromNativeSeparators(object.value(QStringLiteral("mavenRepository")).toString().trimmed());
+    settings->postgresDriverJar =
+        QDir::fromNativeSeparators(object.value(QStringLiteral("postgresDriverJar")).toString().trimmed());
+    settings->oracleDriverJar =
+        QDir::fromNativeSeparators(object.value(QStringLiteral("oracleDriverJar")).toString().trimmed());
 }
 
 }
@@ -111,7 +115,9 @@ bool AppSettingsStore::save(const AppSettings &settings, QString *error) const
     const QJsonObject object{
         {QStringLiteral("configDir"), QDir::fromNativeSeparators(settings.configDirOverride.trimmed())},
         {QStringLiteral("mavenHome"), QDir::fromNativeSeparators(settings.mavenHome.trimmed())},
-        {QStringLiteral("mavenRepository"), QDir::fromNativeSeparators(settings.mavenRepository.trimmed())}
+        {QStringLiteral("mavenRepository"), QDir::fromNativeSeparators(settings.mavenRepository.trimmed())},
+        {QStringLiteral("postgresDriverJar"), QDir::fromNativeSeparators(settings.postgresDriverJar.trimmed())},
+        {QStringLiteral("oracleDriverJar"), QDir::fromNativeSeparators(settings.oracleDriverJar.trimmed())}
     };
     file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
     return true;

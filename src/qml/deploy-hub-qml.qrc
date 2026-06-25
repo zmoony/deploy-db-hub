@@ -1,0 +1,11 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file alias="DeployHub/qmldir">DeployHub/qmldir</file>
+        <file alias="DeployHub/Theme.qml">DeployHub/Theme.qml</file>
+        <file alias="DeployHub/DhSidebar.qml">DeployHub/DhSidebar.qml</file>
+        <file alias="DeployHub/DhModuleTabBar.qml">DeployHub/DhModuleTabBar.qml</file>
+        <file alias="DeployHub/DhLineTabBar.qml">DeployHub/DhLineTabBar.qml</file>
+        <file alias="DeployHub/MainShell.qml">DeployHub/MainShell.qml</file>
+    </qresource>
+</RCC>

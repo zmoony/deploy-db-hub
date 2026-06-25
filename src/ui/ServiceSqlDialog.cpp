@@ -5,13 +5,26 @@
 #include <QJsonObject>
 
 #include <QDialogButtonBox>
-#include <QHeaderView>
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
+
+namespace {
+
+QStringList orderedHeaders(const QVector<QJsonObject> &rows, const QStringList &preferredHeaders)
+{
+    if (!preferredHeaders.isEmpty()) {
+        return preferredHeaders;
+    }
+    if (rows.isEmpty()) {
+        return {};
+    }
+    return rows.first().keys();
+}
+
+}
 
 ServiceSqlDialog::ServiceSqlDialog(QWidget *parent)
     : QDialog(parent)
@@ -20,22 +33,23 @@ ServiceSqlDialog::ServiceSqlDialog(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     PageLayout::applyDialog(layout);
 
-    layout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("SQL"), this));
+    m_sqlLabel = PageLayout::makeSectionLabel(QStringLiteral("SQL"), this);
+    layout->addWidget(m_sqlLabel);
     m_editor = new QPlainTextEdit(this);
     m_editor->setObjectName(QStringLiteral("deployLog"));
     m_editor->setMinimumHeight(120);
     layout->addWidget(m_editor);
 
-    layout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("结果"), this));
+    m_resultLabel = PageLayout::makeSectionLabel(QStringLiteral("结果"), this);
+    layout->addWidget(m_resultLabel);
     m_table = new QTableWidget(this);
-    PageLayout::configureDataTable(m_table);
-    m_table->horizontalHeader()->setStretchLastSection(true);
-    m_table->setMinimumHeight(180);
+    m_table->setMinimumHeight(220);
     layout->addWidget(m_table, 1);
 
     m_message = new QPlainTextEdit(this);
     m_message->setReadOnly(true);
     m_message->setMaximumHeight(80);
+    m_message->setVisible(false);
     layout->addWidget(m_message);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
@@ -59,17 +73,45 @@ QString ServiceSqlDialog::sql() const
 
 void ServiceSqlDialog::setResult(const ServiceResult &result)
 {
-    m_message->setPlainText(result.ok ? result.message : result.message);
-    m_table->clear();
-    if (!result.ok || result.rows.isEmpty()) {
+    m_sqlLabel->setVisible(true);
+    m_editor->setVisible(true);
+    setWindowTitle(QStringLiteral("SQL 查询"));
+    setTableResult(result, {});
+}
+
+void ServiceSqlDialog::setTableResult(const ServiceResult &result, const QStringList &preferredHeaders)
+{
+    const bool readOnlyTable = !preferredHeaders.isEmpty();
+    m_sqlLabel->setVisible(!readOnlyTable);
+    m_editor->setVisible(!readOnlyTable);
+    if (readOnlyTable) {
+        setWindowTitle(QStringLiteral("消费明细"));
+    }
+
+    if (!result.ok) {
+        m_message->setPlainText(result.message);
+        m_message->setVisible(true);
         m_table->setRowCount(0);
         m_table->setColumnCount(0);
+        m_table->setVisible(false);
         return;
     }
 
-    QStringList headers = result.rows.first().keys();
+    m_message->setVisible(false);
+
+    if (result.rows.isEmpty()) {
+        m_message->setPlainText(result.message.isEmpty() ? QStringLiteral("暂无数据") : result.message);
+        m_message->setVisible(true);
+        m_table->setRowCount(0);
+        m_table->setColumnCount(0);
+        m_table->setVisible(false);
+        return;
+    }
+
+    const QStringList headers = orderedHeaders(result.rows, preferredHeaders);
     m_table->setColumnCount(headers.size());
     m_table->setHorizontalHeaderLabels(headers);
+    PageLayout::configureListingTable(m_table);
     m_table->setRowCount(result.rows.size());
     for (int row = 0; row < result.rows.size(); ++row) {
         const QJsonObject item = result.rows.at(row);
@@ -77,5 +119,6 @@ void ServiceSqlDialog::setResult(const ServiceResult &result)
             m_table->setItem(row, col, new QTableWidgetItem(item.value(headers.at(col)).toString()));
         }
     }
-    m_table->resizeColumnsToContents();
+    PageLayout::refreshListingTableColumns(m_table);
+    m_table->setVisible(true);
 }

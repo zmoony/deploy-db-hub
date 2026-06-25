@@ -2,11 +2,13 @@
 
 #include "infra/AppBranding.h"
 #include "infra/LocalLogCatalog.h"
+#include "ui/LogAiAnalysisWidget.h"
 #include "ui/PageLayout.h"
 
 #include <QDialogButtonBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSplitter>
 #include <QVBoxLayout>
 
 bool DeploymentLogDialog::canOpen(const QString &relativePath)
@@ -19,8 +21,13 @@ QString DeploymentLogDialog::loadContent(const QString &relativePath, QString *e
     return LocalLogCatalog::loadContent(relativePath, error);
 }
 
-DeploymentLogDialog::DeploymentLogDialog(const QString &relativePath, QWidget *parent)
+DeploymentLogDialog::DeploymentLogDialog(const QString &relativePath,
+                                         AiSettingsStore *aiSettings,
+                                         CredentialStore *credentials,
+                                         QWidget *parent)
     : QDialog(parent)
+    , m_aiSettings(aiSettings)
+    , m_credentials(credentials)
 {
     setWindowTitle(QStringLiteral("部署日志"));
     setModal(true);
@@ -37,11 +44,22 @@ void DeploymentLogDialog::buildUi(const QString &relativePath, const QString &co
     auto *layout = new QVBoxLayout(this);
     PageLayout::applyDialog(layout);
 
-    auto *editor = new QPlainTextEdit;
+    auto *splitter = new QSplitter(Qt::Vertical, this);
+    auto *editor = new QPlainTextEdit(splitter);
     editor->setReadOnly(true);
     editor->setPlainText(content);
-    editor->setMinimumHeight(280);
-    layout->addWidget(editor, 1);
+    editor->setMinimumHeight(220);
+    splitter->addWidget(editor);
+
+    if (m_aiSettings != nullptr && m_credentials != nullptr) {
+        auto *aiPanel = new LogAiAnalysisWidget(m_aiSettings, m_credentials, splitter);
+        aiPanel->setLogContent(content);
+        splitter->addWidget(aiPanel);
+        splitter->setStretchFactor(0, 3);
+        splitter->setStretchFactor(1, 2);
+    }
+
+    layout->addWidget(splitter, 1);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);

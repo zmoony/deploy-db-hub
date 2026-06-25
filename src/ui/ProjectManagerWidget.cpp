@@ -1,5 +1,6 @@
 #include "ui/ProjectManagerWidget.h"
 
+#include "ui/DeploymentLogOpener.h"
 #include "ui/PageLayout.h"
 #include "ui/ProjectDialog.h"
 #include "ui/RemoteCredentialResolver.h"
@@ -9,9 +10,12 @@
 #include "infra/CredentialStore.h"
 #include "infra/ConfigStore.h"
 #include "infra/DataPaths.h"
+#include "infra/RemoteLogPath.h"
 
 #include <QJsonObject>
 
+#include <QComboBox>
+#include <QColor>
 #include <QFutureWatcher>
 #include <QHeaderView>
 #include <QHBoxLayout>
@@ -22,7 +26,35 @@
 #include <QTableWidgetItem>
 #include <QToolBar>
 #include <QVBoxLayout>
+#include <QSignalBlocker>
 #include <QtConcurrent>
+
+#include <algorithm>
+
+namespace {
+
+constexpr int kColCount = 9;
+constexpr int kGroupHeaderRole = Qt::UserRole + 1;
+
+QString normalizedGroup(const QJsonObject &project)
+{
+    return project.value(QStringLiteral("group")).toString().trimmed();
+}
+
+QString displayGroupLabel(const QString &group)
+{
+    return group.isEmpty() ? QStringLiteral("未分组") : group;
+}
+
+QString groupSortKey(const QString &group)
+{
+    return group.isEmpty() ? QStringLiteral("\uFFFF") : group.toLower();
+}
+
+const QString kFilterAllGroups = QStringLiteral("__all__");
+const QString kFilterUngrouped = QStringLiteral("__ungrouped__");
+
+}
 
 QString ProjectManagerWidget::sourceSummary(const QJsonObject &project)
 {
@@ -62,6 +94,8 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     auto *deleteButton = new QPushButton(QStringLiteral("删除"));
     deleteButton->setObjectName(QStringLiteral("dangerButton"));
     auto *refreshButton = new QPushButton(QStringLiteral("刷新"));
+    auto *viewLogButton = new QPushButton(QStringLiteral("查看日志"));
+    viewLogButton->setObjectName(QStringLiteral("primaryButton"));
     auto *statusButton = new QPushButton(QStringLiteral("查看状态"));
     auto *startButton = new QPushButton(QStringLiteral("启动服务"));
     auto *stopButton = new QPushButton(QStringLiteral("关闭服务"));
@@ -70,13 +104,20 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     toolbar->addWidget(editButton);
     toolbar->addWidget(deleteButton);
     toolbar->addWidget(refreshButton);
+    toolbar->addWidget(viewLogButton);
     toolbar->addWidget(statusButton);
     toolbar->addWidget(startButton);
     toolbar->addWidget(stopButton);
     toolbar->addStretch();
+
+    m_groupFilter = new QComboBox(toolbarWidget);
+    m_groupFilter->setMinimumWidth(160);
+    PageLayout::configureFormInput(m_groupFilter);
+    toolbar->addWidget(new QLabel(QStringLiteral("分组筛选")));
+    toolbar->addWidget(m_groupFilter);
     layout->addWidget(toolbarWidget);
 
-    m_table = new QTableWidget(0, 8);
+    m_table = new QTableWidget(0, kColCount);
     setupTable();
     layout->addWidget(PageLayout::wrapTableSection(
         m_table,
@@ -88,10 +129,14 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     connect(editButton, &QPushButton::clicked, this, &ProjectManagerWidget::editProject);
     connect(deleteButton, &QPushButton::clicked, this, &ProjectManagerWidget::deleteProject);
     connect(refreshButton, &QPushButton::clicked, this, &ProjectManagerWidget::reload);
+    connect(viewLogButton, &QPushButton::clicked, this, &ProjectManagerWidget::viewSelectedProjectLog);
     connect(statusButton, &QPushButton::clicked, this, &ProjectManagerWidget::refreshSelectedServiceStatus);
     connect(startButton, &QPushButton::clicked, this, &ProjectManagerWidget::startSelectedService);
     connect(stopButton, &QPushButton::clicked, this, &ProjectManagerWidget::stopSelectedService);
     connect(m_table, &QTableWidget::doubleClicked, this, &ProjectManagerWidget::editProject);
+    connect(m_groupFilter, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        reload();
+    });
 
     reload();
 }
@@ -101,6 +146,7 @@ void ProjectManagerWidget::setupTable()
     m_table->setHorizontalHeaderLabels({
         QStringLiteral("ID"),
         QStringLiteral("名称"),
+        QStringLiteral("分组"),
         QStringLiteral("类型"),
         QStringLiteral("来源"),
         QStringLiteral("目标服务器"),
@@ -109,23 +155,30 @@ void ProjectManagerWidget::setupTable()
         QStringLiteral("PID")
     });
     m_table->verticalHeader()->setVisible(false);
-    PageLayout::configureDataTable(m_table);
+    PageLayout::configureListingTable(m_table);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setAlternatingRowColors(true);
-    m_table->horizontalHeader()->setStretchLastSection(true);
-    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_table->verticalHeader()->setDefaultSectionSize(40);
 }
 
 int ProjectManagerWidget::projectCount() const
 {
-    return m_table->rowCount();
+    int count = 0;
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        if (!isGroupHeaderRow(m_table, row)) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 QStringList ProjectManagerWidget::projectIds() const
 {
     QStringList ids;
     for (int row = 0; row < m_table->rowCount(); ++row) {
+        if (isGroupHeaderRow(m_table, row)) {
+            continue;
+        }
         ids.append(m_table->item(row, 0)->text());
     }
     return ids;
@@ -141,13 +194,165 @@ QJsonObject ProjectManagerWidget::makeQuickAddDraft(const QJsonObject &sourcePro
     return draft;
 }
 
+bool ProjectManagerWidget::isGroupHeaderRow(const QTableWidget *table, int row)
+{
+    if (table == nullptr || row < 0) {
+        return false;
+    }
+    const QTableWidgetItem *item = table->item(row, 0);
+    return item != nullptr && item->data(kGroupHeaderRole).toBool();
+}
+
 QString ProjectManagerWidget::selectedProjectId() const
 {
     const auto rows = m_table->selectionModel()->selectedRows();
     if (rows.isEmpty()) {
         return {};
     }
-    return m_table->item(rows.first().row(), 0)->text();
+    const int row = rows.first().row();
+    if (isGroupHeaderRow(m_table, row)) {
+        return {};
+    }
+    return m_table->item(row, 0)->text();
+}
+
+void ProjectManagerWidget::refreshGroupFilter(const QVector<StoredRecord> &records)
+{
+    if (m_groupFilter == nullptr) {
+        return;
+    }
+
+    const QString current = m_groupFilter->currentData().toString();
+    QSignalBlocker blocker(m_groupFilter);
+    m_groupFilter->clear();
+    m_groupFilter->addItem(QStringLiteral("全部分组"), kFilterAllGroups);
+
+    QStringList groups;
+    bool hasUngrouped = false;
+    for (const StoredRecord &record : records) {
+        const QString group = normalizedGroup(record.config);
+        if (group.isEmpty()) {
+            hasUngrouped = true;
+        } else if (!groups.contains(group)) {
+            groups.append(group);
+        }
+    }
+    groups.sort(Qt::CaseInsensitive);
+    for (const QString &group : groups) {
+        m_groupFilter->addItem(group, group);
+    }
+    if (hasUngrouped) {
+        m_groupFilter->addItem(QStringLiteral("未分组"), kFilterUngrouped);
+    }
+
+    const int index = m_groupFilter->findData(current);
+    m_groupFilter->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+void ProjectManagerWidget::populateTable(const QVector<StoredRecord> &records)
+{
+    const QString filter = m_groupFilter != nullptr ? m_groupFilter->currentData().toString() : kFilterAllGroups;
+    const bool showAllGroups = filter == kFilterAllGroups;
+
+    QVector<StoredRecord> sorted = records;
+    std::sort(sorted.begin(), sorted.end(), [](const StoredRecord &left, const StoredRecord &right) {
+        const QString leftGroup = normalizedGroup(left.config);
+        const QString rightGroup = normalizedGroup(right.config);
+        const int groupCompare = groupSortKey(leftGroup).compare(groupSortKey(rightGroup), Qt::CaseInsensitive);
+        if (groupCompare != 0) {
+            return groupCompare < 0;
+        }
+        return left.config.value(QStringLiteral("name")).toString().compare(
+                   right.config.value(QStringLiteral("name")).toString(),
+                   Qt::CaseInsensitive)
+            < 0;
+    });
+
+    int row = 0;
+    m_table->setRowCount(0);
+    QString currentGroupLabel;
+    int projectCount = 0;
+
+    const auto appendGroupHeader = [this, &row, &currentGroupLabel](const QString &groupLabel, int count) {
+        if (count <= 0) {
+            return;
+        }
+        m_table->insertRow(row);
+        auto *header = new QTableWidgetItem(QStringLiteral("%1 (%2)").arg(groupLabel, QString::number(count)));
+        header->setData(kGroupHeaderRole, true);
+        header->setFlags(Qt::ItemIsEnabled);
+        header->setBackground(QColor(QStringLiteral("#F8FAFC")));
+        header->setForeground(QColor(QStringLiteral("#334155")));
+        QFont font = header->font();
+        font.setBold(true);
+        header->setFont(font);
+        m_table->setItem(row, 0, header);
+        m_table->setSpan(row, 0, 1, kColCount);
+        ++row;
+    };
+
+    const auto appendProjectRow = [this, &row](const StoredRecord &record) {
+        const QJsonObject &project = record.config;
+        const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
+        const QString strategy = deploy.value(QStringLiteral("failureStrategy")).toString() == QStringLiteral("keep")
+                                       ? QStringLiteral("保留现场")
+                                       : QStringLiteral("自动回滚");
+        const QString group = normalizedGroup(project);
+
+        m_table->insertRow(row);
+        m_table->setItem(row, 0, new QTableWidgetItem(record.id));
+        m_table->setItem(row, 1, new QTableWidgetItem(project.value(QStringLiteral("name")).toString()));
+        m_table->setItem(row, 2, new QTableWidgetItem(displayGroupLabel(group)));
+        m_table->setItem(row, 3, new QTableWidgetItem(project.value(QStringLiteral("type")).toString()));
+        m_table->setItem(row, 4, new QTableWidgetItem(sourceSummary(project)));
+        m_table->setItem(row, 5, new QTableWidgetItem(deploy.value(QStringLiteral("serverId")).toString()));
+        m_table->setItem(row, 6, new QTableWidgetItem(strategy));
+        m_table->setItem(row, 7, new QTableWidgetItem(QStringLiteral("未检测")));
+        m_table->setItem(row, 8, new QTableWidgetItem(QStringLiteral("-")));
+        ++row;
+    };
+
+    if (showAllGroups) {
+        QString pendingGroup;
+        int pendingCount = 0;
+        for (const StoredRecord &record : sorted) {
+            const QString groupLabel = displayGroupLabel(normalizedGroup(record.config));
+            if (groupLabel != pendingGroup) {
+                appendGroupHeader(pendingGroup, pendingCount);
+                pendingGroup = groupLabel;
+                pendingCount = 0;
+            }
+            appendProjectRow(record);
+            ++pendingCount;
+            ++projectCount;
+        }
+        appendGroupHeader(pendingGroup, pendingCount);
+    } else {
+        for (const StoredRecord &record : sorted) {
+            const QString group = normalizedGroup(record.config);
+            if (filter == kFilterUngrouped) {
+                if (!group.isEmpty()) {
+                    continue;
+                }
+            } else if (group != filter) {
+                continue;
+            }
+            appendProjectRow(record);
+            ++projectCount;
+        }
+    }
+
+    PageLayout::refreshListingTableColumns(m_table);
+    PageLayout::updateTableEmptyState(m_table, m_emptyState, projectCount);
+
+    if (projectCount > 0) {
+        for (int i = 0; i < m_table->rowCount(); ++i) {
+            if (!isGroupHeaderRow(m_table, i)) {
+                m_table->selectRow(i);
+                break;
+            }
+        }
+    }
 }
 
 void ProjectManagerWidget::reload()
@@ -159,29 +364,8 @@ void ProjectManagerWidget::reload()
         return;
     }
 
-    m_table->setRowCount(records.size());
-    for (int row = 0; row < records.size(); ++row) {
-        const StoredRecord &record = records.at(row);
-        const QJsonObject deploy = record.config.value(QStringLiteral("deploy")).toObject();
-        const QString strategy = deploy.value(QStringLiteral("failureStrategy")).toString() == QStringLiteral("keep")
-            ? QStringLiteral("保留现场")
-            : QStringLiteral("自动回滚");
-
-        m_table->setItem(row, 0, new QTableWidgetItem(record.id));
-        m_table->setItem(row, 1, new QTableWidgetItem(record.config.value(QStringLiteral("name")).toString()));
-        m_table->setItem(row, 2, new QTableWidgetItem(record.config.value(QStringLiteral("type")).toString()));
-        m_table->setItem(row, 3, new QTableWidgetItem(sourceSummary(record.config)));
-        m_table->setItem(row, 4, new QTableWidgetItem(deploy.value(QStringLiteral("serverId")).toString()));
-        m_table->setItem(row, 5, new QTableWidgetItem(strategy));
-        m_table->setItem(row, 6, new QTableWidgetItem(QStringLiteral("未检测")));
-        m_table->setItem(row, 7, new QTableWidgetItem(QStringLiteral("-")));
-    }
-
-    PageLayout::updateTableEmptyState(m_table, m_emptyState, records.size());
-
-    if (!records.isEmpty()) {
-        m_table->selectRow(0);
-    }
+    refreshGroupFilter(records);
+    populateTable(records);
 }
 
 void ProjectManagerWidget::addProject()
@@ -206,8 +390,9 @@ void ProjectManagerWidget::addProject()
         ? QStringLiteral("powershell -NoProfile -Command \"Start-Process java -ArgumentList '-jar','{targetJarPath}' -WorkingDirectory '{remoteBaseDir}'\"")
         : QStringLiteral("nohup java -jar {targetJarPath} > {logDir}/app.log 2>&1 &");
 
-    ProjectDialog dialog(servers, this);
-    dialog.setProject(QJsonObject{
+    auto *dialog = new ProjectDialog(servers, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setProject(QJsonObject{
         {QStringLiteral("id"), QStringLiteral("app-demo")},
         {QStringLiteral("name"), QStringLiteral("Demo App")},
         {QStringLiteral("type"), QStringLiteral("java-maven")},
@@ -217,7 +402,7 @@ void ProjectManagerWidget::addProject()
             {QStringLiteral("serverId"), servers.first().id},
             {QStringLiteral("remoteBaseDir"), defaultBaseDir},
             {QStringLiteral("logDir"), defaultLogDir},
-            {QStringLiteral("restartScript"), QStringLiteral("restart.sh")},
+            {QStringLiteral("restartMode"), QStringLiteral("service-command")},
             {QStringLiteral("serviceMatch"), QStringLiteral("app-demo")},
             {QStringLiteral("targetJarPath"), defaultJar},
             {QStringLiteral("startCommand"), defaultStartCommand},
@@ -226,18 +411,17 @@ void ProjectManagerWidget::addProject()
         }}
     }, false);
 
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    const QJsonObject project = dialog.project();
-    if (!m_store->upsertProject(project.value(QStringLiteral("id")).toString(), project, &error)) {
-        QMessageBox::warning(this, QStringLiteral("保存失败"), error);
-        return;
-    }
-
-    reload();
-    emit projectsChanged();
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        QString error;
+        const QJsonObject project = dialog->project();
+        if (!m_store->upsertProject(project.value(QStringLiteral("id")).toString(), project, &error)) {
+            QMessageBox::warning(this, QStringLiteral("保存失败"), error);
+            return;
+        }
+        reload();
+        emit projectsChanged();
+    });
+    dialog->show();
 }
 
 void ProjectManagerWidget::quickAddProject()
@@ -265,21 +449,21 @@ void ProjectManagerWidget::quickAddProject()
         return;
     }
 
-    ProjectDialog dialog(servers, this);
-    dialog.setProject(makeQuickAddDraft(project), false);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    const QJsonObject added = dialog.project();
-    const QString addedId = added.value(QStringLiteral("id")).toString();
-    if (!m_store->upsertProject(addedId, added, &error)) {
-        QMessageBox::warning(this, QStringLiteral("保存失败"), error);
-        return;
-    }
-
-    reload();
-    emit projectsChanged();
+    auto *dialog = new ProjectDialog(servers, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setProject(makeQuickAddDraft(project), false);
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        QString error;
+        const QJsonObject added = dialog->project();
+        const QString addedId = added.value(QStringLiteral("id")).toString();
+        if (!m_store->upsertProject(addedId, added, &error)) {
+            QMessageBox::warning(this, QStringLiteral("保存失败"), error);
+            return;
+        }
+        reload();
+        emit projectsChanged();
+    });
+    dialog->show();
 }
 
 void ProjectManagerWidget::editProject()
@@ -300,20 +484,20 @@ void ProjectManagerWidget::editProject()
         return;
     }
 
-    ProjectDialog dialog(servers, this);
-    dialog.setProject(project, true);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    const QJsonObject updated = dialog.project();
-    if (!m_store->upsertProject(id, updated, &error)) {
-        QMessageBox::warning(this, QStringLiteral("保存失败"), error);
-        return;
-    }
-
-    reload();
-    emit projectsChanged();
+    auto *dialog = new ProjectDialog(servers, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setProject(project, true);
+    connect(dialog, &QDialog::accepted, this, [this, dialog, id]() {
+        QString error;
+        const QJsonObject updated = dialog->project();
+        if (!m_store->upsertProject(id, updated, &error)) {
+            QMessageBox::warning(this, QStringLiteral("保存失败"), error);
+            return;
+        }
+        reload();
+        emit projectsChanged();
+    });
+    dialog->show();
 }
 
 void ProjectManagerWidget::deleteProject()
@@ -390,19 +574,19 @@ void ProjectManagerWidget::runServiceOperation(const QString &operation)
     }
 
     if (row >= 0) {
-        m_table->setItem(row, 6, new QTableWidgetItem(QStringLiteral("执行中...")));
-        m_table->setItem(row, 7, new QTableWidgetItem(QStringLiteral("-")));
+        m_table->setItem(row, 7, new QTableWidgetItem(QStringLiteral("执行中...")));
+        m_table->setItem(row, 8, new QTableWidgetItem(QStringLiteral("-")));
     }
 
     auto *watcher = new QFutureWatcher<ServiceOperationResult>(this);
     connect(watcher, &QFutureWatcher<ServiceOperationResult>::finished, this, [this, watcher, row]() {
         const ServiceOperationResult result = watcher->result();
-        if (row >= 0 && row < m_table->rowCount()) {
-            m_table->setItem(row, 6, new QTableWidgetItem(result.ok ? result.statusText : result.error));
+        if (row >= 0 && row < m_table->rowCount() && !isGroupHeaderRow(m_table, row)) {
+            m_table->setItem(row, 7, new QTableWidgetItem(result.ok ? result.statusText : result.error));
             const QString pid = result.statusText.contains(QStringLiteral("PID "))
                 ? result.statusText.section(QStringLiteral("PID "), 1, 1).section(QLatin1Char(' '), 0, 0)
                 : QStringLiteral("-");
-            m_table->setItem(row, 7, new QTableWidgetItem(pid));
+            m_table->setItem(row, 8, new QTableWidgetItem(pid));
         }
         if (!result.ok) {
             QMessageBox::warning(this, QStringLiteral("服务操作失败"), result.error);
@@ -438,4 +622,37 @@ void ProjectManagerWidget::runServiceOperation(const QString &operation)
         result.error = status.error;
         return result;
     }));
+}
+
+void ProjectManagerWidget::viewSelectedProjectLog()
+{
+    const QString id = selectedProjectId();
+    if (id.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("未选择"), QStringLiteral("请先选择要查看日志的项目。"));
+        return;
+    }
+
+    QJsonObject project;
+    QString error;
+    if (!m_store->getProject(id, &project, &error)) {
+        QMessageBox::warning(this, QStringLiteral("加载失败"), error);
+        return;
+    }
+
+    const QString serverId = project.value(QStringLiteral("deploy")).toObject().value(QStringLiteral("serverId")).toString();
+    QJsonObject server;
+    if (!m_store->getServer(serverId, &server, &error)) {
+        QMessageBox::warning(this, QStringLiteral("加载失败"), error);
+        return;
+    }
+
+    bool ok = false;
+    const QString logPath = DeploymentLogOpener::resolveLogPathForProject(project, this, &ok);
+    if (!ok || logPath.isEmpty()) {
+        return;
+    }
+
+    static CredentialSessionCache sessionCache;
+    CredentialStore credentials(DataPaths::credentialsFile());
+    DeploymentLogOpener::open(this, &credentials, &sessionCache, server, logPath);
 }

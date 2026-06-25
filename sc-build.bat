@@ -1,1 +1,1 @@
- powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
+powershell -File scripts\build-release.ps1 -UseFluentUI

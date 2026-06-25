@@ -65,8 +65,7 @@ QJsonObject defaultRemoteFilesConfig(const QString &defaultBrowsePath)
 
 void tuneFormBox(QGroupBox *box, QFormLayout *form)
 {
-    box->setObjectName(QStringLiteral("dialogFormBox"));
-    PageLayout::applyInlineForm(form);
+    PageLayout::tuneDialogFormBox(box, form);
 }
 
 QJsonObject defaultMonitoringConfig()
@@ -100,7 +99,6 @@ ServerDialog::ServerDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(QStringLiteral("服务器配置"));
-    setModal(true);
     PageLayout::applyRemoteToolDialog(this,
                                       PageLayout::DialogMinWidth,
                                       640,
@@ -171,20 +169,22 @@ void ServerDialog::buildUi()
     auto *authStack = new QStackedWidget;
     auto *passwordPanel = new QWidget;
     auto *passwordForm = new QFormLayout(passwordPanel);
-    PageLayout::applyInlineForm(passwordForm);
+    PageLayout::applyDialogForm(passwordForm);
     passwordForm->setContentsMargins(0, 0, 0, 0);
     auto *passwordRow = new QWidget;
+    PageLayout::configureHorizontalFormRow(passwordRow);
     auto *passwordRowLayout = new QHBoxLayout(passwordRow);
     passwordRowLayout->setContentsMargins(0, 0, 0, 0);
-    passwordRowLayout->setSpacing(PageLayout::Space12);
+    passwordRowLayout->setSpacing(PageLayout::Space8);
     m_password = new QLineEdit;
     m_password->setEchoMode(QLineEdit::Password);
     m_password->setPlaceholderText(QStringLiteral("输入登录密码"));
     PageLayout::configureFormInput(m_password);
-    m_passwordVisibilityButton = new QPushButton(QStringLiteral("显示"));
+    m_passwordVisibilityButton = new QPushButton(QStringLiteral("显示"), passwordRow);
     m_passwordVisibilityButton->setCheckable(true);
-    m_passwordVisibilityButton->setFixedWidth(48);
-    m_passwordVisibilityButton->setMinimumHeight(PageLayout::DialogFieldHeight);
+    m_passwordVisibilityButton->setMinimumWidth(56);
+    m_passwordVisibilityButton->setFixedHeight(PageLayout::DialogFieldHeight);
+    m_passwordVisibilityButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     connect(m_passwordVisibilityButton, &QPushButton::toggled, this, [this](bool visible) {
         m_password->setEchoMode(visible ? QLineEdit::Normal : QLineEdit::Password);
         m_passwordVisibilityButton->setText(visible ? QStringLiteral("隐藏") : QStringLiteral("显示"));
@@ -195,6 +195,7 @@ void ServerDialog::buildUi()
     m_rememberPassword->setChecked(true);
     passwordForm->addRow(QStringLiteral("密码"), passwordRow);
     auto *rememberRow = new QWidget;
+    PageLayout::configureHorizontalFormRow(rememberRow);
     auto *rememberLayout = new QHBoxLayout(rememberRow);
     rememberLayout->setContentsMargins(0, 0, 0, 0);
     rememberLayout->addWidget(m_rememberPassword);
@@ -209,6 +210,7 @@ void ServerDialog::buildUi()
 
     authStack->addWidget(passwordPanel);
     authStack->addWidget(manualPanel);
+    authStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     authForm->addRow(QStringLiteral("凭据"), authStack);
     m_authStack = authStack;
     connect(m_authMode, qOverload<int>(&QComboBox::currentIndexChanged), this, &ServerDialog::onAuthModeChanged);
@@ -248,20 +250,30 @@ void ServerDialog::buildUi()
     pathsForm->addRow(QStringLiteral("默认部署根目录"), m_defaultRemoteBaseDir);
 
     m_sshKeyRow = new QWidget;
+    PageLayout::configureHorizontalFormRow(m_sshKeyRow);
     auto *sshKeyLayout = new QVBoxLayout(m_sshKeyRow);
     sshKeyLayout->setContentsMargins(0, 0, 0, 0);
     m_sshKeyPath = new PathPickerWidget(PathPickerWidget::Mode::File);
     m_sshKeyPath->setPlaceholderText(QStringLiteral("~/.ssh/id_ed25519"));
     sshKeyLayout->addWidget(m_sshKeyPath);
-    pathsForm->addRow(QStringLiteral("SSH 私钥路径"), m_sshKeyRow);
+    auto *sshKeyLabel = new QLabel(QStringLiteral("SSH 私钥路径"));
+    pathsForm->addRow(sshKeyLabel, m_sshKeyRow);
+    m_sshKeyLabel = sshKeyLabel;
     bodyLayout->addWidget(pathsBox);
 
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+    auto *footer = PageLayout::makeDialogFooter(this);
+    auto *footerLayout = new QHBoxLayout(footer);
+    footerLayout->setContentsMargins(0, PageLayout::Space12, 0, 0);
+    footerLayout->setSpacing(PageLayout::Space8);
+    footerLayout->addStretch();
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, footer);
     buttons->setCenterButtons(false);
     buttons->button(QDialogButtonBox::Save)->setObjectName(QStringLiteral("primaryButton"));
     connect(buttons, &QDialogButtonBox::accepted, this, &ServerDialog::onAccept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(buttons);
+    footerLayout->addWidget(buttons);
+    layout->addWidget(footer);
 
     syncAuthFields();
 }
@@ -545,7 +557,11 @@ void ServerDialog::syncAuthFields()
     }
 
     if (m_sshKeyRow != nullptr) {
-        m_sshKeyRow->setVisible(authUiMode == QStringLiteral("ssh-key") && linux);
+        const bool showSshKey = authUiMode == QStringLiteral("ssh-key") && linux;
+        m_sshKeyRow->setVisible(showSshKey);
+        if (m_sshKeyLabel != nullptr) {
+            m_sshKeyLabel->setVisible(showSshKey);
+        }
     }
     if (m_testConnectionButton != nullptr) {
         m_testConnectionButton->setVisible(authUiMode == QStringLiteral("password"));

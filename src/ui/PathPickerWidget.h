@@ -24,6 +24,11 @@ public:
     QString path() const;
     void setPlaceholderText(const QString &text);
     void setBrowseHandler(std::function<void()> handler);
+    void setMode(Mode mode);
+    Mode mode() const { return m_mode; }
+
+signals:
+    void pathChanged(const QString &path);
 
 private slots:
     void browse();

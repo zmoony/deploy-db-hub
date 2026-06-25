@@ -17,7 +17,8 @@ public:
         Node,
         Index,
         Key,
-        Table
+        Table,
+        Sql
     };
 
     static ServiceResult testInstance(const QJsonObject &instance,
@@ -31,6 +32,15 @@ public:
                                  TabKind tab,
                                  const RemoteConnectionContext &remote,
                                  const QString &schema = QString());
+
+    // Kafka topic tab: phase 1 returns topic metadata only; phase 2 fills stats columns.
+    static ServiceResult loadKafkaTopicsQuick(const QJsonObject &instance,
+                                              const QJsonObject &server,
+                                              const RemoteConnectionContext &remote);
+    static ServiceResult loadKafkaTopicStats(const QJsonObject &instance,
+                                             const QJsonObject &server,
+                                             const RemoteConnectionContext &remote,
+                                             const QVector<QJsonObject> &knownTopics = {});
 
     static ServiceResult runAction(const QJsonObject &instance,
                                    const QJsonObject &server,

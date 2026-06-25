@@ -1,5 +1,6 @@
 #include "infra/ServiceNodeConnection.h"
 
+#include "infra/ConfigStore.h"
 #include "infra/ServiceDefaults.h"
 
 #include <QJsonArray>
@@ -28,6 +29,84 @@ int defaultPortForProduct(const QString &productKey)
 
 }
 
+bool ServiceNodeConnection::usesDirectConnect(const QString &productKey)
+{
+    return productKey != QStringLiteral("kafka");
+}
+
+bool ServiceNodeConnection::decodeInfo(const QString &info,
+                                       const QString &productKey,
+                                       ServiceConnectionFields *fields,
+                                       QString *error)
+{
+    if (fields == nullptr) {
+        if (error != nullptr) {
+            *error = QStringLiteral("fields output is null");
+        }
+        return false;
+    }
+
+    *fields = {};
+    ServiceEndpoint endpoint;
+    if (!parseInfo(info, productKey, &endpoint, error)) {
+        return false;
+    }
+
+    fields->port = endpoint.port;
+    fields->username = endpoint.username;
+    fields->password = endpoint.password;
+    fields->database = endpoint.database;
+    fields->authFingerprint = endpoint.authFingerprint;
+    return true;
+}
+
+QString ServiceNodeConnection::encodeInfo(const ServiceConnectionFields &fields, const QString &productKey)
+{
+    if (productKey == QStringLiteral("kafka")) {
+        return fields.port > 0 ? QString::number(fields.port) : QString();
+    }
+
+    if (productKey == QStringLiteral("redis")) {
+        if (fields.port <= 0) {
+            return QString();
+        }
+        if (fields.password.isEmpty() && fields.username.isEmpty()) {
+            return QString::number(fields.port);
+        }
+        if (fields.username.isEmpty()) {
+            return QStringLiteral("%1:%2").arg(fields.port).arg(fields.password);
+        }
+        return QStringLiteral("%1:%2:%3").arg(fields.port).arg(fields.password, fields.username);
+    }
+
+    if (productKey == QStringLiteral("elasticsearch")) {
+        if (fields.port <= 0) {
+            return QString();
+        }
+        QString encoded = QString::number(fields.port);
+        if (!fields.username.isEmpty()) {
+            encoded += QLatin1Char(':') + fields.username;
+            if (!fields.password.isEmpty()) {
+                encoded += QLatin1Char(':') + fields.password;
+                if (!fields.authFingerprint.isEmpty()) {
+                    encoded += QLatin1Char(':') + fields.authFingerprint;
+                }
+            }
+        }
+        return encoded;
+    }
+
+    if (productKey == QStringLiteral("oracle") || productKey == QStringLiteral("postgresql")) {
+        return QStringLiteral("%1:%2:%3:%4")
+            .arg(fields.database)
+            .arg(fields.port)
+            .arg(fields.username)
+            .arg(fields.password);
+    }
+
+    return {};
+}
+
 QJsonObject ServiceNodeConnection::primaryNode(const QJsonObject &instance)
 {
     const QJsonArray nodes = instance.value(QStringLiteral("nodes")).toArray();
@@ -35,6 +114,64 @@ QJsonObject ServiceNodeConnection::primaryNode(const QJsonObject &instance)
         return {};
     }
     return nodes.first().toObject();
+}
+
+QString ServiceNodeConnection::hostFromNodeLabel(const QJsonObject &node)
+{
+    const QString customHost = node.value(QStringLiteral("customHost")).toString().trimmed();
+    if (!customHost.isEmpty()) {
+        return customHost;
+    }
+
+    const QString label = node.value(QStringLiteral("serverLabel")).toString();
+    const int open = label.indexOf(QLatin1Char('('));
+    if (open >= 0) {
+        const int colon = label.indexOf(QLatin1Char(':'), open);
+        if (colon > open) {
+            return label.mid(open + 1, colon - open - 1).trimmed();
+        }
+    }
+    if (label.contains(QLatin1Char('.')) || label.contains(QLatin1Char(':'))) {
+        return label.section(QLatin1Char(' '), 0, 0).trimmed();
+    }
+    return label.trimmed();
+}
+
+bool ServiceNodeConnection::resolveServerForNode(const QJsonObject &node,
+                                                 ConfigStore *store,
+                                                 QJsonObject *server,
+                                                 QString *error)
+{
+    if (server == nullptr) {
+        if (error != nullptr) {
+            *error = QStringLiteral("server output is null");
+        }
+        return false;
+    }
+
+    const QString serverId = node.value(QStringLiteral("serverId")).toString();
+    if (!serverId.isEmpty() && store != nullptr) {
+        return store->getServer(serverId, server, error);
+    }
+
+    const QString host = hostFromNodeLabel(node);
+    if (host.isEmpty()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("请选择服务器或输入 IP/主机名");
+        }
+        return false;
+    }
+
+    *server = QJsonObject{
+        {QStringLiteral("id"), QString()},
+        {QStringLiteral("name"), host},
+        {QStringLiteral("host"), host},
+        {QStringLiteral("port"), 22},
+        {QStringLiteral("username"), QStringLiteral("root")},
+        {QStringLiteral("os"), QStringLiteral("linux")},
+        {QStringLiteral("auth"), QJsonObject{{QStringLiteral("mode"), QStringLiteral("password")}}}
+    };
+    return true;
 }
 
 bool ServiceNodeConnection::parseInfo(const QString &info,
@@ -73,7 +210,10 @@ bool ServiceNodeConnection::parseInfo(const QString &info,
             endpoint->port = defaultPortForProduct(productKey);
         }
         if (parts.size() >= 2) {
-            endpoint->password = parts.mid(1).join(QLatin1Char(':'));
+            endpoint->password = parts.at(1);
+        }
+        if (parts.size() >= 3) {
+            endpoint->username = parts.at(2);
         }
         return true;
     }
@@ -145,6 +285,16 @@ bool ServiceNodeConnection::resolvePrimaryNode(const QJsonObject &instance,
         endpoint->storagePath = ServiceDefaults::storagePath(productKey);
     }
     endpoint->serverId = node.value(QStringLiteral("serverId")).toString();
+
+    if (productKey == QStringLiteral("elasticsearch")) {
+        const int configured = node.value(QStringLiteral("kibanaPort")).toInt(0);
+        endpoint->kibanaPort = configured > 0 ? configured : ServiceDefaults::kibanaPort(productKey);
+    }
+
+    if (productKey == QStringLiteral("redis")) {
+        const int configuredDb = node.value(QStringLiteral("redisDb")).toInt(0);
+        endpoint->redisDatabase = configuredDb >= 0 && configuredDb <= 15 ? configuredDb : 0;
+    }
 
     if (!server.isEmpty()) {
         endpoint->host = server.value(QStringLiteral("host")).toString().trimmed();

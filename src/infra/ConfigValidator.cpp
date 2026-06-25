@@ -65,6 +65,10 @@ ValidationResult ConfigValidator::validateProject(const QJsonObject &project)
     requireObject(project, QStringLiteral("build"), &result.errors);
     requireObject(project, QStringLiteral("deploy"), &result.errors);
 
+    const QString type = project.value(QStringLiteral("type")).toString();
+    const bool isFrontend = type == QStringLiteral("frontend-static");
+    const bool isJava = type == QStringLiteral("java-maven");
+
     const QJsonObject source = project.value(QStringLiteral("source")).toObject();
     const QString kind = source.value(QStringLiteral("kind")).toString();
     if (kind == QStringLiteral("local")) {
@@ -87,13 +91,24 @@ ValidationResult ConfigValidator::validateProject(const QJsonObject &project)
         result.errors.append(QStringLiteral("build.location must be local"));
     }
     const QString buildMode = build.value(QStringLiteral("mode")).toString(QStringLiteral("build"));
-    if (buildMode != QStringLiteral("build") && buildMode != QStringLiteral("prebuilt-jar")) {
-        result.errors.append(QStringLiteral("build.mode must be build or prebuilt-jar"));
+    if (isJava) {
+        if (buildMode != QStringLiteral("build") && buildMode != QStringLiteral("prebuilt-jar")) {
+            result.errors.append(QStringLiteral("build.mode must be build or prebuilt-jar for java-maven projects"));
+        }
+    } else {
+        if (buildMode != QStringLiteral("build")) {
+            result.errors.append(QStringLiteral("build.mode must be build for non-java projects"));
+        }
     }
-    if (buildMode != QStringLiteral("prebuilt-jar")) {
+    const bool prebuiltJar = isJava && buildMode == QStringLiteral("prebuilt-jar");
+    if (!prebuiltJar) {
         requireString(build, QStringLiteral("command"), &result.errors);
     }
     requireString(build, QStringLiteral("artifactPath"), &result.errors);
+    const QJsonValue artifactRenameValue = build.value(QStringLiteral("artifactRename"));
+    if (artifactRenameValue.isString() && artifactRenameValue.toString().trimmed().isEmpty()) {
+        result.errors.append(QStringLiteral("build.artifactRename must not be empty when provided"));
+    }
 
     const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
     requireString(deploy, QStringLiteral("serverId"), &result.errors);
@@ -106,10 +121,20 @@ ValidationResult ConfigValidator::validateProject(const QJsonObject &project)
     if (logDirValue.isString() && logDirValue.toString().trimmed().isEmpty()) {
         result.errors.append(QStringLiteral("deploy.logDir must not be empty when provided"));
     }
-    const QString backupPolicy = deploy.value(QStringLiteral("backupPolicy")).toString(QStringLiteral("backup"));
-    if (backupPolicy != QStringLiteral("backup") && backupPolicy != QStringLiteral("replace")) {
-        result.errors.append(QStringLiteral("deploy.backupPolicy must be backup or replace"));
+
+    if (!isFrontend) {
+        const QString backupPolicy = deploy.value(QStringLiteral("backupPolicy")).toString(QStringLiteral("backup"));
+        if (backupPolicy != QStringLiteral("backup") && backupPolicy != QStringLiteral("replace")) {
+            result.errors.append(QStringLiteral("deploy.backupPolicy must be backup or replace"));
+        }
+        const QString restartMode = deploy.value(QStringLiteral("restartMode")).toString();
+        if (!restartMode.isEmpty()
+            && restartMode != QStringLiteral("restart-script")
+            && restartMode != QStringLiteral("service-command")) {
+            result.errors.append(QStringLiteral("deploy.restartMode must be restart-script or service-command"));
+        }
     }
+
     const QStringList optionalStringFields = {
         QStringLiteral("serviceMatch"),
         QStringLiteral("startCommand"),

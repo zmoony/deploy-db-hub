@@ -60,6 +60,22 @@ ProjectServiceConfig projectServiceConfig(const QJsonObject &project)
     return config;
 }
 
+bool usesCustomServiceControl(const QJsonObject &project)
+{
+    const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
+    const QString mode = deploy.value(QStringLiteral("restartMode")).toString();
+    if (mode == QStringLiteral("service-command")) {
+        return true;
+    }
+    if (mode == QStringLiteral("restart-script")) {
+        return false;
+    }
+    const ProjectServiceConfig config = projectServiceConfig(project);
+    return !config.startCommand.isEmpty()
+        || !config.stopCommand.isEmpty()
+        || !config.restartCommand.isEmpty();
+}
+
 QString renderProjectServiceCommand(QString commandTemplate,
                                     const QJsonObject &project,
                                     const QString &artifactPath)
@@ -82,6 +98,24 @@ QString renderProjectServiceCommand(QString commandTemplate,
     return commandTemplate;
 }
 
+QString wrapCommandWithWorkingDirectory(const QString &os,
+                                        const QString &command,
+                                        const QString &workingDir)
+{
+    const QString trimmedCommand = command.trimmed();
+    if (trimmedCommand.isEmpty() || workingDir.trimmed().isEmpty()) {
+        return command;
+    }
+
+    if (os == QStringLiteral("windows")) {
+        QString native = QDir::toNativeSeparators(workingDir);
+        native.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+        return QStringLiteral("cd /d \"%1\" && %2").arg(native, command);
+    }
+
+    return QStringLiteral("cd %1 && %2").arg(shellQuoteSingle(workingDir), command);
+}
+
 QString remoteProjectJarPath(const QJsonObject &project, const QString &artifactFileName)
 {
     const ProjectServiceConfig service = projectServiceConfig(project);
@@ -100,9 +134,21 @@ QString remoteProjectBackupPath(const QJsonObject &project,
     const ProjectServiceConfig service = projectServiceConfig(project);
     const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
     const QString remoteBaseDir = normalizedRemotePath(deploy.value(QStringLiteral("remoteBaseDir")).toString());
-    const QString backupDir = service.backupDir.isEmpty()
-        ? joinRemotePath(remoteBaseDir, QStringLiteral("bak"))
+    // backupDir is always treated as a subdirectory under remoteBaseDir
+    // (matches UI placeholder "默认：远端目录/bak" and the deployed app layout).
+    // Empty value falls back to the historical "bak" subdirectory.
+    // A leading slash is dropped so user inputs like "/bak" and "bak" both
+    // resolve to "<remoteBaseDir>/bak" instead of "<remoteBaseDir>//bak".
+    QString backupSubDir = service.backupDir.isEmpty()
+        ? QStringLiteral("bak")
         : service.backupDir;
+    while (backupSubDir.startsWith(QLatin1Char('/'))) {
+        backupSubDir.remove(0, 1);
+    }
+    if (backupSubDir.isEmpty()) {
+        backupSubDir = QStringLiteral("bak");
+    }
+    const QString backupDir = joinRemotePath(remoteBaseDir, backupSubDir);
     const QString stem = QFileInfo(artifactFileName).completeBaseName();
     const QString suffix = QFileInfo(artifactFileName).suffix();
     const QString backupName = suffix.isEmpty()
@@ -153,22 +199,28 @@ RestartExecutionPlan buildRestartExecutionPlan(const QJsonObject &project, const
 {
     RestartExecutionPlan plan;
     const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
-    const QString restartCommand = deploy.value(QStringLiteral("restartCommand")).toString().trimmed();
+    const ProjectServiceConfig service = projectServiceConfig(project);
     const QString restartScript = deploy.value(QStringLiteral("restartScript")).toString().trimmed();
 
-    if (!restartCommand.isEmpty()) {
-        if (isLocalRestartScriptPath(restartCommand, projectRoot)) {
-            plan.localScriptPath = resolveLocalRestartScriptPath(restartCommand, projectRoot);
-            plan.requiresScriptUpload = true;
-        } else {
-            plan.remoteCommand = restartCommand;
+    if (usesCustomServiceControl(project)) {
+        if (!service.restartCommand.isEmpty()) {
+            if (isLocalRestartScriptPath(service.restartCommand, projectRoot)) {
+                plan.localScriptPath = resolveLocalRestartScriptPath(service.restartCommand, projectRoot);
+                plan.requiresScriptUpload = true;
+            } else {
+                plan.remoteCommand = service.restartCommand;
+            }
         }
-    } else if (!restartScript.isEmpty()) {
-        plan.localScriptPath = resolveLocalRestartScriptPath(restartScript, projectRoot);
-        plan.requiresScriptUpload = true;
+        if (plan.requiresScriptUpload && !plan.localScriptPath.isEmpty()) {
+            const QString remoteScript = remoteRestartScriptPath(project, plan.localScriptPath);
+            plan.remoteCommand = QStringLiteral("bash %1").arg(shellQuoteSingle(remoteScript));
+        }
+        return plan;
     }
 
-    if (plan.requiresScriptUpload && !plan.localScriptPath.isEmpty()) {
+    if (!restartScript.isEmpty()) {
+        plan.localScriptPath = resolveLocalRestartScriptPath(restartScript, projectRoot);
+        plan.requiresScriptUpload = true;
         const QString remoteScript = remoteRestartScriptPath(project, plan.localScriptPath);
         plan.remoteCommand = QStringLiteral("bash %1").arg(shellQuoteSingle(remoteScript));
     }

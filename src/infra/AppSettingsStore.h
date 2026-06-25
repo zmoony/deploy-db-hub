@@ -6,6 +6,8 @@ struct AppSettings {
     QString configDirOverride;
     QString mavenHome;
     QString mavenRepository;
+    QString postgresDriverJar;
+    QString oracleDriverJar;
 };
 
 class AppSettingsStore final

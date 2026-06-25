@@ -4,5 +4,12 @@
         <file alias="images/icon.png">../images/icon.png</file>
         <file alias="images/dashboard-hero.png">../images/dashboard-hero.png</file>
         <file alias="images/dashboard-hero-visual.png">../images/dashboard-hero-visual.png</file>
+        <file alias="images/ai/quick.svg">../images/ai/quick.svg</file>
+        <file alias="images/ai/image.svg">../images/ai/image.svg</file>
+        <file alias="images/ai/presentation.svg">../images/ai/presentation.svg</file>
+        <file alias="images/ai/code.svg">../images/ai/code.svg</file>
+        <file alias="images/ai/video.svg">../images/ai/video.svg</file>
+        <file alias="images/ai/translate.svg">../images/ai/translate.svg</file>
+        <file alias="images/ai/more.svg">../images/ai/more.svg</file>
     </qresource>
 </RCC>

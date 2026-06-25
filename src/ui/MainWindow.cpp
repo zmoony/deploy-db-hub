@@ -2,7 +2,9 @@
 
 #include "infra/ConfigStore.h"
 #include "infra/DataPaths.h"
+#include "infra/AiSettingsStore.h"
 #include "infra/AppSettingsStore.h"
+#include "adapters/services/JdbcSqlBridge.h"
 #include "infra/JdkProfileStore.h"
 #include "infra/LocalLogCatalog.h"
 #include "infra/RemoteLogPath.h"
@@ -15,6 +17,7 @@
 #include "ui/DeployLogPathOptions.h"
 #include "ui/DeployWorker.h"
 #include "ui/DeploymentLogDialog.h"
+#include "ui/DeploymentLogOpener.h"
 #include "ui/BigDataManagerWidget.h"
 #include "ui/CommonToolsWidget.h"
 #include "ui/DatabaseManagerWidget.h"
@@ -25,8 +28,10 @@
 #include "ui/RemoteUiHelpers.h"
 #include "ui/ServerManagerWidget.h"
 #include "infra/AppBranding.h"
+#include "qml/LineTabBarController.h"
 
 #include <QFutureWatcher>
+#include <QAbstractButton>
 #include <QButtonGroup>
 #include <QtConcurrent/QtConcurrent>
 #include <QComboBox>
@@ -44,6 +49,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPixmap>
 #include <QPlainTextEdit>
@@ -54,6 +60,8 @@
 #include <QTableWidget>
 #include <QThread>
 #include <QVBoxLayout>
+
+#include <functional>
 
 namespace {
 
@@ -287,6 +295,7 @@ QFrame *makeDashboardQuickAction(const QString &icon, const QString &label, cons
     auto *widget = new QFrame;
     widget->setObjectName(QStringLiteral("dashboardQuickAction"));
     widget->setFixedHeight(64);
+    widget->setCursor(Qt::PointingHandCursor);
     auto *layout = new QHBoxLayout(widget);
     layout->setContentsMargins(PageLayout::Space12, PageLayout::Space10, PageLayout::Space12, PageLayout::Space10);
     layout->setSpacing(PageLayout::Space10);
@@ -310,12 +319,49 @@ QFrame *makeDashboardQuickAction(const QString &icon, const QString &label, cons
     return widget;
 }
 
+class DashboardQuickActionFilter final : public QObject
+{
+public:
+    explicit DashboardQuickActionFilter(std::function<void()> handler, QObject *parent)
+        : QObject(parent)
+        , m_handler(std::move(handler))
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::MouseButtonRelease) {
+            const auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton) {
+                if (m_handler) {
+                    m_handler();
+                }
+                return true;
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    std::function<void()> m_handler;
+};
+
+void wireDashboardQuickAction(QFrame *action, std::function<void()> handler)
+{
+    if (action == nullptr || !handler) {
+        return;
+    }
+    action->installEventFilter(new DashboardQuickActionFilter(std::move(handler), action));
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_store(std::make_unique<ConfigStore>(DataPaths::databaseFile()))
     , m_credentials(std::make_unique<CredentialStore>(DataPaths::credentialsFile()))
+    , m_aiSettings(std::make_unique<AiSettingsStore>(AiSettingsStore::defaultSettingsFile()))
     , m_sessionCache(std::make_unique<CredentialSessionCache>())
 {
     setWindowTitle(QStringLiteral("Deploy Hub - 可视化部署工具"));
@@ -333,7 +379,7 @@ MainWindow::MainWindow(QWidget *parent)
     rootLayout->setSpacing(PageLayout::Space12);
 
     m_navigation = PageLayout::createSidebarNavigationList();
-    rootLayout->addWidget(PageLayout::wrapSidebarNavigation(m_navigation));
+    rootLayout->addWidget(PageLayout::wrapSidebarNavigation(m_navigation, &m_settingsButton));
 
     auto *content = new QWidget(root);
     content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -341,10 +387,10 @@ MainWindow::MainWindow(QWidget *parent)
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(PageLayout::Space12);
 
-    m_moduleStack = new QStackedWidget(content);
+    m_moduleStack = new QStackedWidget;
     m_moduleStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    m_commonTools = new CommonToolsWidget;
+    m_commonTools = new CommonToolsWidget(m_aiSettings.get(), m_credentials.get());
     m_projectManager = new ProjectManagerWidget(m_store.get());
     m_serverManager = new ServerManagerWidget(m_store.get());
     m_bigDataManager = new BigDataManagerWidget(m_store.get(), m_credentials.get(), m_sessionCache.get());
@@ -362,7 +408,7 @@ MainWindow::MainWindow(QWidget *parent)
         {QStringLiteral("服务器管理"), m_serverManager},
         {QStringLiteral("一键部署"), createDeployPage()},
         {QStringLiteral("历史记录"), createHistoryPage()},
-        {QStringLiteral("设置"), createSettingsPage()}
+        {QStringLiteral("设置"), createDeploySettingsPage()}
     });
     QList<QWidget *> bigDataPages;
     const int bigDataPageCount = m_bigDataManager->sectionPageCount();
@@ -377,19 +423,24 @@ MainWindow::MainWindow(QWidget *parent)
     }
     addModuleFromPages(QStringLiteral("数据库"), m_databaseManager->sectionLabels(), databasePages);
 
-    QButtonGroup *moduleGroup = nullptr;
-    auto *moduleBar = PageLayout::makeTabBar(
-        {QStringLiteral("通用工具"), QStringLiteral("部署工具"), QStringLiteral("大数据"), QStringLiteral("数据库")},
-        content,
-        &moduleGroup,
-        nullptr,
-        1);
+    m_contentStack = new QStackedWidget(content);
+    m_contentStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_contentStack->addWidget(m_moduleStack);
+    m_settingsPage = PageLayout::wrapScrollableContentPanel(createGlobalSettingsPage());
+    m_contentStack->addWidget(m_settingsPage);
+
+    auto *moduleBar = PageLayout::makeTabBar(m_moduleTitles, content, &m_moduleTabGroup, nullptr, 1);
     contentLayout->addWidget(moduleBar);
-    contentLayout->addWidget(m_moduleStack, 1);
+    contentLayout->addWidget(m_contentStack, 1);
     rootLayout->addWidget(content, 1);
 
-    connect(moduleGroup, &QButtonGroup::idClicked, this, &MainWindow::onModuleChanged);
+    if (m_moduleTabGroup != nullptr) {
+        connect(m_moduleTabGroup, &QButtonGroup::idClicked, this, &MainWindow::onModuleChanged);
+    }
     connect(m_navigation, &QListWidget::currentRowChanged, this, &MainWindow::onNavigationChanged);
+    if (m_settingsButton != nullptr) {
+        connect(m_settingsButton, &QPushButton::clicked, this, &MainWindow::onSettingsClicked);
+    }
     connect(m_projectManager, &ProjectManagerWidget::projectsChanged, this, &MainWindow::refreshDashboard);
     connect(m_projectManager, &ProjectManagerWidget::projectsChanged, this, &MainWindow::refreshDeploySelectors);
     connect(m_serverManager, &ServerManagerWidget::serversChanged, this, &MainWindow::refreshDashboard);
@@ -399,20 +450,20 @@ MainWindow::MainWindow(QWidget *parent)
     showModule(1);
     statusBar()->showMessage(QStringLiteral("配置目录：%1").arg(DataPaths::configDir()));
 
+    PageLayout::applyMainWindowGeometry(this);
+
     refreshDashboard();
     refreshDeploySelectors();
     refreshDeploymentTables();
     refreshLocalLogFiles(false);
     refreshDeployLogPath();
-
-    PageLayout::applyMainWindowGeometry(this);
 }
 
 MainWindow::~MainWindow() = default;
 
 void MainWindow::addModule(const QString &title, const QList<QPair<QString, QWidget *>> &pages)
 {
-    Q_UNUSED(title);
+    m_moduleTitles.append(title);
     auto *stack = new QStackedWidget(m_moduleStack);
     QStringList labels;
     for (const auto &page : pages) {
@@ -429,7 +480,7 @@ void MainWindow::addModule(const QString &title, const QList<QPair<QString, QWid
 
 void MainWindow::addModuleFromPages(const QString &title, const QStringList &labels, const QList<QWidget *> &pages)
 {
-    Q_UNUSED(title);
+    m_moduleTitles.append(title);
     auto *stack = new QStackedWidget(m_moduleStack);
     QStringList validLabels;
     QList<QWidget *> attachedPages;
@@ -439,7 +490,10 @@ void MainWindow::addModuleFromPages(const QString &title, const QStringList &lab
             continue;
         }
         validLabels.append(labels.at(i));
-        stack->addWidget(PageLayout::wrapScrollableContentPanel(pages.at(i)));
+        const bool fitFirstScreen = pages.at(i)->property("fitFirstScreen").toBool();
+        stack->addWidget(fitFirstScreen
+                             ? PageLayout::wrapContentPanel(pages.at(i))
+                             : PageLayout::wrapScrollableContentPanel(pages.at(i)));
         attachedPages.append(pages.at(i));
     }
     m_modulePages.append(stack);
@@ -459,14 +513,34 @@ void MainWindow::showModule(int index)
     if (index < 0 || index >= m_modulePages.size()) {
         return;
     }
+    showMainModuleContent();
     m_moduleStack->setCurrentIndex(index);
+    if (m_moduleTabGroup != nullptr) {
+        if (QAbstractButton *button = m_moduleTabGroup->button(index)) {
+            m_moduleTabGroup->blockSignals(true);
+            button->setChecked(true);
+            m_moduleTabGroup->blockSignals(false);
+        }
+    }
     m_navigation->blockSignals(true);
     m_navigation->clear();
     m_navigation->addItems(m_moduleNavigationLabels.at(index));
     m_navigation->setCurrentRow(0);
     m_navigation->blockSignals(false);
     m_modulePages.at(index)->setCurrentIndex(0);
-    onNavigationChanged(0);
+}
+
+void MainWindow::showMainModuleContent()
+{
+    if (m_contentStack != nullptr) {
+        m_contentStack->setCurrentIndex(0);
+    }
+    if (m_settingsButton != nullptr) {
+        m_settingsButton->setChecked(false);
+    }
+    if (m_navigation != nullptr) {
+        m_navigation->setEnabled(true);
+    }
 }
 
 void MainWindow::onModuleChanged(int index)
@@ -476,11 +550,70 @@ void MainWindow::onModuleChanged(int index)
 
 void MainWindow::onNavigationChanged(int row)
 {
+    showMainModuleContent();
     const int moduleIndex = m_moduleStack != nullptr ? m_moduleStack->currentIndex() : -1;
     if (moduleIndex < 0 || moduleIndex >= m_modulePages.size() || row < 0) {
         return;
     }
     m_modulePages.at(moduleIndex)->setCurrentIndex(row);
+}
+
+void MainWindow::onSettingsClicked()
+{
+    if (m_contentStack == nullptr || m_settingsButton == nullptr) {
+        return;
+    }
+    if (m_contentStack->currentIndex() == 1) {
+        showMainModuleContent();
+        return;
+    }
+    refreshAiSettingsSummary();
+    m_contentStack->setCurrentIndex(1);
+    m_settingsButton->setChecked(true);
+    if (m_navigation != nullptr) {
+        m_navigation->setEnabled(false);
+    }
+}
+
+void MainWindow::openAiConfigPage()
+{
+    navigateToPage(0, 0);
+}
+
+void MainWindow::refreshAiSettingsSummary()
+{
+    if (m_aiSummaryUrl == nullptr || m_aiSummaryModel == nullptr || m_aiSummaryKeyStatus == nullptr) {
+        return;
+    }
+
+    AiSettings settings;
+    QString error;
+    if (m_aiSettings != nullptr) {
+        m_aiSettings->load(&settings, &error);
+    }
+
+    const QString unset = QStringLiteral("未配置");
+    m_aiSummaryUrl->setText(settings.apiBaseUrl.trimmed().isEmpty() ? unset : settings.apiBaseUrl.trimmed());
+    m_aiSummaryModel->setText(settings.model.trimmed().isEmpty() ? unset : settings.model.trimmed());
+
+    const bool hasKey = m_credentials != nullptr && m_credentials->has(settings.credentialRef);
+    m_aiSummaryKeyStatus->setText(hasKey ? QStringLiteral("已保存（凭据存储）") : unset);
+}
+
+void MainWindow::navigateToPage(int moduleIndex, int pageRow, int dashboardTabIndex)
+{
+    showModule(moduleIndex);
+    if (pageRow >= 0 && moduleIndex >= 0 && moduleIndex < m_modulePages.size()) {
+        m_modulePages.at(moduleIndex)->setCurrentIndex(pageRow);
+        m_navigation->blockSignals(true);
+        m_navigation->setCurrentRow(pageRow);
+        m_navigation->blockSignals(false);
+    }
+
+    if (dashboardTabIndex >= 0 && m_dashboardLineTab != nullptr && m_dashboardStack != nullptr) {
+        m_dashboardLineTab->setCurrentIndex(dashboardTabIndex);
+        m_dashboardStack->setCurrentIndex(dashboardTabIndex);
+    }
 }
 
 QFrame *MainWindow::metricCard(const QString &title, QLabel **valueLabel) const
@@ -506,34 +639,18 @@ QWidget *MainWindow::createDashboardPage()
     layout->setContentsMargins(PageLayout::Space14, PageLayout::Space14, PageLayout::Space14, PageLayout::Space14);
     layout->setSpacing(PageLayout::Space12);
 
-    auto *tabBar = new QWidget(page);
-    tabBar->setObjectName(QStringLiteral("dashboardTabBar"));
-    auto *tabLayout = new QHBoxLayout(tabBar);
-    tabLayout->setContentsMargins(4, 4, 4, 4);
-    tabLayout->setSpacing(PageLayout::Space8);
-
-    auto *tabGroup = new QButtonGroup(page);
-    tabGroup->setExclusive(true);
     const QStringList tabLabels = {
         QStringLiteral("总览"),
         QStringLiteral("部署"),
         QStringLiteral("服务器"),
         QStringLiteral("日志")
     };
-    for (int i = 0; i < tabLabels.size(); ++i) {
-        auto *button = new QPushButton(tabLabels.at(i), tabBar);
-        button->setObjectName(QStringLiteral("tabButton"));
-        button->setCheckable(true);
-        button->setChecked(i == 0);
-        tabGroup->addButton(button, i);
-        tabLayout->addWidget(button);
-    }
-    tabLayout->addStretch();
-    layout->addWidget(tabBar);
 
     m_dashboardStack = new QStackedWidget(page);
+    LineTabBarController *tabController = nullptr;
+    layout->addWidget(PageLayout::makeLineTabBar(tabLabels, page, &tabController, m_dashboardStack));
+    m_dashboardLineTab = tabController;
     layout->addWidget(m_dashboardStack, 1);
-    connect(tabGroup, &QButtonGroup::idClicked, m_dashboardStack, &QStackedWidget::setCurrentIndex);
 
     auto *overviewPage = new QWidget;
     auto *overviewLayout = new QVBoxLayout(overviewPage);
@@ -592,22 +709,31 @@ QWidget *MainWindow::createDashboardPage()
     auto *miniGrid = new QGridLayout;
     miniGrid->setHorizontalSpacing(PageLayout::Space12);
     miniGrid->setVerticalSpacing(PageLayout::Space12);
-    miniGrid->addWidget(makeDashboardQuickAction(
+    auto *deployQuickAction = makeDashboardQuickAction(
         QStringLiteral("🔄"),
         QStringLiteral("一键发布"),
-        QStringLiteral("快速部署项目到服务器")), 0, 0);
-    miniGrid->addWidget(makeDashboardQuickAction(
+        QStringLiteral("快速部署项目到服务器"));
+    auto *uploadQuickAction = makeDashboardQuickAction(
         QStringLiteral("📂"),
         QStringLiteral("上传文件"),
-        QStringLiteral("上传本地文件到服务器")), 0, 1);
-    miniGrid->addWidget(makeDashboardQuickAction(
+        QStringLiteral("上传本地文件到服务器"));
+    auto *logsQuickAction = makeDashboardQuickAction(
         QStringLiteral("📜"),
         QStringLiteral("查看日志"),
-        QStringLiteral("查看部署日志与运行记录")), 1, 0);
-    miniGrid->addWidget(makeDashboardQuickAction(
+        QStringLiteral("查看部署日志与运行记录"));
+    auto *monitorQuickAction = makeDashboardQuickAction(
         QStringLiteral("📊"),
         QStringLiteral("实时监控"),
-        QStringLiteral("跟踪服务器运行状态")), 1, 1);
+        QStringLiteral("跟踪服务器运行状态"));
+    miniGrid->addWidget(deployQuickAction, 0, 0);
+    miniGrid->addWidget(uploadQuickAction, 0, 1);
+    miniGrid->addWidget(logsQuickAction, 1, 0);
+    miniGrid->addWidget(monitorQuickAction, 1, 1);
+    constexpr int kDeployModuleIndex = 1;
+    wireDashboardQuickAction(deployQuickAction, [this]() { navigateToPage(kDeployModuleIndex, 3); });
+    wireDashboardQuickAction(uploadQuickAction, [this]() { navigateToPage(kDeployModuleIndex, 2); });
+    wireDashboardQuickAction(logsQuickAction, [this]() { navigateToPage(kDeployModuleIndex, 0, 3); });
+    wireDashboardQuickAction(monitorQuickAction, [this]() { navigateToPage(kDeployModuleIndex, 2); });
     healthLayout->addLayout(miniGrid);
     healthLayout->addStretch();
 
@@ -918,7 +1044,7 @@ QWidget *MainWindow::createHistoryPage()
     return page;
 }
 
-QWidget *MainWindow::createSettingsPage()
+QWidget *MainWindow::createDeploySettingsPage()
 {
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
@@ -990,14 +1116,167 @@ QWidget *MainWindow::createSettingsPage()
     return page;
 }
 
+QWidget *MainWindow::createGlobalSettingsPage()
+{
+    auto *page = new QWidget;
+    auto *layout = new QVBoxLayout(page);
+    PageLayout::applyPage(layout);
+
+    layout->addWidget(PageLayout::makeHeaderBlock(
+        QStringLiteral("全局设置"),
+        QStringLiteral("配置数据库 JDBC 驱动。Java 使用「部署工具 → 设置 / 一键部署」中的 JDK 配置。"),
+        page));
+
+    AppSettings settings;
+    QString settingsError;
+    AppSettingsStore(AppSettingsStore::defaultSettingsFile()).load(&settings, &settingsError);
+
+    auto makeFileRow = [this](QLineEdit **input, const QString &value, const QString &placeholder) {
+        auto *row = new QWidget;
+        PageLayout::configureHorizontalFormRow(row);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(PageLayout::Space8);
+        *input = new QLineEdit;
+        (*input)->setText(value);
+        (*input)->setPlaceholderText(placeholder);
+        PageLayout::configureFormInput(*input);
+        auto *browse = new QPushButton(QStringLiteral("浏览..."));
+        browse->setMinimumWidth(72);
+        browse->setFixedHeight(PageLayout::DialogFieldHeight);
+        browse->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        connect(browse, &QPushButton::clicked, this, [input, this]() {
+            const QString selected = QFileDialog::getOpenFileName(this,
+                                                                  QStringLiteral("选择 JDBC 驱动 JAR"),
+                                                                  (*input)->text(),
+                                                                  QStringLiteral("JAR 文件 (*.jar)"));
+            if (!selected.isEmpty()) {
+                (*input)->setText(QDir::fromNativeSeparators(selected));
+            }
+        });
+        rowLayout->addWidget(*input, 1);
+        rowLayout->addWidget(browse);
+        return row;
+    };
+
+    auto *driverBox = new QGroupBox(QStringLiteral("数据库驱动 (JDBC)"));
+    driverBox->setObjectName(QStringLiteral("deployConfigBox"));
+    auto *driverLayout = new QVBoxLayout(driverBox);
+    driverLayout->setContentsMargins(0, PageLayout::Space8, 0, 0);
+    driverLayout->setSpacing(PageLayout::Space8);
+
+    auto *driverForm = new QFormLayout;
+    PageLayout::applyInlineForm(driverForm);
+    driverForm->setVerticalSpacing(PageLayout::Space8);
+
+    driverForm->addRow(QStringLiteral("PostgreSQL 驱动 JAR"),
+                       makeFileRow(&m_postgresDriverJarInput,
+                                   settings.postgresDriverJar,
+                                   QStringLiteral("例如 postgresql-42.7.3.jar")));
+    driverForm->addRow(QStringLiteral("Oracle 驱动 JAR"),
+                       makeFileRow(&m_oracleDriverJarInput,
+                                   settings.oracleDriverJar,
+                                   QStringLiteral("例如 ojdbc8.jar")));
+
+    auto *driverActions = new QWidget(driverBox);
+    auto *driverActionsLayout = new QHBoxLayout(driverActions);
+    driverActionsLayout->setContentsMargins(0, 0, 0, 0);
+    driverActionsLayout->setSpacing(PageLayout::Space8);
+    auto *probeButton = new QPushButton(QStringLiteral("检测驱动"), driverActions);
+    probeButton->setFixedHeight(PageLayout::DialogFieldHeight);
+    probeButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    connect(probeButton, &QPushButton::clicked, this, [this]() {
+        AppSettings settings;
+        AppSettingsStore store(AppSettingsStore::defaultSettingsFile());
+        store.load(&settings, nullptr);
+        if (m_postgresDriverJarInput != nullptr) {
+            settings.postgresDriverJar = QDir::fromNativeSeparators(m_postgresDriverJarInput->text().trimmed());
+        }
+        if (m_oracleDriverJarInput != nullptr) {
+            settings.oracleDriverJar = QDir::fromNativeSeparators(m_oracleDriverJarInput->text().trimmed());
+        }
+        store.save(settings, nullptr);
+        const SqlDriverProbeResult probe = JdbcSqlBridge::probe();
+        if (m_driverProbeLabel != nullptr) {
+            m_driverProbeLabel->setText(probe.message);
+        }
+    });
+    auto *saveJdbcButton = new QPushButton(QStringLiteral("保存驱动设置"), driverActions);
+    saveJdbcButton->setObjectName(QStringLiteral("primaryButton"));
+    saveJdbcButton->setFixedHeight(PageLayout::DialogFieldHeight);
+    connect(saveJdbcButton, &QPushButton::clicked, this, &MainWindow::saveGlobalJdbcSettings);
+    m_driverProbeLabel = new QLabel(QStringLiteral("JDBC 使用部署工具中配置的 JDK；选择驱动 JAR 后点击检测。"), driverActions);
+    m_driverProbeLabel->setObjectName(QStringLiteral("mutedText"));
+    m_driverProbeLabel->setWordWrap(true);
+    driverActionsLayout->addWidget(probeButton);
+    driverActionsLayout->addWidget(saveJdbcButton);
+    driverActionsLayout->addWidget(m_driverProbeLabel, 1);
+    driverLayout->addLayout(driverForm);
+    driverLayout->addWidget(driverActions);
+    layout->addWidget(driverBox);
+
+    auto *aiBox = new QGroupBox(QStringLiteral("AI 辅助"));
+    aiBox->setObjectName(QStringLiteral("deployConfigBox"));
+    auto *aiLayout = new QVBoxLayout(aiBox);
+    aiLayout->setContentsMargins(0, PageLayout::Space8, 0, 0);
+    aiLayout->setSpacing(PageLayout::Space8);
+
+    auto *aiHint = new QLabel(
+        QStringLiteral("以下为只读摘要；编辑 API URL、Key、模型请前往「通用工具 → AI 配置」。"),
+        aiBox);
+    aiHint->setObjectName(QStringLiteral("mutedText"));
+    aiHint->setWordWrap(true);
+    aiLayout->addWidget(aiHint);
+
+    auto *aiForm = new QFormLayout;
+    PageLayout::applyInlineForm(aiForm);
+    aiForm->setVerticalSpacing(PageLayout::Space8);
+
+    m_aiSummaryUrl = new QLineEdit(aiBox);
+    m_aiSummaryUrl->setReadOnly(true);
+    PageLayout::configureFormInput(m_aiSummaryUrl);
+    aiForm->addRow(QStringLiteral("API Base URL"), m_aiSummaryUrl);
+
+    m_aiSummaryModel = new QLineEdit(aiBox);
+    m_aiSummaryModel->setReadOnly(true);
+    PageLayout::configureFormInput(m_aiSummaryModel);
+    aiForm->addRow(QStringLiteral("模型"), m_aiSummaryModel);
+
+    m_aiSummaryKeyStatus = new QLabel(QStringLiteral("未配置"), aiBox);
+    m_aiSummaryKeyStatus->setObjectName(QStringLiteral("mutedText"));
+    aiForm->addRow(QStringLiteral("API Key"), m_aiSummaryKeyStatus);
+
+    aiForm->addRow(QStringLiteral("配置文件"),
+                   new QLabel(AiSettingsStore::defaultSettingsFile(), aiBox));
+
+    aiLayout->addLayout(aiForm);
+
+    auto *aiActions = new QWidget(aiBox);
+    auto *aiActionsLayout = new QHBoxLayout(aiActions);
+    aiActionsLayout->setContentsMargins(0, 0, 0, 0);
+    aiActionsLayout->setSpacing(PageLayout::Space8);
+    auto *openAiConfigButton = new QPushButton(QStringLiteral("打开 AI 配置"), aiActions);
+    openAiConfigButton->setObjectName(QStringLiteral("primaryButton"));
+    openAiConfigButton->setFixedHeight(PageLayout::DialogFieldHeight);
+    connect(openAiConfigButton, &QPushButton::clicked, this, &MainWindow::openAiConfigPage);
+    aiActionsLayout->addWidget(openAiConfigButton);
+    aiActionsLayout->addStretch();
+    aiLayout->addWidget(aiActions);
+    layout->addWidget(aiBox);
+
+    refreshAiSettingsSummary();
+    layout->addStretch();
+    return page;
+}
+
 QTableWidget *MainWindow::createTable(const QStringList &headers, const QList<QStringList> &rows)
 {
     auto *table = new QTableWidget(rows.size(), headers.size());
     table->setHorizontalHeaderLabels(headers);
     table->verticalHeader()->setVisible(false);
     PageLayout::configureDataTable(table);
+    PageLayout::configureListingTable(table);
     table->setAlternatingRowColors(true);
-    table->horizontalHeader()->setStretchLastSection(true);
     table->verticalHeader()->setDefaultSectionSize(40);
     for (int row = 0; row < rows.size(); ++row) {
         const auto values = rows.at(row);
@@ -1005,7 +1284,7 @@ QTableWidget *MainWindow::createTable(const QStringList &headers, const QList<QS
             table->setItem(row, column, new QTableWidgetItem(values.value(column)));
         }
     }
-    table->resizeColumnsToContents();
+    PageLayout::refreshListingTableColumns(table);
     return table;
 }
 
@@ -1083,7 +1362,7 @@ void MainWindow::refreshDashboardTabData(const QVector<StoredRecord> *deployment
             m_dashboardLogTable->setItem(row, 2, new QTableWidgetItem(record.value(QStringLiteral("status")).toString()));
             m_dashboardLogTable->setItem(row, 3, new QTableWidgetItem(record.value(QStringLiteral("logPath")).toString()));
         }
-        m_dashboardLogTable->resizeColumnsToContents();
+        PageLayout::refreshListingTableColumns(m_dashboardLogTable);
         PageLayout::updateTableEmptyState(m_dashboardLogTable, m_dashboardLogsEmpty, logCount);
     }
 
@@ -1103,7 +1382,7 @@ void MainWindow::refreshDashboardTabData(const QVector<StoredRecord> *deployment
             m_dashboardServerTable->setItem(row, 2, new QTableWidgetItem(formatServerOsLabel(server)));
             m_dashboardServerTable->setItem(row, 3, new QTableWidgetItem(server.value(QStringLiteral("username")).toString()));
         }
-        m_dashboardServerTable->resizeColumnsToContents();
+        PageLayout::refreshListingTableColumns(m_dashboardServerTable);
         PageLayout::updateTableEmptyState(m_dashboardServerTable, m_dashboardServersEmpty, servers.size());
     }
 }
@@ -1161,6 +1440,10 @@ void MainWindow::manageJdkProfiles()
 void MainWindow::saveSettings()
 {
     AppSettings settings;
+    QString loadError;
+    AppSettingsStore store(AppSettingsStore::defaultSettingsFile());
+    store.load(&settings, &loadError);
+
     if (m_configDirInput != nullptr) {
         settings.configDirOverride = QDir::fromNativeSeparators(m_configDirInput->text().trimmed());
     }
@@ -1187,7 +1470,7 @@ void MainWindow::saveSettings()
     }
 
     QString error;
-    if (!AppSettingsStore(AppSettingsStore::defaultSettingsFile()).save(settings, &error)) {
+    if (!store.save(settings, &error)) {
         QMessageBox::warning(this, QStringLiteral("保存失败"), error);
         return;
     }
@@ -1195,6 +1478,32 @@ void MainWindow::saveSettings()
     QMessageBox::information(this,
                              QStringLiteral("已保存"),
                              QStringLiteral("Maven 设置已写入 %1，下一次部署自动生效；配置目录变更需要重启应用。")
+                                 .arg(AppSettingsStore::defaultSettingsFile()));
+}
+
+void MainWindow::saveGlobalJdbcSettings()
+{
+    AppSettings settings;
+    QString loadError;
+    AppSettingsStore store(AppSettingsStore::defaultSettingsFile());
+    store.load(&settings, &loadError);
+
+    if (m_postgresDriverJarInput != nullptr) {
+        settings.postgresDriverJar = QDir::fromNativeSeparators(m_postgresDriverJarInput->text().trimmed());
+    }
+    if (m_oracleDriverJarInput != nullptr) {
+        settings.oracleDriverJar = QDir::fromNativeSeparators(m_oracleDriverJarInput->text().trimmed());
+    }
+
+    QString error;
+    if (!store.save(settings, &error)) {
+        QMessageBox::warning(this, QStringLiteral("保存失败"), error);
+        return;
+    }
+
+    QMessageBox::information(this,
+                             QStringLiteral("已保存"),
+                             QStringLiteral("数据库驱动设置已写入 %1。")
                                  .arg(AppSettingsStore::defaultSettingsFile()));
 }
 
@@ -1220,7 +1529,7 @@ void MainWindow::refreshDeploymentTables()
             logItem->setData(Qt::UserRole, logPath);
             m_historyTable->setItem(row, 4, logItem);
         }
-        m_historyTable->resizeColumnsToContents();
+        PageLayout::refreshListingTableColumns(m_historyTable);
         PageLayout::updateTableEmptyState(m_historyTable, m_historyEmpty, deployments.size());
     }
 
@@ -1235,7 +1544,7 @@ void MainWindow::refreshDeploymentTables()
             m_recentTable->setItem(row, 3, new QTableWidgetItem(record.value(QStringLiteral("status")).toString()));
             m_recentTable->setItem(row, 4, new QTableWidgetItem(formatDuration(record)));
         }
-        m_recentTable->resizeColumnsToContents();
+        PageLayout::refreshListingTableColumns(m_recentTable);
         PageLayout::updateTableEmptyState(m_recentTable, m_recentDeploymentsEmpty, recentCount);
     }
 
@@ -1484,26 +1793,17 @@ void MainWindow::openDeploymentLog(const QString &relativePath)
                                  QStringLiteral("请选择或输入日志路径，例如 /home/app/logs/*.log 或 /home/app/logs/*.txt"));
         return;
     }
-    if (isRemoteDeployLogPath(trimmed)) {
-        openRemoteDeploymentLog(trimmed);
-        return;
-    }
-    if (!LocalLogCatalog::isValidRelativePath(trimmed)) {
-        QMessageBox::warning(this,
-                             QStringLiteral("路径无效"),
-                             QStringLiteral("日志路径格式应为 logs/<filename>.log 或远程绝对路径。"));
-        return;
+
+    QJsonObject server;
+    if (isRemoteDeployLogPath(trimmed) && m_deployServer != nullptr && m_deployServer->count() > 0) {
+        QString error;
+        if (!m_store->getServer(m_deployServer->currentData().toString(), &server, &error)) {
+            QMessageBox::warning(this, QStringLiteral("无法打开远程日志"), error);
+            return;
+        }
     }
 
-    QString loadError;
-    if (!DeploymentLogDialog::canOpen(trimmed)) {
-        DeploymentLogDialog::loadContent(trimmed, &loadError);
-        QMessageBox::warning(this, QStringLiteral("无法打开日志"), loadError);
-        return;
-    }
-
-    DeploymentLogDialog dialog(trimmed, this);
-    dialog.exec();
+    DeploymentLogOpener::open(this, m_credentials.get(), m_sessionCache.get(), server, trimmed, m_aiSettings.get());
 }
 
 void MainWindow::openRemoteDeploymentLog(const QString &remotePath)
@@ -1522,27 +1822,7 @@ void MainWindow::openRemoteDeploymentLog(const QString &remotePath)
         return;
     }
 
-    RemoteConnectionContext context =
-        RemoteCredentialResolver::resolve(server, m_credentials.get(), m_sessionCache.get(), this);
-    const QJsonObject auth = server.value(QStringLiteral("auth")).toObject();
-    if (auth.value(QStringLiteral("mode")).toString() != QStringLiteral("ssh-key")
-        && context.password.isEmpty()) {
-        QMessageBox::warning(this,
-                             QStringLiteral("无法打开远程日志"),
-                             QStringLiteral("未获取到服务器密码，请先在「部署工具 → 服务器管理」中保存密码。"));
-        return;
-    }
-
-    auto browser = createRemoteLogFileBrowser(context, makeHostKeyPromptHandler(this));
-    if (!browser) {
-        QMessageBox::warning(this,
-                             QStringLiteral("无法打开远程日志"),
-                             QStringLiteral("远程日志查看当前仅支持 Linux SSH 或 Windows WinRM 服务器。"));
-        return;
-    }
-
-    RemoteFileViewerDialog dialog(std::move(browser), QDir::fromNativeSeparators(remotePath.trimmed()), this);
-    dialog.exec();
+    DeploymentLogOpener::open(this, m_credentials.get(), m_sessionCache.get(), server, remotePath);
 }
 
 QString MainWindow::selectedHistoryLogPath() const

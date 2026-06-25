@@ -119,3 +119,84 @@ void ProjectServiceConfigTest::buildsRestartPlanForLocalScript()
     QCOMPARE(plan.localScriptPath, QStringLiteral("D:/tools/restart-java.sh"));
     QCOMPARE(plan.remoteCommand, QStringLiteral("bash '/home/yz-wwa-gateway/restart-java.sh'"));
 }
+
+void ProjectServiceConfigTest::prefersCustomServiceControlOverRestartScript()
+{
+    QJsonObject configured = project();
+    QJsonObject deploy = configured.value(QStringLiteral("deploy")).toObject();
+    deploy.insert(QStringLiteral("restartMode"), QStringLiteral("service-command"));
+    deploy.insert(QStringLiteral("restartScript"), QStringLiteral("restart.sh"));
+    deploy.insert(QStringLiteral("startCommand"), QStringLiteral("nohup java -jar {targetJarPath} &"));
+    configured.insert(QStringLiteral("deploy"), deploy);
+
+    const RestartExecutionPlan plan = buildRestartExecutionPlan(configured, QStringLiteral("D:/project/app"));
+    QVERIFY(!plan.requiresScriptUpload);
+    QVERIFY(plan.remoteCommand.isEmpty());
+    QVERIFY(usesCustomServiceControl(configured));
+}
+
+void ProjectServiceConfigTest::honorsRestartScriptModeExplicitly()
+{
+    QJsonObject configured = project();
+    QJsonObject deploy = configured.value(QStringLiteral("deploy")).toObject();
+    deploy.insert(QStringLiteral("restartMode"), QStringLiteral("restart-script"));
+    deploy.insert(QStringLiteral("restartScript"), QStringLiteral("restart.sh"));
+    deploy.insert(QStringLiteral("startCommand"), QStringLiteral("nohup java -jar {targetJarPath} &"));
+    configured.insert(QStringLiteral("deploy"), deploy);
+
+    QVERIFY(!usesCustomServiceControl(configured));
+    const RestartExecutionPlan plan = buildRestartExecutionPlan(configured, QStringLiteral("D:/project/app"));
+    QVERIFY(plan.requiresScriptUpload);
+    QVERIFY(!plan.remoteCommand.isEmpty());
+}
+
+void ProjectServiceConfigTest::wrapsLinuxCommandWithWorkingDirectory()
+{
+    const QString wrapped = wrapCommandWithWorkingDirectory(
+        QStringLiteral("linux"),
+        QStringLiteral("java -jar keyperson-yangzhong.jar"),
+        QStringLiteral("/home/psmp/keyperson-yangzhong/keyperosn_yz"));
+    QCOMPARE(wrapped,
+             QStringLiteral("cd '/home/psmp/keyperson-yangzhong/keyperosn_yz' && java -jar keyperson-yangzhong.jar"));
+}
+
+void ProjectServiceConfigTest::wrapsWindowsCommandWithWorkingDirectory()
+{
+    const QString wrapped = wrapCommandWithWorkingDirectory(
+        QStringLiteral("windows"),
+        QStringLiteral("java -jar app.jar"),
+        QStringLiteral("C:/Users/deploy/app"));
+    QCOMPARE(wrapped,
+             QStringLiteral("cd /d \"C:\\Users\\deploy\\app\" && java -jar app.jar"));
+}
+
+void ProjectServiceConfigTest::doesNotWrapWhenWorkingDirEmpty()
+{
+    const QString command = QStringLiteral("java -jar app.jar");
+    QCOMPARE(wrapCommandWithWorkingDirectory(QStringLiteral("linux"), command, QString()), command);
+    QCOMPARE(wrapCommandWithWorkingDirectory(QStringLiteral("linux"), command, QStringLiteral("   ")), command);
+}
+
+void ProjectServiceConfigTest::backupPathIsJoinedUnderRemoteBaseDir()
+{
+    QJsonObject configured = project();
+    QJsonObject deploy = configured.value(QStringLiteral("deploy")).toObject();
+    deploy.insert(QStringLiteral("backupDir"), QStringLiteral("bak"));
+    configured.insert(QStringLiteral("deploy"), deploy);
+
+    QCOMPARE(remoteProjectBackupPath(configured, QStringLiteral("app.jar"), QStringLiteral("20260618-153805")),
+             QStringLiteral("/home/yz-wwa-gateway/bak/app-20260618-153805.bak.jar"));
+}
+
+void ProjectServiceConfigTest::backupPathAcceptsAbsoluteLookingInputAsSubdir()
+{
+    QJsonObject configured = project();
+    QJsonObject deploy = configured.value(QStringLiteral("deploy")).toObject();
+    // "/bak" is the exact value the user enters; it must NOT resolve to the
+    // filesystem root but to a subdirectory of remoteBaseDir.
+    deploy.insert(QStringLiteral("backupDir"), QStringLiteral("/bak"));
+    configured.insert(QStringLiteral("deploy"), deploy);
+
+    QCOMPARE(remoteProjectBackupPath(configured, QStringLiteral("app.jar"), QStringLiteral("20260618-153805")),
+             QStringLiteral("/home/yz-wwa-gateway/bak/app-20260618-153805.bak.jar"));
+}

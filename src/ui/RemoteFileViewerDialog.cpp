@@ -1,6 +1,7 @@
 #include "ui/RemoteFileViewerDialog.h"
 
 #include "infra/AppBranding.h"
+#include "ui/LogAiAnalysisWidget.h"
 #include "ui/PageLayout.h"
 
 #include <QDialogButtonBox>
@@ -9,19 +10,24 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QSplitter>
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
 RemoteFileViewerDialog::RemoteFileViewerDialog(RemoteFileBrowser *browser,
                                                const QString &remotePath,
+                                               AiSettingsStore *aiSettings,
+                                               CredentialStore *credentials,
                                                QWidget *parent)
     : QDialog(parent)
     , m_browser(browser)
+    , m_aiSettings(aiSettings)
+    , m_credentials(credentials)
     , m_remotePath(remotePath)
 {
     setWindowTitle(QStringLiteral("查看远程文件 - %1").arg(remotePath));
     setModal(true);
-    PageLayout::applyRemoteToolDialog(this, 760, 460, 1040, 680);
+    PageLayout::applyRemoteToolDialog(this, 760, 460, 1040, 720);
     AppBranding::applyWindowIcon(this);
 
     auto *layout = new QVBoxLayout(this);
@@ -49,11 +55,21 @@ RemoteFileViewerDialog::RemoteFileViewerDialog(RemoteFileBrowser *browser,
     controlRow->addWidget(m_statusLabel, 1);
     layout->addLayout(controlRow);
 
-    m_viewer = new QPlainTextEdit;
+    auto *splitter = new QSplitter(Qt::Vertical, this);
+    m_viewer = new QPlainTextEdit(splitter);
     m_viewer->setObjectName(QStringLiteral("remoteFileViewer"));
     m_viewer->setReadOnly(true);
     m_viewer->setPlainText(QStringLiteral("思考中...."));
-    layout->addWidget(m_viewer, 1);
+    splitter->addWidget(m_viewer);
+
+    if (m_aiSettings != nullptr && m_credentials != nullptr) {
+        m_aiPanel = new LogAiAnalysisWidget(m_aiSettings, m_credentials, splitter);
+        splitter->addWidget(m_aiPanel);
+        splitter->setStretchFactor(0, 3);
+        splitter->setStretchFactor(1, 2);
+    }
+
+    layout->addWidget(splitter, 1);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -64,8 +80,10 @@ RemoteFileViewerDialog::RemoteFileViewerDialog(RemoteFileBrowser *browser,
 
 RemoteFileViewerDialog::RemoteFileViewerDialog(std::unique_ptr<RemoteFileBrowser> browser,
                                                const QString &remotePath,
+                                               AiSettingsStore *aiSettings,
+                                               CredentialStore *credentials,
                                                QWidget *parent)
-    : RemoteFileViewerDialog(browser.get(), remotePath, parent)
+    : RemoteFileViewerDialog(browser.get(), remotePath, aiSettings, credentials, parent)
 {
     m_ownedBrowser = std::move(browser);
 }
@@ -108,9 +126,15 @@ void RemoteFileViewerDialog::loadTail()
         if (!result.ok) {
             m_viewer->setPlainText(result.error);
             m_statusLabel->setText(QStringLiteral("加载失败"));
+            if (m_aiPanel != nullptr) {
+                m_aiPanel->setLogContent(result.error);
+            }
         } else {
             m_viewer->setPlainText(result.content);
             m_statusLabel->setText(QStringLiteral("已显示最后 %1 行").arg(lineCount));
+            if (m_aiPanel != nullptr) {
+                m_aiPanel->setLogContent(result.content);
+            }
         }
         setLoading(false);
         watcher->deleteLater();

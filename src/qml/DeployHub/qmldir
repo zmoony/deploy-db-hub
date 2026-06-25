@@ -1,0 +1,15 @@
+module DeployHub
+singleton Theme 1.0 Theme.qml
+singleton Visual 1.0 Visual.qml
+DhSidebar 1.0 DhSidebar.qml
+DhModuleTabBar 1.0 DhModuleTabBar.qml
+DhLineTabBar 1.0 DhLineTabBar.qml
+DhButton 1.0 DhButton.qml
+DhPageHeader 1.0 DhPageHeader.qml
+DhTextArea 1.0 DhTextArea.qml
+DhCheckBox 1.0 DhCheckBox.qml
+DhSpinBox 1.0 DhSpinBox.qml
+DhCard 1.0 DhCard.qml
+DhImage 1.0 DhImage.qml
+DhFastBlur 1.0 DhFastBlur.qml
+MainShell 1.0 MainShell.qml

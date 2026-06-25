@@ -15,3 +15,4 @@ QString serviceProductKindLabel(ServiceProductKind kind);
 QString serviceParentCategoryLabel(ServiceProductKind kind);
 QString serviceNodeInfoPlaceholder(ServiceProductKind kind);
 QString serviceNodeFillInstructions(ServiceProductKind kind);
+bool serviceProductUsesDirectConnect(ServiceProductKind kind);

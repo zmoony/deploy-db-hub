@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Aokan"
+  short_description: "城市智慧视觉2.0前端规范执行指南"
+  default_prompt: "Use $design-aokan to implement a frontend page that follows the city smart visual 2.0 design system."

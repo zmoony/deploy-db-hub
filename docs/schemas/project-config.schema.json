@@ -27,6 +27,10 @@
       "type": "string",
       "minLength": 1
     },
+    "group": {
+      "type": "string",
+      "description": "Optional project group label for filtering in the project list"
+    },
     "type": {
       "type": "string",
       "enum": [
@@ -87,7 +91,6 @@
       "required": [
         "location",
         "workingDir",
-        "command",
         "artifactPath",
         "artifactMatchPolicy",
         "env",
@@ -101,21 +104,30 @@
         "mode": {
           "type": "string",
           "enum": ["build", "prebuilt-jar"],
-          "default": "build"
+          "default": "build",
+          "description": "prebuilt-jar only available for java-maven projects"
         },
         "workingDir": {
           "type": "string",
           "default": "."
         },
         "command": {
-          "type": "string"
+          "type": "string",
+          "description": "Required when mode=build. e.g. mvn clean package -DskipTests, npm run build"
         },
         "artifactPath": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "For java-maven: glob pattern relative to project root (e.g. target/*.jar). For frontend-static: directory name relative to working dir (e.g. dist)"
         },
         "prebuiltJarPath": {
-          "type": "string"
+          "type": "string",
+          "description": "Local absolute path to a prebuilt JAR (java-maven mode=prebuilt-jar only)"
+        },
+        "artifactRename": {
+          "type": "string",
+          "minLength": 1,
+          "description": "For frontend-static: target directory name on remote server. If empty, files are uploaded directly to remoteBaseDir"
         },
         "artifactMatchPolicy": {
           "type": "string",
@@ -148,11 +160,18 @@
         },
         "remoteBaseDir": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Remote base directory. For frontend-static: files are uploaded here (or under artifactRename subdirectory)"
         },
         "restartScript": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Path to restart script relative to project root (non-frontend projects, restart-script mode)"
+        },
+        "restartMode": {
+          "type": "string",
+          "enum": ["restart-script", "service-command"],
+          "description": "Restart strategy (non-frontend projects only)"
         },
         "failureStrategy": {
           "type": "string",
@@ -166,7 +185,7 @@
         "serviceMatch": {
           "type": "string",
           "minLength": 1,
-          "description": "Process command line keyword used to identify the running service"
+          "description": "Process command line keyword used to identify the running service (service-command mode)"
         },
         "startCommand": {
           "type": "string",
@@ -186,16 +205,19 @@
         },
         "targetJarPath": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Remote target JAR path (java-maven only). Defaults to remoteBaseDir/<artifact-filename>"
         },
         "backupPolicy": {
           "type": "string",
           "enum": ["backup", "replace"],
-          "default": "backup"
+          "default": "backup",
+          "description": "How to handle existing artifact on remote server (non-frontend projects only)"
         },
         "backupDir": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Subdirectory name under remoteBaseDir used to store the previous JAR (java-maven backup policy only). Always resolved relative to remoteBaseDir, e.g. 'bak' or 'archives'. Empty means 'bak'."
         }
       }
     }

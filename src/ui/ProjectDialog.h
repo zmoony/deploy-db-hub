@@ -10,6 +10,8 @@ class QComboBox;
 class QLineEdit;
 class PathPickerWidget;
 class QStackedWidget;
+class QWidget;
+class QLabel;
 
 class ProjectDialog final : public QDialog
 {
@@ -23,6 +25,7 @@ public:
 
 private slots:
     void onSourceKindChanged(int index);
+    void onProjectTypeChanged(int index);
     void onAccept();
 
 private:
@@ -30,12 +33,29 @@ private:
     void syncSourceFields();
     void syncSourceStackHeight();
     void syncBuildModeFields();
+    void syncRestartModePanel();
+    void syncProjectTypeFields();
+    bool isServiceCommandMode() const;
+    bool isFrontendStatic() const;
+    bool isJavaMaven() const;
+    QString currentProjectType() const;
 
     QVector<StoredRecord> m_servers;
     bool m_editMode = false;
 
+    QLabel *m_buildModeLabel = nullptr;
+    QLabel *m_artifactPathLabel = nullptr;
+    QLabel *m_prebuiltJarPathLabel = nullptr;
+    QLabel *m_targetJarPathLabel = nullptr;
+    QLabel *m_backupPolicyLabel = nullptr;
+    QLabel *m_backupDirLabel = nullptr;
+    QLabel *m_logDirLabel = nullptr;
+    QLabel *m_artifactRenameLabel = nullptr;
+    QWidget *m_restartModeBox = nullptr;
+
     QLineEdit *m_id = nullptr;
     QLineEdit *m_name = nullptr;
+    QLineEdit *m_group = nullptr;
     QComboBox *m_type = nullptr;
     QComboBox *m_sourceKind = nullptr;
     QStackedWidget *m_sourceStack = nullptr;
@@ -47,9 +67,12 @@ private:
     PathPickerWidget *m_artifactPath = nullptr;
     PathPickerWidget *m_prebuiltJarPath = nullptr;
     PathPickerWidget *m_workingDir = nullptr;
+    QLineEdit *m_artifactRename = nullptr;
     QComboBox *m_serverId = nullptr;
     QLineEdit *m_remoteBaseDir = nullptr;
     QLineEdit *m_logDir = nullptr;
+    QComboBox *m_restartMode = nullptr;
+    QStackedWidget *m_restartModeStack = nullptr;
     PathPickerWidget *m_restartScript = nullptr;
     QLineEdit *m_serviceMatch = nullptr;
     QLineEdit *m_startCommand = nullptr;

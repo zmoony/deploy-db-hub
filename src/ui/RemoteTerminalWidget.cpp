@@ -14,16 +14,68 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QClipboard>
-#include <QPlainTextEdit>
+#include <QTextEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSizePolicy>
 #include <QStyle>
+#include <QTextBlockFormat>
 #include <QTextCursor>
+#include <QTextDocument>
 #include <QVBoxLayout>
 
 namespace {
+
+QFont terminalMonoFont()
+{
+    static const QStringList preferredFamilies = {
+        QStringLiteral("Cascadia Mono"),
+        QStringLiteral("Cascadia Code"),
+        QStringLiteral("JetBrains Mono"),
+        QStringLiteral("Consolas"),
+        QStringLiteral("SF Mono"),
+        QStringLiteral("Menlo"),
+        QStringLiteral("Courier New"),
+    };
+    QFont font;
+    for (const QString &family : preferredFamilies) {
+        if (QFontDatabase().hasFamily(family)) {
+            font.setFamily(family);
+            break;
+        }
+    }
+    if (font.family().isEmpty()) {
+        font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    }
+    font.setPointSize(13);
+    font.setStyleHint(QFont::Monospace);
+    return font;
+}
+
+QTextBlockFormat terminalBlockFormat()
+{
+    QTextBlockFormat format;
+    format.setLineHeight(160, QTextBlockFormat::ProportionalHeight);
+    return format;
+}
+
+void trimTerminalDocument(QTextDocument *document, int maxBlocks)
+{
+    if (document == nullptr || document->blockCount() <= maxBlocks) {
+        return;
+    }
+    const int blocksToRemove = document->blockCount() - maxBlocks;
+    for (int i = 0; i < blocksToRemove; ++i) {
+        QTextCursor cursor(document);
+        cursor.movePosition(QTextCursor::Start);
+        cursor.select(QTextCursor::BlockUnderCursor);
+        cursor.removeSelectedText();
+        if (!cursor.atEnd()) {
+            cursor.deleteChar();
+        }
+    }
+}
 
 void applyStatusDotShadow(QLabel *dot, const QString &level)
 {
@@ -53,9 +105,10 @@ void applyStatusDotShadow(QLabel *dot, const QString &level)
 }
 
 TerminalTextEdit::TerminalTextEdit(QWidget *parent)
-    : QPlainTextEdit(parent)
+    : QTextEdit(parent)
 {
     setReadOnly(false);
+    setAcceptRichText(true);
     setFocusPolicy(Qt::StrongFocus);
     setCursorWidth(8);
     setUndoRedoEnabled(false);
@@ -70,7 +123,7 @@ void TerminalTextEdit::keyPressEvent(QKeyEvent *event)
             emit interruptRequested();
             return;
         }
-        QPlainTextEdit::keyPressEvent(event);
+        QTextEdit::keyPressEvent(event);
         return;
     }
     if (event->matches(QKeySequence::Paste)) {
@@ -116,23 +169,30 @@ void TerminalTextEdit::keyPressEvent(QKeyEvent *event)
         emit inputBytes(text.toUtf8());
         return;
     }
-    QPlainTextEdit::keyPressEvent(event);
+    QTextEdit::keyPressEvent(event);
 }
 
 void TerminalTextEdit::focusInEvent(QFocusEvent *event)
 {
-    QPlainTextEdit::focusInEvent(event);
-    QTextCursor cursor = textCursor();
-    cursor.movePosition(QTextCursor::End);
-    setTextCursor(cursor);
+    QTextEdit::focusInEvent(event);
+    if (!textCursor().hasSelection()) {
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::End);
+        setTextCursor(cursor);
+    }
 }
 
 void TerminalTextEdit::mousePressEvent(QMouseEvent *event)
 {
     setFocus(Qt::MouseFocusReason);
-    QPlainTextEdit::mousePressEvent(event);
-    QTextCursor cursor = textCursor();
-    if (!cursor.hasSelection()) {
+    QTextEdit::mousePressEvent(event);
+}
+
+void TerminalTextEdit::mouseReleaseEvent(QMouseEvent *event)
+{
+    QTextEdit::mouseReleaseEvent(event);
+    if (!textCursor().hasSelection()) {
+        QTextCursor cursor = textCursor();
         cursor.movePosition(QTextCursor::End);
         setTextCursor(cursor);
     }
@@ -175,13 +235,15 @@ void RemoteTerminalWidget::buildUi()
 
     m_output = new TerminalTextEdit;
     m_output->setObjectName(QStringLiteral("terminalOutput"));
-    m_output->setMaximumBlockCount(5000);
-    m_output->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    m_output->setLineWrapMode(QTextEdit::WidgetWidth);
+    m_output->setFont(terminalMonoFont());
+    {
+        QTextCursor cursor = m_output->textCursor();
+        cursor.mergeBlockFormat(terminalBlockFormat());
+        m_output->setTextCursor(cursor);
+    }
     connect(m_output, &TerminalTextEdit::inputBytes, this, &RemoteTerminalWidget::writeToProcess);
     connect(m_output, &TerminalTextEdit::interruptRequested, this, &RemoteTerminalWidget::sendInterrupt);
-    QFont monoFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    monoFont.setPointSize(10);
-    m_output->setFont(monoFont);
     layout->addWidget(m_output, 1);
 
     setStatus(QStringLiteral("未连接"), QStringLiteral("pending"));
@@ -317,8 +379,10 @@ void RemoteTerminalWidget::appendOutput(const QString &text)
 {
     QTextCursor cursor = m_output->textCursor();
     cursor.movePosition(QTextCursor::End);
+    cursor.mergeBlockFormat(terminalBlockFormat());
     TerminalStream::appendToCursor(cursor, text);
     m_output->setTextCursor(cursor);
+    trimTerminalDocument(m_output->document(), 5000);
     if (auto *bar = m_output->verticalScrollBar()) {
         bar->setValue(bar->maximum());
     }
@@ -328,8 +392,10 @@ void RemoteTerminalWidget::appendNotice(const QString &text)
 {
     QTextCursor cursor = m_output->textCursor();
     cursor.movePosition(QTextCursor::End);
+    cursor.mergeBlockFormat(terminalBlockFormat());
     cursor.insertText(text.endsWith(QLatin1Char('\n')) ? text : text + QLatin1Char('\n'));
     m_output->setTextCursor(cursor);
+    trimTerminalDocument(m_output->document(), 5000);
     if (auto *bar = m_output->verticalScrollBar()) {
         bar->setValue(bar->maximum());
     }

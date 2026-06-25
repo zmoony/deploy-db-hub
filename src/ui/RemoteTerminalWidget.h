@@ -4,7 +4,7 @@
 
 #include <QByteArray>
 #include <QList>
-#include <QPlainTextEdit>
+#include <QTextEdit>
 #include <QWidget>
 
 #include <memory>
@@ -17,7 +17,7 @@ class QProcess;
 class QPushButton;
 class SshClient;
 
-class TerminalTextEdit final : public QPlainTextEdit
+class TerminalTextEdit final : public QTextEdit
 {
     Q_OBJECT
 
@@ -32,6 +32,7 @@ protected:
     void focusInEvent(QFocusEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 };
 
 // 嵌入式 Linux 远程终端：常驻 `ssh -tt` 进程，实时流式输出，可持续输入。

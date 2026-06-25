@@ -1,5 +1,6 @@
 #pragma once
 
+#include "infra/ServiceNodeConnection.h"
 #include "ui/ServiceNodeTypes.h"
 
 #include <QDialog>
@@ -12,6 +13,7 @@ class QComboBox;
 class QLineEdit;
 class QLabel;
 class QPushButton;
+class QWidget;
 
 class ServiceNodeDialog final : public QDialog
 {
@@ -35,6 +37,10 @@ private:
     void buildUi();
     void syncInstructionText();
     void applyPathDefaults();
+    void syncProductFields();
+    void populateDirectFieldsFromNode(const QJsonObject &node);
+    ServiceConnectionFields directFieldsFromUi() const;
+    int defaultPortForProduct() const;
 
     ConfigStore *m_store = nullptr;
     CredentialStore *m_credentials = nullptr;
@@ -43,6 +49,18 @@ private:
     bool m_editMode = false;
 
     QLabel *m_parentLabel = nullptr;
+    QWidget *m_directSection = nullptr;
+    QLineEdit *m_host = nullptr;
+    QLineEdit *m_port = nullptr;
+    QLineEdit *m_username = nullptr;
+    QLineEdit *m_password = nullptr;
+    QPushButton *m_passwordVisibilityButton = nullptr;
+    QLineEdit *m_database = nullptr;
+    QLabel *m_usernameLabel = nullptr;
+    QLabel *m_databaseLabel = nullptr;
+    QLabel *m_kibanaPortLabel = nullptr;
+    QLineEdit *m_kibanaPort = nullptr;
+    QWidget *m_managedSection = nullptr;
     QComboBox *m_server = nullptr;
     QLineEdit *m_info = nullptr;
     QLineEdit *m_installPath = nullptr;

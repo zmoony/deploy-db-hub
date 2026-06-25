@@ -10,5 +10,8 @@ private slots:
     void parseKafkaPort();
     void parseDatabaseInfo();
     void parseElasticsearchInfo();
+    void encodeDecodeDirectConnection();
     void resolveUsesDefaultInstallPath();
+    void resolveElasticsearchKibanaPort();
+    void resolveRedisDatabase();
 };

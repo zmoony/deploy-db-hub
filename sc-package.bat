@@ -1,1 +1,1 @@
-powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1
+powershell -File scripts\package-windows.ps1

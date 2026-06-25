@@ -56,4 +56,12 @@ QString defaultInfo(const QString &productKey)
     return QString();
 }
 
+int kibanaPort(const QString &productKey)
+{
+    if (productKey == QStringLiteral("elasticsearch")) {
+        return 5601;
+    }
+    return 0;
+}
+
 }

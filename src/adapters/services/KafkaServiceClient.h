@@ -5,8 +5,22 @@
 
 #include "adapters/services/RedisServiceClient.h"
 
+#include <QHash>
 #include <QJsonObject>
 #include <QString>
+#include <QVector>
+
+struct KafkaTopicDashboard {
+    bool ok = false;
+    QString message;
+    QVector<QJsonObject> topics;
+    QVector<QJsonObject> groupPartitions;
+    QHash<QString, qlonglong> latest;
+    QHash<QString, qlonglong> earliest;
+    QHash<QString, qlonglong> atToday;
+    QHash<QString, qlonglong> atYesterday;
+    QHash<QString, qlonglong> atWeek;
+};
 
 class KafkaServiceClient final
 {
@@ -25,6 +39,17 @@ public:
     static ServiceResult topicOffsets(const ServiceEndpoint &endpoint,
                                       const RemoteConnectionContext &remote,
                                       qint64 timeMs);
+    // One SSH round-trip: describe topics, offset snapshots, and consumer groups.
+    // If knownTopics is non-empty, the describe step is skipped (reuses quick-path data).
+    static KafkaTopicDashboard loadTopicDashboard(const ServiceEndpoint &endpoint,
+                                                 const RemoteConnectionContext &remote,
+                                                 qint64 todayStartMs,
+                                                 qint64 yesterdayStartMs,
+                                                 qint64 weekStartMs,
+                                                 const QVector<QJsonObject> &knownTopics = {});
+    static QVector<QJsonObject> parseOffsetOutputLines(const QString &text);
+    static QVector<QJsonObject> parseDescribeTopicsOutput(const QString &text);
+    static QVector<QJsonObject> parseConsumerGroupRows(const QString &text);
     // Describe every consumer group in one call. Rows: {group, topic, partition, current, logEnd, lag}.
     static ServiceResult describeConsumerGroups(const ServiceEndpoint &endpoint, const RemoteConnectionContext &remote);
     // Produce a single message to a topic via kafka-console-producer.

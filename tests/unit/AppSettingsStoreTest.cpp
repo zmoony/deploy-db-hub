@@ -16,7 +16,9 @@ void AppSettingsStoreTest::roundTripsSettings()
     const AppSettings input{
         QStringLiteral("D:/deploy-config"),
         QStringLiteral("D:/install/maven"),
-        QStringLiteral("D:/m2/repository")
+        QStringLiteral("D:/m2/repository"),
+        QStringLiteral("D:/drivers/postgresql-42.7.3.jar"),
+        QStringLiteral("D:/drivers/ojdbc8.jar")
     };
     QString error;
     QVERIFY2(store.save(input, &error), qPrintable(error));
@@ -26,4 +28,6 @@ void AppSettingsStoreTest::roundTripsSettings()
     QCOMPARE(loaded.configDirOverride, input.configDirOverride);
     QCOMPARE(loaded.mavenHome, input.mavenHome);
     QCOMPARE(loaded.mavenRepository, input.mavenRepository);
+    QCOMPARE(loaded.postgresDriverJar, input.postgresDriverJar);
+    QCOMPARE(loaded.oracleDriverJar, input.oracleDriverJar);
 }

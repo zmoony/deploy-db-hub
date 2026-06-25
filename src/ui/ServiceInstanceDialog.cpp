@@ -4,7 +4,7 @@
 
 #include <QDialogButtonBox>
 #include <QFormLayout>
-#include <QGroupBox>
+#include <QHBoxLayout>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
@@ -19,11 +19,8 @@ ServiceInstanceDialog::ServiceInstanceDialog(ServiceProductKind product, QWidget
     auto *layout = new QVBoxLayout(this);
     PageLayout::applyDialog(layout);
 
-    auto *formBox = new QGroupBox(QStringLiteral("实例信息"));
-    formBox->setObjectName(QStringLiteral("dialogFormBox"));
-    auto *form = new QFormLayout(formBox);
-    PageLayout::applyInlineForm(form);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    QFormLayout *form = nullptr;
+    layout->addWidget(PageLayout::wrapDialogFormSection(QStringLiteral("实例信息"), this, &form));
 
     m_id = new QLineEdit;
     m_name = new QLineEdit;
@@ -33,19 +30,23 @@ ServiceInstanceDialog::ServiceInstanceDialog(ServiceProductKind product, QWidget
     m_name->setPlaceholderText(QStringLiteral("例如 视图库测试kafka"));
     form->addRow(QStringLiteral("实例 ID"), m_id);
     form->addRow(QStringLiteral("实例名称"), m_name);
-    layout->addWidget(formBox);
 
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok);
+    auto *footer = PageLayout::makeDialogFooter(this);
+    auto *footerLayout = new QHBoxLayout(footer);
+    footerLayout->setContentsMargins(0, PageLayout::Space12, 0, 0);
+    footerLayout->setSpacing(PageLayout::Space8);
+    footerLayout->addStretch();
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, footer);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("确定"));
     buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
     buttons->button(QDialogButtonBox::Ok)->setObjectName(QStringLiteral("primaryButton"));
     connect(buttons, &QDialogButtonBox::accepted, this, &ServiceInstanceDialog::onAccept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(buttons);
+    footerLayout->addWidget(buttons);
+    layout->addWidget(footer);
 
-    PageLayout::applyModalDialog(this);
-    setMinimumSize(520, 240);
-    resize(560, 260);
+    PageLayout::applyCompactModalDialog(this);
 }
 
 void ServiceInstanceDialog::setInstance(const QJsonObject &instance, bool editMode)

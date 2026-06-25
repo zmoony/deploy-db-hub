@@ -7,6 +7,9 @@
 #include <QDialog>
 #include <QFutureWatcher>
 
+class AiSettingsStore;
+class CredentialStore;
+class LogAiAnalysisWidget;
 class QLabel;
 class QPlainTextEdit;
 class QPushButton;
@@ -19,9 +22,13 @@ class RemoteFileViewerDialog final : public QDialog
 public:
     RemoteFileViewerDialog(RemoteFileBrowser *browser,
                            const QString &remotePath,
+                           AiSettingsStore *aiSettings,
+                           CredentialStore *credentials,
                            QWidget *parent = nullptr);
     RemoteFileViewerDialog(std::unique_ptr<RemoteFileBrowser> browser,
                            const QString &remotePath,
+                           AiSettingsStore *aiSettings,
+                           CredentialStore *credentials,
                            QWidget *parent = nullptr);
     ~RemoteFileViewerDialog() override;
 
@@ -33,6 +40,8 @@ private:
 
     std::unique_ptr<RemoteFileBrowser> m_ownedBrowser;
     RemoteFileBrowser *m_browser = nullptr;
+    AiSettingsStore *m_aiSettings = nullptr;
+    CredentialStore *m_credentials = nullptr;
     QString m_remotePath;
     int m_generation = 0;
     QFutureWatcher<RemoteFileReadResult> *m_tailWatcher = nullptr;
@@ -41,4 +50,5 @@ private:
     QSpinBox *m_lineCountSpin = nullptr;
     QPushButton *m_loadButton = nullptr;
     QPlainTextEdit *m_viewer = nullptr;
+    LogAiAnalysisWidget *m_aiPanel = nullptr;
 };

@@ -1,6 +1,7 @@
 #include "ui/ProjectDialog.h"
 
 #include "infra/ConfigValidator.h"
+#include "infra/ProjectServiceConfig.h"
 #include "ui/PageLayout.h"
 #include "ui/PathPickerWidget.h"
 #include "infra/AppBranding.h"
@@ -27,8 +28,24 @@ void tuneField(QWidget *widget)
 
 void tuneFormBox(QGroupBox *box, QFormLayout *form)
 {
-    box->setObjectName(QStringLiteral("dialogFormBox"));
-    PageLayout::applyInlineForm(form);
+    PageLayout::tuneDialogFormBox(box, form);
+}
+
+QLabel *addFormRow(QFormLayout *form, const QString &labelText, QWidget *field)
+{
+    auto *label = new QLabel(labelText);
+    form->addRow(label, field);
+    return label;
+}
+
+void setFormRowVisible(QLabel *label, QWidget *field, bool visible)
+{
+    if (label != nullptr) {
+        label->setVisible(visible);
+    }
+    if (field != nullptr) {
+        field->setVisible(visible);
+    }
 }
 
 }
@@ -38,7 +55,6 @@ ProjectDialog::ProjectDialog(const QVector<StoredRecord> &servers, QWidget *pare
     , m_servers(servers)
 {
     setWindowTitle(QStringLiteral("项目配置"));
-    setModal(true);
     PageLayout::applyModalDialog(this);
     AppBranding::applyWindowIcon(this);
     buildUi();
@@ -68,6 +84,8 @@ void ProjectDialog::buildUi()
     m_id = new QLineEdit;
     m_id->setPlaceholderText(QStringLiteral("例如 app-demo"));
     m_name = new QLineEdit;
+    m_group = new QLineEdit;
+    m_group->setPlaceholderText(QStringLiteral("例如 网关 / WVA / 公共"));
     m_type = new QComboBox;
     m_type->addItem(QStringLiteral("Java Maven"), QStringLiteral("java-maven"));
     m_type->addItem(QStringLiteral("前端静态包"), QStringLiteral("frontend-static"));
@@ -75,9 +93,11 @@ void ProjectDialog::buildUi()
     m_type->addItem(QStringLiteral("自定义"), QStringLiteral("custom"));
     tuneField(m_id);
     tuneField(m_name);
+    tuneField(m_group);
     tuneField(m_type);
     basicForm->addRow(QStringLiteral("项目 ID"), m_id);
     basicForm->addRow(QStringLiteral("名称"), m_name);
+    basicForm->addRow(QStringLiteral("分组"), m_group);
     basicForm->addRow(QStringLiteral("类型"), m_type);
     leftColumn->addWidget(basicBox);
 
@@ -102,9 +122,10 @@ void ProjectDialog::buildUi()
     m_command->setPlaceholderText(QStringLiteral("mvn clean package -DskipTests"));
     tuneField(m_buildMode);
     tuneField(m_command);
-    buildForm->addRow(QStringLiteral("方式"), m_buildMode);
-    buildForm->addRow(QStringLiteral("构建命令"), m_command);
+    m_buildModeLabel = addFormRow(buildForm, QStringLiteral("方式"), m_buildMode);
+    addFormRow(buildForm, QStringLiteral("构建命令"), m_command);
     connect(m_buildMode, qOverload<int>(&QComboBox::currentIndexChanged), this, &ProjectDialog::syncBuildModeFields);
+    connect(m_type, qOverload<int>(&QComboBox::currentIndexChanged), this, &ProjectDialog::onProjectTypeChanged);
     rightColumn->addWidget(buildBox);
 
     auto *deployBox = new QGroupBox(QStringLiteral("部署"));
@@ -133,7 +154,8 @@ void ProjectDialog::buildUi()
     tuneFormBox(pathsBox, pathsForm);
 
     m_sourceStack = new QStackedWidget;
-    PageLayout::configurePathField(m_sourceStack);
+    m_sourceStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    PageLayout::configureHorizontalFormRow(m_sourceStack);
     auto *localPanel = new QWidget;
     auto *localLayout = new QVBoxLayout(localPanel);
     localLayout->setContentsMargins(0, 0, 0, 0);
@@ -163,38 +185,70 @@ void ProjectDialog::buildUi()
     m_prebuiltJarPath->setPlaceholderText(QStringLiteral("D:/build/app.jar"));
     m_workingDir = new PathPickerWidget(PathPickerWidget::Mode::Directory);
     m_workingDir->setPath(QStringLiteral("."));
+    m_artifactRename = new QLineEdit;
+    m_artifactRename->setPlaceholderText(QStringLiteral("留空则直接部署到远端目录，例如 myapp"));
     m_remoteBaseDir = new QLineEdit;
     m_remoteBaseDir->setPlaceholderText(QStringLiteral("/opt/deploy-hub/apps/demo"));
     m_logDir = new QLineEdit;
     m_logDir->setPlaceholderText(QStringLiteral("/opt/deploy-hub/apps/demo/logs"));
-    m_restartScript = new PathPickerWidget(PathPickerWidget::Mode::File);
-    m_restartScript->setPath(QStringLiteral("restart.sh"));
     m_targetJarPath = new QLineEdit;
     m_targetJarPath->setPlaceholderText(QStringLiteral("/home/demo/app.jar"));
     m_backupPolicy = new QComboBox;
     m_backupPolicy->addItem(QStringLiteral("备份旧包"), QStringLiteral("backup"));
     m_backupPolicy->addItem(QStringLiteral("直接替换"), QStringLiteral("replace"));
     m_backupDir = new QLineEdit;
-    m_backupDir->setPlaceholderText(QStringLiteral("默认：远端目录/bak"));
+    m_backupDir->setPlaceholderText(QStringLiteral("远端目录下的子目录名，留空默认 bak"));
     PageLayout::configurePathField(m_remoteBaseDir);
     PageLayout::configurePathField(m_logDir);
     PageLayout::configurePathField(m_targetJarPath);
     PageLayout::configurePathField(m_backupDir);
+    PageLayout::configurePathField(m_artifactRename);
     tuneField(m_backupPolicy);
-    pathsForm->addRow(QStringLiteral("产物路径"), m_artifactPath);
-    pathsForm->addRow(QStringLiteral("本地 JAR"), m_prebuiltJarPath);
-    pathsForm->addRow(QStringLiteral("工作目录"), m_workingDir);
+    tuneField(m_artifactRename);
+
+    m_artifactPathLabel = addFormRow(pathsForm, QStringLiteral("产物路径"), m_artifactPath);
+    m_prebuiltJarPathLabel = addFormRow(pathsForm, QStringLiteral("本地 JAR"), m_prebuiltJarPath);
+    addFormRow(pathsForm, QStringLiteral("工作目录"), m_workingDir);
+    m_artifactRenameLabel = addFormRow(pathsForm, QStringLiteral("部署目录名"), m_artifactRename);
     pathsForm->addRow(QStringLiteral("远端目录"), m_remoteBaseDir);
-    pathsForm->addRow(QStringLiteral("目标 JAR"), m_targetJarPath);
-    pathsForm->addRow(QStringLiteral("旧包策略"), m_backupPolicy);
-    pathsForm->addRow(QStringLiteral("备份目录"), m_backupDir);
-    pathsForm->addRow(QStringLiteral("日志目录"), m_logDir);
-    pathsForm->addRow(QStringLiteral("重启脚本"), m_restartScript);
+    m_targetJarPathLabel = addFormRow(pathsForm, QStringLiteral("目标 JAR"), m_targetJarPath);
+    m_backupPolicyLabel = addFormRow(pathsForm, QStringLiteral("旧包策略"), m_backupPolicy);
+    m_backupDirLabel = addFormRow(pathsForm, QStringLiteral("备份目录"), m_backupDir);
+    m_logDirLabel = addFormRow(pathsForm, QStringLiteral("日志目录"), m_logDir);
     bodyLayout->addWidget(pathsBox);
 
-    auto *serviceBox = new QGroupBox(QStringLiteral("服务控制"));
-    auto *serviceForm = new QFormLayout(serviceBox);
-    tuneFormBox(serviceBox, serviceForm);
+    connect(m_backupPolicy, qOverload<int>(&QComboBox::currentIndexChanged), this, &ProjectDialog::syncBuildModeFields);
+
+    m_restartModeBox = new QGroupBox(QStringLiteral("启动方式"));
+    auto *restartModeLayout = new QVBoxLayout(m_restartModeBox);
+    restartModeLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
+    restartModeLayout->setSpacing(PageLayout::Space12);
+
+    m_restartMode = new QComboBox(m_restartModeBox);
+    m_restartMode->addItem(QStringLiteral("重启脚本"), QStringLiteral("restart-script"));
+    m_restartMode->addItem(QStringLiteral("自定义命令"), QStringLiteral("service-command"));
+    tuneField(m_restartMode);
+    auto *modeForm = new QFormLayout;
+    PageLayout::applyInlineForm(modeForm);
+    modeForm->addRow(QStringLiteral("方式"), m_restartMode);
+    restartModeLayout->addLayout(modeForm);
+
+    m_restartModeStack = new QStackedWidget(m_restartModeBox);
+    m_restartModeStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    auto *scriptPage = new QWidget;
+    auto *scriptForm = new QFormLayout(scriptPage);
+    PageLayout::applyInlineForm(scriptForm);
+    scriptForm->setContentsMargins(0, 0, 0, 0);
+    m_restartScript = new PathPickerWidget(PathPickerWidget::Mode::File);
+    m_restartScript->setPath(QStringLiteral("restart.sh"));
+    scriptForm->addRow(QStringLiteral("脚本路径"), m_restartScript);
+    m_restartModeStack->addWidget(scriptPage);
+
+    auto *servicePage = new QWidget;
+    auto *serviceForm = new QFormLayout(servicePage);
+    PageLayout::applyInlineForm(serviceForm);
+    serviceForm->setContentsMargins(0, 0, 0, 0);
     m_serviceMatch = new QLineEdit;
     m_serviceMatch->setPlaceholderText(QStringLiteral("用于匹配进程命令行，例如 yz-wwa-gateway"));
     m_startCommand = new QLineEdit;
@@ -215,16 +269,103 @@ void ProjectDialog::buildUi()
     serviceForm->addRow(QStringLiteral("停止命令"), m_stopCommand);
     serviceForm->addRow(QStringLiteral("重启命令"), m_restartCommand);
     serviceForm->addRow(QStringLiteral("状态命令"), m_statusCommand);
-    bodyLayout->addWidget(serviceBox);
+    m_restartModeStack->addWidget(servicePage);
 
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+    restartModeLayout->addWidget(m_restartModeStack);
+    bodyLayout->addWidget(m_restartModeBox);
+
+    connect(m_restartMode, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
+        syncRestartModePanel();
+    });
+
+    auto *footer = PageLayout::makeDialogFooter(this);
+    auto *footerLayout = new QHBoxLayout(footer);
+    footerLayout->setContentsMargins(0, PageLayout::Space12, 0, 0);
+    footerLayout->setSpacing(PageLayout::Space8);
+    footerLayout->addStretch();
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, footer);
     buttons->setCenterButtons(false);
     buttons->button(QDialogButtonBox::Save)->setObjectName(QStringLiteral("primaryButton"));
     connect(buttons, &QDialogButtonBox::accepted, this, &ProjectDialog::onAccept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(buttons);
+    footerLayout->addWidget(buttons);
+    layout->addWidget(footer);
 
     syncSourceFields();
+    syncBuildModeFields();
+    syncRestartModePanel();
+    syncProjectTypeFields();
+}
+
+QString ProjectDialog::currentProjectType() const
+{
+    return m_type != nullptr ? m_type->currentData().toString() : QStringLiteral("java-maven");
+}
+
+bool ProjectDialog::isFrontendStatic() const
+{
+    return currentProjectType() == QStringLiteral("frontend-static");
+}
+
+bool ProjectDialog::isJavaMaven() const
+{
+    return currentProjectType() == QStringLiteral("java-maven");
+}
+
+void ProjectDialog::onProjectTypeChanged(int)
+{
+    const QString type = currentProjectType();
+    if (type == QStringLiteral("java-maven")) {
+        if (m_command->text().trimmed().isEmpty() || m_command->text().trimmed() == QStringLiteral("npm run build")) {
+            m_command->setText(QStringLiteral("mvn clean package -DskipTests"));
+        }
+        m_command->setPlaceholderText(QStringLiteral("mvn clean package -DskipTests"));
+        if (m_artifactPath->path().trimmed().isEmpty() || m_artifactPath->path().trimmed() == QStringLiteral("dist")) {
+            m_artifactPath->setPath(QStringLiteral("target/*.jar"));
+        }
+        m_artifactPath->setPlaceholderText(QStringLiteral("target/*.jar"));
+        m_artifactPath->setMode(PathPickerWidget::Mode::File);
+        m_buildMode->setCurrentIndex(0);
+    } else if (type == QStringLiteral("frontend-static")) {
+        if (m_command->text().trimmed().isEmpty() || m_command->text().trimmed() == QStringLiteral("mvn clean package -DskipTests")) {
+            m_command->setText(QStringLiteral("npm run build"));
+        }
+        m_command->setPlaceholderText(QStringLiteral("npm run build"));
+        if (m_artifactPath->path().trimmed().isEmpty() || m_artifactPath->path().trimmed() == QStringLiteral("target/*.jar")) {
+            m_artifactPath->setPath(QStringLiteral("dist"));
+        }
+        m_artifactPath->setPlaceholderText(QStringLiteral("dist"));
+        m_artifactPath->setMode(PathPickerWidget::Mode::Directory);
+        m_buildMode->setCurrentIndex(0);
+    } else {
+        m_command->setPlaceholderText(QStringLiteral("例如 npm run build / python setup.py install"));
+        m_artifactPath->setPlaceholderText(QStringLiteral("例如 dist/ / target/*.whl"));
+        m_artifactPath->setMode(PathPickerWidget::Mode::File);
+        m_buildMode->setCurrentIndex(0);
+    }
+    syncProjectTypeFields();
+}
+
+void ProjectDialog::syncProjectTypeFields()
+{
+    const bool frontend = isFrontendStatic();
+    const bool java = isJavaMaven();
+
+    setFormRowVisible(m_buildModeLabel, m_buildMode, java);
+    setFormRowVisible(m_prebuiltJarPathLabel, m_prebuiltJarPath, java && m_buildMode->currentData().toString() == QStringLiteral("prebuilt-jar"));
+    setFormRowVisible(m_targetJarPathLabel, m_targetJarPath, java);
+    setFormRowVisible(m_backupPolicyLabel, m_backupPolicy, java);
+    setFormRowVisible(m_backupDirLabel, m_backupDir, java && m_backupPolicy->currentData().toString() == QStringLiteral("backup"));
+    setFormRowVisible(m_artifactRenameLabel, m_artifactRename, frontend);
+    if (m_restartModeBox != nullptr) {
+        m_restartModeBox->setVisible(!frontend);
+    }
+
+    if (m_artifactPathLabel != nullptr) {
+        m_artifactPathLabel->setText(frontend ? QStringLiteral("产物目录") : QStringLiteral("产物路径"));
+    }
+
     syncBuildModeFields();
 }
 
@@ -234,6 +375,7 @@ void ProjectDialog::setProject(const QJsonObject &project, bool editMode)
     m_id->setText(project.value(QStringLiteral("id")).toString());
     m_id->setReadOnly(editMode);
     m_name->setText(project.value(QStringLiteral("name")).toString());
+    m_group->setText(project.value(QStringLiteral("group")).toString());
 
     const QString type = project.value(QStringLiteral("type")).toString();
     const int typeIndex = m_type->findData(type);
@@ -260,6 +402,7 @@ void ProjectDialog::setProject(const QJsonObject &project, bool editMode)
     m_artifactPath->setPath(build.value(QStringLiteral("artifactPath")).toString());
     m_prebuiltJarPath->setPath(build.value(QStringLiteral("prebuiltJarPath")).toString());
     m_workingDir->setPath(build.value(QStringLiteral("workingDir")).toString(QStringLiteral(".")));
+    m_artifactRename->setText(build.value(QStringLiteral("artifactRename")).toString());
 
     const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
     const QString serverId = deploy.value(QStringLiteral("serverId")).toString();
@@ -270,6 +413,13 @@ void ProjectDialog::setProject(const QJsonObject &project, bool editMode)
     m_remoteBaseDir->setText(deploy.value(QStringLiteral("remoteBaseDir")).toString());
     m_logDir->setText(deploy.value(QStringLiteral("logDir")).toString());
     m_restartScript->setPath(deploy.value(QStringLiteral("restartScript")).toString(QStringLiteral("restart.sh")));
+    const QString restartMode = deploy.value(QStringLiteral("restartMode")).toString();
+    if (restartMode == QStringLiteral("service-command")
+        || (restartMode.isEmpty() && usesCustomServiceControl(project))) {
+        m_restartMode->setCurrentIndex(m_restartMode->findData(QStringLiteral("service-command")));
+    } else {
+        m_restartMode->setCurrentIndex(m_restartMode->findData(QStringLiteral("restart-script")));
+    }
     m_targetJarPath->setText(deploy.value(QStringLiteral("targetJarPath")).toString());
     m_backupDir->setText(deploy.value(QStringLiteral("backupDir")).toString());
     const int backupIndex = m_backupPolicy->findData(deploy.value(QStringLiteral("backupPolicy")).toString(QStringLiteral("backup")));
@@ -284,16 +434,88 @@ void ProjectDialog::setProject(const QJsonObject &project, bool editMode)
     const QString strategy = deploy.value(QStringLiteral("failureStrategy")).toString();
     m_failureStrategy->setCurrentIndex(strategy == QStringLiteral("keep") ? 1 : 0);
 
+    onProjectTypeChanged(m_type->currentIndex());
     syncSourceFields();
     syncBuildModeFields();
+    syncRestartModePanel();
 }
 
 QJsonObject ProjectDialog::project() const
 {
+    const bool frontend = isFrontendStatic();
+    const bool java = isJavaMaven();
+    const QString buildMode = java ? m_buildMode->currentData().toString() : QStringLiteral("build");
+    const bool prebuilt = buildMode == QStringLiteral("prebuilt-jar");
+
+    QJsonObject buildConfig{
+        {QStringLiteral("location"), QStringLiteral("local")},
+        {QStringLiteral("mode"), buildMode},
+        {QStringLiteral("workingDir"), m_workingDir->path().isEmpty() ? QStringLiteral(".") : m_workingDir->path()},
+        {QStringLiteral("command"), m_command->text().trimmed()},
+        {QStringLiteral("artifactPath"), prebuilt ? m_prebuiltJarPath->path() : m_artifactPath->path()},
+        {QStringLiteral("artifactMatchPolicy"), QStringLiteral("fail-if-multiple")},
+        {QStringLiteral("env"), QJsonObject{}},
+        {QStringLiteral("timeoutSec"), 600}
+    };
+    if (java) {
+        buildConfig.insert(QStringLiteral("prebuiltJarPath"), m_prebuiltJarPath->path());
+    }
+    if (frontend && !m_artifactRename->text().trimmed().isEmpty()) {
+        buildConfig.insert(QStringLiteral("artifactRename"), m_artifactRename->text().trimmed());
+    }
+
+    QJsonObject deployConfig{
+        {QStringLiteral("serverId"), m_serverId->currentData().toString()},
+        {QStringLiteral("remoteBaseDir"), m_remoteBaseDir->text().trimmed()},
+        {QStringLiteral("failureStrategy"), m_failureStrategy->currentData().toString()}
+    };
+
+    if (!frontend) {
+        const QString mode = m_restartMode->currentData().toString();
+        const bool serviceMode = mode == QStringLiteral("service-command");
+        deployConfig.insert(QStringLiteral("restartMode"), mode);
+        if (java) {
+            deployConfig.insert(QStringLiteral("backupPolicy"), m_backupPolicy->currentData().toString());
+        } else {
+            deployConfig.insert(QStringLiteral("backupPolicy"), QStringLiteral("replace"));
+        }
+        if (serviceMode) {
+            const QList<QPair<QString, QString>> serviceFields{
+                {QStringLiteral("serviceMatch"), m_serviceMatch->text().trimmed()},
+                {QStringLiteral("startCommand"), m_startCommand->text().trimmed()},
+                {QStringLiteral("stopCommand"), m_stopCommand->text().trimmed()},
+                {QStringLiteral("restartCommand"), m_restartCommand->text().trimmed()},
+                {QStringLiteral("statusCommand"), m_statusCommand->text().trimmed()},
+            };
+            for (const auto &field : serviceFields) {
+                if (!field.second.isEmpty()) {
+                    deployConfig.insert(field.first, field.second);
+                }
+            }
+        } else {
+            deployConfig.insert(QStringLiteral("restartScript"), m_restartScript->path());
+        }
+        const QList<QPair<QString, QString>> sharedFields{
+            {QStringLiteral("logDir"), m_logDir->text().trimmed()},
+            {QStringLiteral("targetJarPath"), java ? m_targetJarPath->text().trimmed() : QString()},
+            {QStringLiteral("backupDir"), java ? m_backupDir->text().trimmed() : QString()}
+        };
+        for (const auto &field : sharedFields) {
+            if (!field.second.isEmpty()) {
+                deployConfig.insert(field.first, field.second);
+            }
+        }
+    } else {
+        if (!m_logDir->text().trimmed().isEmpty()) {
+            deployConfig.insert(QStringLiteral("logDir"), m_logDir->text().trimmed());
+        }
+    }
+
     return QJsonObject{
         {QStringLiteral("schemaVersion"), 1},
         {QStringLiteral("id"), m_id->text().trimmed()},
         {QStringLiteral("name"), m_name->text().trimmed()},
+        {QStringLiteral("group"), m_group->text().trimmed()},
         {QStringLiteral("type"), m_type->currentData().toString()},
         {QStringLiteral("source"), [&]() {
             const QString kind = m_sourceKind->currentData().toString();
@@ -310,44 +532,8 @@ QJsonObject ProjectDialog::project() const
                 {QStringLiteral("localPath"), m_localPath->path()}
             };
         }()},
-        {QStringLiteral("build"), QJsonObject{
-            {QStringLiteral("location"), QStringLiteral("local")},
-            {QStringLiteral("mode"), m_buildMode->currentData().toString()},
-            {QStringLiteral("workingDir"), m_workingDir->path().isEmpty() ? QStringLiteral(".") : m_workingDir->path()},
-            {QStringLiteral("command"), m_command->text().trimmed()},
-            {QStringLiteral("artifactPath"), m_buildMode->currentData().toString() == QStringLiteral("prebuilt-jar")
-                ? m_prebuiltJarPath->path()
-                : m_artifactPath->path()},
-            {QStringLiteral("prebuiltJarPath"), m_prebuiltJarPath->path()},
-            {QStringLiteral("artifactMatchPolicy"), QStringLiteral("fail-if-multiple")},
-            {QStringLiteral("env"), QJsonObject{}},
-            {QStringLiteral("timeoutSec"), 600}
-        }},
-        {QStringLiteral("deploy"), [&]() {
-            QJsonObject deploy{
-                {QStringLiteral("serverId"), m_serverId->currentData().toString()},
-                {QStringLiteral("remoteBaseDir"), m_remoteBaseDir->text().trimmed()},
-                {QStringLiteral("restartScript"), m_restartScript->path()},
-                {QStringLiteral("failureStrategy"), m_failureStrategy->currentData().toString()},
-                {QStringLiteral("backupPolicy"), m_backupPolicy->currentData().toString()}
-            };
-            const QList<QPair<QString, QString>> optionalFields{
-                {QStringLiteral("logDir"), m_logDir->text().trimmed()},
-                {QStringLiteral("serviceMatch"), m_serviceMatch->text().trimmed()},
-                {QStringLiteral("startCommand"), m_startCommand->text().trimmed()},
-                {QStringLiteral("stopCommand"), m_stopCommand->text().trimmed()},
-                {QStringLiteral("restartCommand"), m_restartCommand->text().trimmed()},
-                {QStringLiteral("statusCommand"), m_statusCommand->text().trimmed()},
-                {QStringLiteral("targetJarPath"), m_targetJarPath->text().trimmed()},
-                {QStringLiteral("backupDir"), m_backupDir->text().trimmed()}
-            };
-            for (const auto &field : optionalFields) {
-                if (!field.second.isEmpty()) {
-                    deploy.insert(field.first, field.second);
-                }
-            }
-            return deploy;
-        }()}
+        {QStringLiteral("build"), buildConfig},
+        {QStringLiteral("deploy"), deployConfig}
     };
 }
 
@@ -376,7 +562,8 @@ void ProjectDialog::syncSourceStackHeight()
 
 void ProjectDialog::syncBuildModeFields()
 {
-    const bool prebuilt = m_buildMode != nullptr
+    const bool java = isJavaMaven();
+    const bool prebuilt = java && m_buildMode != nullptr
         && m_buildMode->currentData().toString() == QStringLiteral("prebuilt-jar");
     if (m_command != nullptr) {
         m_command->setEnabled(!prebuilt);
@@ -390,12 +577,42 @@ void ProjectDialog::syncBuildModeFields()
     if (m_prebuiltJarPath != nullptr) {
         m_prebuiltJarPath->setEnabled(prebuilt);
     }
+    setFormRowVisible(m_prebuiltJarPathLabel, m_prebuiltJarPath, prebuilt);
+
+    if (java && m_backupPolicy != nullptr && m_backupDirLabel != nullptr) {
+        const bool backup = m_backupPolicy->currentData().toString() == QStringLiteral("backup");
+        setFormRowVisible(m_backupDirLabel, m_backupDir, backup);
+    }
+}
+
+bool ProjectDialog::isServiceCommandMode() const
+{
+    return !isFrontendStatic()
+        && m_restartMode != nullptr
+        && m_restartMode->currentData().toString() == QStringLiteral("service-command");
+}
+
+void ProjectDialog::syncRestartModePanel()
+{
+    if (m_restartModeStack == nullptr || m_restartMode == nullptr) {
+        return;
+    }
+    m_restartModeStack->setCurrentIndex(m_restartMode->currentIndex());
+    if (QWidget *page = m_restartModeStack->currentWidget()) {
+        const int height = page->sizeHint().height();
+        m_restartModeStack->setMinimumHeight(height);
+        m_restartModeStack->setMaximumHeight(height);
+    }
 }
 
 void ProjectDialog::onAccept()
 {
     if (m_serverId->count() == 0) {
         QMessageBox::warning(this, QStringLiteral("无法保存"), QStringLiteral("请先新增至少一台服务器。"));
+        return;
+    }
+    if (!isFrontendStatic() && !isServiceCommandMode() && m_restartScript->path().trimmed().isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("配置无效"), QStringLiteral("重启脚本模式下请填写脚本路径。"));
         return;
     }
 

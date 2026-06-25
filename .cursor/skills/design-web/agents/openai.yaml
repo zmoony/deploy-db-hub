@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Web"
+  short_description: "随心系B端Web设计 — 五模式智能场景路由"
+  default_prompt: "Use $design-web. Read references/scenario-router.md to pick mode from user scenario, then references/article-index.md and page-patterns.md."

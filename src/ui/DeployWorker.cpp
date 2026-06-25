@@ -16,6 +16,7 @@
 #include "infra/ProjectServiceConfig.h"
 
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QJsonObject>
 #include <QProcessEnvironment>
@@ -39,6 +40,12 @@ QString shellQuote(QString value)
     return QStringLiteral("'%1'").arg(value);
 }
 
+QString shellQuoteDouble(QString value)
+{
+    value.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+    return QStringLiteral("\"%1\"").arg(value);
+}
+
 QString remoteDirectoryOf(const QString &path)
 {
     const QString normalized = QDir::fromNativeSeparators(path);
@@ -60,6 +67,19 @@ QString ensureRemoteDirCommand(const QString &os, const QString &path)
             .arg(escaped);
     }
     return QStringLiteral("mkdir -p %1").arg(shellQuote(normalized));
+}
+
+QString clearRemoteDirCommand(const QString &os, const QString &path)
+{
+    const QString normalized = QDir::fromNativeSeparators(path);
+    if (os == QStringLiteral("windows")) {
+        const QString native = QDir::toNativeSeparators(normalized);
+        QString escaped = native;
+        escaped.replace(QLatin1Char('\''), QStringLiteral("''"));
+        return QStringLiteral("powershell -NoProfile -Command \"if (Test-Path '%1') { Remove-Item -Recurse -Force '%1' }; New-Item -ItemType Directory -Force -Path '%1' | Out-Null\"")
+            .arg(escaped);
+    }
+    return QStringLiteral("rm -rf %1 && mkdir -p %1").arg(shellQuote(normalized), shellQuote(normalized));
 }
 
 QString backupRemoteFileCommand(const QString &os, const QString &sourcePath, const QString &backupPath)
@@ -119,6 +139,8 @@ ServiceControlResult executeProjectRestart(const QJsonObject &server,
         return result;
     }
 
+    const QString os = server.value(QStringLiteral("os")).toString();
+
     if (plan.requiresScriptUpload) {
         if (!QFileInfo::exists(plan.localScriptPath)) {
             result.error = QStringLiteral("本地重启脚本不存在：%1").arg(plan.localScriptPath);
@@ -130,7 +152,6 @@ ServiceControlResult executeProjectRestart(const QJsonObject &server,
             result.error = QStringLiteral("上传重启脚本失败：%1").arg(upload.error);
             return result;
         }
-        const QString os = server.value(QStringLiteral("os")).toString();
         const QString chmodCommand = makeRemoteScriptExecutableCommand(os, remoteScriptPath);
         if (!chmodCommand.isEmpty()) {
             const RemoteCommandResult chmod = executor->execute(chmodCommand, 20);
@@ -142,12 +163,101 @@ ServiceControlResult executeProjectRestart(const QJsonObject &server,
     }
 
     const QString commandText = renderProjectServiceCommand(plan.remoteCommand, project, remoteArtifactPath);
-    const RemoteCommandResult command = executor->execute(commandText, 120);
+    QString finalCommand = commandText;
+    if (!plan.requiresScriptUpload) {
+        const QString workingDir = remoteDirectoryOf(remoteArtifactPath);
+        finalCommand = wrapCommandWithWorkingDirectory(os, commandText, workingDir);
+    }
+    const RemoteCommandResult command = executor->execute(finalCommand, 120);
     result.ok = command.ok;
     result.output = command.stdoutText.trimmed();
     result.error = command.ok
         ? QString()
         : (command.error.isEmpty() ? command.stderrText.trimmed() : command.error);
+    return result;
+}
+
+struct UploadDirectoryResult {
+    bool ok = false;
+    qint64 bytesSent = 0;
+    qint64 totalFiles = 0;
+    QString error;
+};
+
+UploadDirectoryResult uploadDirectoryRecursive(RemoteExecutor *executor,
+                                               const QString &localDir,
+                                               const QString &remoteDir,
+                                               const QString &os,
+                                               const std::function<void(int)> &progressCb)
+{
+    UploadDirectoryResult result;
+    QDir dir(localDir);
+    if (!dir.exists()) {
+        result.error = QStringLiteral("本地产物目录不存在：%1").arg(localDir);
+        return result;
+    }
+
+    QStringList fileList;
+    qint64 totalSize = 0;
+    QDirIterator it(localDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        const QFileInfo fi = it.fileInfo();
+        fileList.append(fi.absoluteFilePath());
+        totalSize += fi.size();
+    }
+    result.totalFiles = fileList.size();
+
+    if (fileList.isEmpty()) {
+        result.ok = true;
+        return result;
+    }
+
+    if (progressCb) {
+        progressCb(0);
+    }
+
+    const QString ensureBase = ensureRemoteDirCommand(os, remoteDir);
+    const RemoteCommandResult ensureBaseResult = executor->execute(ensureBase, 30);
+    if (!ensureBaseResult.ok) {
+        result.error = ensureBaseResult.error.isEmpty() ? ensureBaseResult.stderrText.trimmed() : ensureBaseResult.error;
+        return result;
+    }
+
+    qint64 sent = 0;
+    int uploaded = 0;
+    for (const QString &localFile : fileList) {
+        const QString relativePath = QDir(localDir).relativeFilePath(localFile);
+        QString remotePath = remoteDir;
+        if (!remotePath.endsWith(QLatin1Char('/'))) {
+            remotePath += QLatin1Char('/');
+        }
+        remotePath += QDir::fromNativeSeparators(relativePath);
+
+        const QString remoteParent = remoteDirectoryOf(remotePath);
+        const RemoteCommandResult ensureDirResult = executor->execute(ensureRemoteDirCommand(os, remoteParent), 15);
+        if (!ensureDirResult.ok) {
+            result.error = QStringLiteral("创建远端目录失败 %1: %2")
+                               .arg(remoteParent,
+                                    ensureDirResult.error.isEmpty() ? ensureDirResult.stderrText.trimmed() : ensureDirResult.error);
+            return result;
+        }
+
+        const UploadResult upload = executor->uploadFile(localFile, remotePath);
+        if (!upload.ok) {
+            result.error = QStringLiteral("上传文件失败 %1: %2").arg(relativePath, upload.error);
+            return result;
+        }
+        sent += upload.bytesSent;
+        result.bytesSent = sent;
+        ++uploaded;
+        if (progressCb && totalSize > 0) {
+            const int percent = static_cast<int>((sent * 100) / totalSize);
+            progressCb(percent);
+        }
+    }
+
+    result.ok = true;
     return result;
 }
 
@@ -269,6 +379,11 @@ ArtifactMatchPolicy parseArtifactPolicy(const QJsonObject &project)
     return policy == QStringLiteral("newest") ? ArtifactMatchPolicy::Newest : ArtifactMatchPolicy::FailIfMultiple;
 }
 
+bool isFrontendStaticProject(const QJsonObject &project)
+{
+    return project.value(QStringLiteral("type")).toString() == QStringLiteral("frontend-static");
+}
+
 void writeDeploymentLog(DeployOrchestrator::ActiveDeployment *deployment, const QString &line, QString *error)
 {
     if (deployment == nullptr || deployment->logWriter == nullptr) {
@@ -354,6 +469,8 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
         return;
     }
 
+    const bool isFrontend = isFrontendStaticProject(project);
+
     DeployOrchestrator orchestrator(store, DataPaths::configDir());
     DeployOrchestrator::ActiveDeployment deployment(parseFailureStrategy(project));
     if (!orchestrator.begin(projectId, serverId, parseFailureStrategy(project), &deployment, &error)) {
@@ -374,10 +491,11 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
     const QString workingDirRelative = build.value(QStringLiteral("workingDir")).toString(QStringLiteral("."));
     const QString workingDirectory = QDir(projectRoot).filePath(workingDirRelative);
     const QString command = build.value(QStringLiteral("command")).toString();
-    const QString artifactGlob = build.value(QStringLiteral("artifactPath")).toString();
+    QString artifactGlob = build.value(QStringLiteral("artifactPath")).toString();
     const bool uploadPrebuilt = build.value(QStringLiteral("mode")).toString() == QStringLiteral("prebuilt-jar");
+    const QString artifactRename = build.value(QStringLiteral("artifactRename")).toString();
 
-    if (!uploadPrebuilt && !QDir(workingDirectory).exists()) {
+    if (!isFrontend && !uploadPrebuilt && !QDir(workingDirectory).exists()) {
         fail(&deployment,
              FailureStep::Validate,
              QStringLiteral("构建工作目录不存在：%1").arg(workingDirectory),
@@ -505,20 +623,31 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
         emit logLine(QStringLiteral("BUILD"), QStringLiteral("构建成功，退出码 0"));
         writeDeploymentLog(&deployment, QStringLiteral("[BUILD] exit code 0"), &error);
 
-        const ArtifactMatchResult artifactResult = ArtifactMatcher::match(
-            projectRoot,
-            artifactGlob,
-            parseArtifactPolicy(project));
+        if (isFrontend) {
+            artifactPath = QDir(workingDirectory).filePath(artifactGlob);
+            const QFileInfo fi(artifactPath);
+            if (!fi.exists() || !fi.isDir()) {
+                const QString artifactError = QStringLiteral("前端产物目录不存在（期望目录）：%1").arg(artifactPath);
+                emit logLine(QStringLiteral("BUILD"), artifactError);
+                fail(&deployment, FailureStep::Building, artifactError, 60);
+                return;
+            }
+        } else {
+            const ArtifactMatchResult artifactResult = ArtifactMatcher::match(
+                projectRoot,
+                artifactGlob,
+                parseArtifactPolicy(project));
 
-        if (!artifactResult.ok) {
-            const QString artifactError = QStringLiteral("产物匹配失败（规则：%1）：%2")
-                                              .arg(artifactGlob, artifactResult.error);
-            emit logLine(QStringLiteral("BUILD"), artifactError);
-            fail(&deployment, FailureStep::Building, artifactError, 60);
-            return;
+            if (!artifactResult.ok) {
+                const QString artifactError = QStringLiteral("产物匹配失败（规则：%1）：%2")
+                                                  .arg(artifactGlob, artifactResult.error);
+                emit logLine(QStringLiteral("BUILD"), artifactError);
+                fail(&deployment, FailureStep::Building, artifactError, 60);
+                return;
+            }
+
+            artifactPath = artifactResult.paths.first();
         }
-
-        artifactPath = artifactResult.paths.first();
     }
     emit progress(70);
     emit logLine(QStringLiteral("BUILD"), QStringLiteral("产物：%1").arg(artifactPath));
@@ -530,6 +659,64 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
     const QString os = server.value(QStringLiteral("os")).toString();
     const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
     const QString remoteBaseDir = deploy.value(QStringLiteral("remoteBaseDir")).toString();
+    auto executor = createRemoteExecutor(m_connectionContext);
+    if (!executor) {
+        fail(&deployment, FailureStep::Uploading, QStringLiteral("不支持的服务器类型：%1").arg(os), 80);
+        return;
+    }
+
+    if (isFrontend) {
+        emit progress(75);
+        const QString targetDir = artifactRename.isEmpty()
+            ? remoteBaseDir
+            : (remoteBaseDir.endsWith(QLatin1Char('/')) ? remoteBaseDir + artifactRename : remoteBaseDir + QLatin1Char('/') + artifactRename);
+        emit logLine(QStringLiteral("UPLOAD"), QStringLiteral("准备清空并上传静态文件到：%1").arg(targetDir));
+        writeDeploymentLog(&deployment, QStringLiteral("[UPLOAD] frontend static target: ") + targetDir, &error);
+
+        const RemoteCommandResult clearResult = executor->execute(clearRemoteDirCommand(os, targetDir), 60);
+        if (!clearResult.ok) {
+            const QString clearError = clearResult.error.isEmpty() ? clearResult.stderrText.trimmed() : clearResult.error;
+            emit logLine(QStringLiteral("UPLOAD"), QStringLiteral("清理目标目录失败（尝试继续）：%1").arg(clearError));
+            writeDeploymentLog(&deployment, QStringLiteral("[UPLOAD] clear warning: ") + clearError, &error);
+        }
+
+        const UploadDirectoryResult uploadResult = uploadDirectoryRecursive(
+            executor.get(), artifactPath, targetDir, os,
+            [this](int percent) {
+                const int scaled = 75 + (percent * 20) / 100;
+                emit progress(scaled);
+            });
+
+        if (!uploadResult.ok) {
+            emit logLine(QStringLiteral("UPLOAD"), uploadResult.error);
+            fail(&deployment, FailureStep::Uploading, uploadResult.error, 85);
+            return;
+        }
+
+        emit progress(95);
+        emit logLine(QStringLiteral("UPLOAD"), QStringLiteral("静态文件上传完成，共 %1 个文件").arg(uploadResult.totalFiles));
+        writeDeploymentLog(&deployment, QStringLiteral("[UPLOAD] completed, files: %1").arg(uploadResult.totalFiles), &error);
+
+        deployment.job.transitionTo(DeploymentStatus::Success);
+        orchestrator.persistJobState(&deployment, &error);
+
+        const QStringList artifactNames{QFileInfo(artifactPath).fileName()};
+        if (!orchestrator.completeSuccess(&deployment,
+                                          targetDir,
+                                          artifactNames,
+                                          &error)) {
+            emit finished(false, error, deploymentLogPath(&deployment));
+            return;
+        }
+
+        emit progress(100);
+        emit logLine(QStringLiteral("DONE"), QStringLiteral("部署完成（静态包无需重启）"));
+        emit finished(true,
+                     QStringLiteral("部署成功，静态文件已上传到：%1").arg(targetDir),
+                     deploymentLogPath(&deployment));
+        return;
+    }
+
     const QString version = deployment.version;
     const QString artifactFileName = QFileInfo(artifactPath).fileName();
     const ProjectServiceConfig serviceConfig = projectServiceConfig(project);
@@ -538,12 +725,6 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
 
     emit progress(80);
     emit logLine(QStringLiteral("UPLOAD"), QStringLiteral("准备上传到：%1").arg(remoteArtifact));
-
-    auto executor = createRemoteExecutor(m_connectionContext);
-    if (!executor) {
-        fail(&deployment, FailureStep::Uploading, QStringLiteral("不支持的服务器类型：%1").arg(os), 80);
-        return;
-    }
 
     const RemoteCommandResult ensureDir = executor->execute(ensureRemoteDirCommand(os, remoteDirectoryOf(remoteArtifact)), 30);
     if (!ensureDir.ok) {

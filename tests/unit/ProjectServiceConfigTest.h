@@ -17,4 +17,11 @@ private slots:
     void buildsWindowsStatusCommandExcludesShell();
     void detectsLocalRestartScriptPath();
     void buildsRestartPlanForLocalScript();
+    void prefersCustomServiceControlOverRestartScript();
+    void honorsRestartScriptModeExplicitly();
+    void wrapsLinuxCommandWithWorkingDirectory();
+    void wrapsWindowsCommandWithWorkingDirectory();
+    void doesNotWrapWhenWorkingDirEmpty();
+    void backupPathIsJoinedUnderRemoteBaseDir();
+    void backupPathAcceptsAbsoluteLookingInputAsSubdir();
 };

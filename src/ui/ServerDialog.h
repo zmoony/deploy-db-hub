@@ -7,6 +7,7 @@
 
 class QCheckBox;
 class QComboBox;
+class QLabel;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
@@ -61,6 +62,7 @@ private:
     QCheckBox *m_rememberPassword = nullptr;
     QPushButton *m_testConnectionButton = nullptr;
     PathPickerWidget *m_sshKeyPath = nullptr;
+    QLabel *m_sshKeyLabel = nullptr;
     QWidget *m_sshKeyRow = nullptr;
     PathPickerWidget *m_defaultRemoteBaseDir = nullptr;
     QStackedWidget *m_osStack = nullptr;

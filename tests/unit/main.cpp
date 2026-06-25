@@ -1,3 +1,5 @@
+#include "AiAssistHelperTest.h"
+#include "AiSettingsStoreTest.h"
 #include "AppStyleTest.h"
 #include "AppSettingsStoreTest.h"
 #include "ArtifactMatcherTest.h"
@@ -8,17 +10,21 @@
 #include "DeployLogPathOptionsTest.h"
 #include "DeployOrchestratorTest.h"
 #include "DeploymentRecordTest.h"
+#include "ElasticsearchIndexOrganizeTest.h"
 #include "GitSourceProviderTest.h"
 #include "JdkProfileStoreTest.h"
+#include "KafkaTopicParseTest.h"
 #include "LocalLogCatalogTest.h"
 #include "LogPathTest.h"
 #include "LogSanitizerTest.h"
 #include "MainWindowStartupTest.h"
+#include "OpenAiStreamParserTest.h"
 #include "PageLayoutTest.h"
 #include "ProcessOutputDecoderTest.h"
 #include "ProjectManagerWidgetTest.h"
 #include "ServiceNodeConnectionTest.h"
 #include "ProjectServiceConfigTest.h"
+#include "RemoteOutputCleanerTest.h"
 #include "RemoteFileBrowserTest.h"
 #include "RemoteTerminalWidgetTest.h"
 #include "SshClientTest.h"
@@ -50,6 +56,8 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     int status = 0;
+    status |= runTest<AiAssistHelperTest>("AiAssistHelperTest", argc, argv);
+    status |= runTest<AiSettingsStoreTest>("AiSettingsStoreTest", argc, argv);
     status |= runTest<AppSettingsStoreTest>("AppSettingsStoreTest", argc, argv);
     status |= runTest<AppStyleTest>("AppStyleTest", argc, argv);
     status |= runTest<ArtifactMatcherTest>("ArtifactMatcherTest", argc, argv);
@@ -60,17 +68,21 @@ int main(int argc, char **argv)
     status |= runTest<DeploymentRecordTest>("DeploymentRecordTest", argc, argv);
     status |= runTest<DeployOrchestratorTest>("DeployOrchestratorTest", argc, argv);
     status |= runTest<DeployJobTest>("DeployJobTest", argc, argv);
+    status |= runTest<ElasticsearchIndexOrganizeTest>("ElasticsearchIndexOrganizeTest", argc, argv);
     status |= runTest<GitSourceProviderTest>("GitSourceProviderTest", argc, argv);
     status |= runTest<JdkProfileStoreTest>("JdkProfileStoreTest", argc, argv);
+    status |= runTest<KafkaTopicParseTest>("KafkaTopicParseTest", argc, argv);
     status |= runTest<LocalLogCatalogTest>("LocalLogCatalogTest", argc, argv);
     status |= runTest<LogPathTest>("LogPathTest", argc, argv);
     status |= runTest<LogSanitizerTest>("LogSanitizerTest", argc, argv);
     status |= runTest<MainWindowStartupTest>("MainWindowStartupTest", argc, argv);
+    status |= runTest<OpenAiStreamParserTest>("OpenAiStreamParserTest", argc, argv);
     status |= runTest<PageLayoutTest>("PageLayoutTest", argc, argv);
     status |= runTest<ProcessOutputDecoderTest>("ProcessOutputDecoderTest", argc, argv);
     status |= runTest<ProjectManagerWidgetTest>("ProjectManagerWidgetTest", argc, argv);
     status |= runTest<ServiceNodeConnectionTest>("ServiceNodeConnectionTest", argc, argv);
     status |= runTest<ProjectServiceConfigTest>("ProjectServiceConfigTest", argc, argv);
+    status |= runTest<RemoteOutputCleanerTest>("RemoteOutputCleanerTest", argc, argv);
     status |= runTest<RemoteFileBrowserTest>("RemoteFileBrowserTest", argc, argv);
     status |= runTest<RemoteTerminalWidgetTest>("RemoteTerminalWidgetTest", argc, argv);
     status |= runTest<SshClientTest>("SshClientTest", argc, argv);

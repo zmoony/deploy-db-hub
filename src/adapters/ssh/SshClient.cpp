@@ -2,6 +2,7 @@
 
 #include "infra/DataPaths.h"
 #include "infra/RemoteLogPath.h"
+#include "infra/RemoteOutputCleaner.h"
 
 #include <QDir>
 #include <QFile>
@@ -219,12 +220,12 @@ SshClient::ProcessResult SshClient::runProcess(const QString &program,
 
     result.exitCode = process.exitCode();
     result.stdoutText = QString::fromUtf8(process.readAllStandardOutput());
-    result.stderrText = QString::fromUtf8(process.readAllStandardError());
+    result.stderrText = RemoteOutputCleaner::stripSshBanner(QString::fromUtf8(process.readAllStandardError()));
     result.ok = result.exitCode == 0;
     if (!result.ok && result.error.isEmpty()) {
         result.error = result.stderrText.trimmed().isEmpty()
             ? QStringLiteral("%1 退出码 %2").arg(program).arg(result.exitCode)
-            : result.stderrText.trimmed();
+            : RemoteOutputCleaner::normalizeRemoteError(result.stderrText.trimmed());
     }
     return result;
 }

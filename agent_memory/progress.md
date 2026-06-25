@@ -187,7 +187,18 @@
   - 通用工具内容区移除内嵌 13 项工具列表，左侧主导航直接列出 JSON/差异/图片/Base64 等工具项。
   - 大数据/数据库内容区移除顶部产品 Tab，左侧主导航直接列出 Kafka/Redis/Elasticsearch 与 Oracle/PostgreSQL。
   - 服务器相关提示文案同步为「部署工具 → 服务器管理」；Release 构建、`ctest`、应用启动验证通过。
-- 2026-06-22：AI 辅助接入方案文档化：`docs/superpowers/plans/2026-06-22-ai-assist-integration.md` + `docs/schemas/ai-settings.schema.json`；待代码实现。
+- 2026-06-22：AI 辅助接入方案文档化：`docs/superpowers/plans/2026-06-22-ai-assist-integration.md` + `docs/schemas/ai-settings.schema.json`。
+- 2026-06-25：AI 辅助功能代码落地（按集成方案 MVP）：
+  - `AiSettingsStore` 持久化 `config/ai-settings.json`；API Key 走 `CredentialStore`（`deploy-hub/ai-api-key`）。
+  - `OpenAiChatClient`（Qt Network + SSE 流式）+ `OpenAiStreamParser`。
+  - 通用工具侧栏新增「AI 配置」页（URL / Key / 模型 / 保存 / 测试连接）。
+  - JSON 格式化、契约 Mock、文本比较、Cron 表达式工具增加「AI 辅助 / 停止」流式输出。
+  - 新增 `AiSettingsStoreTest`、`OpenAiStreamParserTest`；Release 构建与 `deploy_hub_tests` 通过。
+- 2026-06-25：AI 扩展（独立聊天 + 部署日志分析）：
+  - `AiChatWidget`：通用工具「AI 聊天」多轮对话页（发送/停止/清空，流式输出）。
+  - `LogAiAnalysisWidget` + `AiAssistHelper`：本地 `DeploymentLogDialog` 与远程 `RemoteFileViewerDialog` 底部「AI 分析日志」；日志经 `LogSanitizer` 脱敏并截断后送 AI。
+  - `DeploymentLogOpener` / `MainWindow` 注入 `AiSettingsStore`；新增 `AiAssistHelperTest`。
+  - 左下角 ⚙ 全局设置页新增「AI 辅助」只读摘要 +「打开 AI 配置」跳转至通用工具 AI 配置页。
 - 2026-06-22：按参考图完成主界面 UI 风格优化, 不改功能：
   - 左侧导航改为深色侧栏（`#1E293B` / hover `#334155` / 选中 `#4F46E5`）, 补 Deploy Hub 品牌头与底部分隔区。
   - 顶部模块与仪表盘 Tab 改为白底胶囊按钮, 选中态 `#6366F1` 白字。
@@ -214,6 +225,11 @@
   - 统计卡改为上方「图标方块 + 标题/数量」左右结构，下方显示简要说明。
   - 资源概览恢复为两列表格；快速操作改为左侧 icon 方块、右侧主标题/副标题、末尾箭头。
   - 已通过 `scripts/build-release.ps1`、`ctest --test-dir build-release --output-on-failure --verbose`，刷新 `dist/windows/deploy-hub.exe` 并截图确认首屏无纵向滚动。
+- 2026-06-23：重新编译并打包当前工作区：
+  - 修复当前未提交改动中的编译问题：`PageLayout.cpp` 补 `QLineEdit`、`QHeaderView` include。
+  - 修复 `ServiceNodeConnectionTest` 默认 Kafka 安装目录断言，改为跟随 `ServiceDefaults`。
+  - 已通过 `scripts/build-release.ps1`、`ctest --test-dir build-release --output-on-failure --verbose`。
+  - 已运行 `scripts/package-windows.ps1` 重新生成 `dist/windows/deploy-hub.exe`，dist 启动冒烟验证返回 `started-ok`。
 - 2026-06-23：通用工具改造（第 1 批，分批进行中）：
   - JSON 格式化改为树形查看器（`buildJsonViewerPage`）：左侧输入右侧 `QTreeWidget`，支持格式化、全部展开/折叠、按键或值搜索、复制格式化结果，值按类型着色（数字玫红/字符串绿/布尔紫/null 橙）。
   - 正则改为 `buildRegexPage`：独立正则框 + 文本框 + 大小写/多行/点匹配换行选项，结果用树展示每处匹配与分组（含命名分组、未参与匹配标注）；核心新增 `runRegularExpression` 返回结构化匹配。
@@ -248,3 +264,96 @@
   - Cron 表达式：构建器 7 个字段（秒/分/时/日/月/周/年）原每个套用 `configureFormInput` 强制 240px 最小宽导致整行溢出横向滚动，改为 `setMinimumWidth(56)`，字段仍按 stretch 均分填满。
   - HTTP 请求调试：左侧历史栏在白底卡片上无背景/边框、空树不可见且按钮被顶到底部，新增 `#httpHistoryPanel` 样式（浅灰底+边框+圆角+内边距+树白底边框）、`setMinimumWidth(200)`、`setChildrenCollapsible(false)`、`setSizes({260,760})`。
   - JSON 格式化：① 选中行 value 消失——根因 QStyledItemDelegate 仅把 ForegroundRole 写入 Text 而非 HighlightedText，选中态文字回退白色不可见；加 `#jsonTree::item:selected{background:#E0E7FF;color:#0F172A}` 修复。② 选中复制——右键菜单(复制值/键/键:值)+Ctrl+C 复制当前项值。③ 一键清空——工具栏新增「清空」按钮清空输入/树/搜索。
+- 2026-06-23：HTTP 请求调试页布局重排（参考 Postman，纯布局，本会话 Shell 不可用未编译）：
+  - 历史栏占比过大→ `setMinimumWidth(170)`+`setMaximumWidth(280)`，splitter `setSizes({210,870})`、stretch 0:1，历史不再随窗口放大。
+  - 右侧顶边框→ 顶层 `QVBoxLayout` 加 `contentsMargins(Space20,Space16,Space20,Space16)`，splitter `handleWidth=Space12`，请求面板左留 `Space4`，整页四周留白。
+  - 免外层滚动条→ 请求配置(请求头+Body)与响应改为纵向 `QSplitter`（可拖拽，sizes {360,220}），表格 min80/max150、Body/响应 min60；组件设 `fitFirstScreen=true`。
+  - `MainWindow::addModuleFromPages` 改为按页 `fitFirstScreen` 属性选 `wrapContentPanel`(免滚动)/`wrapScrollableContentPanel`，与 `addModule` 一致；仅设该属性的页生效。
+- 2026-06-23：大数据服务详情页卡顿/返回失效/找不到节点入口修复（`ServiceProductPanel`，本会话 Shell 不可用未编译）：
+  - 根因：`openSelectedInstance`→`refreshBanner` 在 UI 线程同步执行 `ServiceBroker::testInstance`(SSH)，且凭据 `resolve(allowPrompt=true)` 可能弹模态——进入详情即冻结，返回按钮点不动。
+  - `refreshBanner` 改异步：立即填标题/节点并置「检测中…」，`resolve(allowPrompt=false)` 后用 `QFutureWatcher`+`QtConcurrent::run(testInstance)` 后台探测，完成回填「运行正常/失败」；新增 `m_bannerGeneration` 防竞态，状态色用 `style()->unpolish/polish` 重绘。`backToList` 自增 banner/load generation 取消在途回调。
+  - 节点入口：`openSelectedInstance` 打开「无节点」实例时自动切到「节点管理(Node)」页（设按钮 checked + stack index + `onDetailTabChanged`），使「添加节点」直接可见（入口本就是 双击实例→Node 页→添加节点）。
+- 2026-06-23：服务详情返回按钮 + 全局 Tab 下划线样式（`ServiceProductPanel`/`PageLayout`/`MainWindow`/`AppStyle`，本会话 Shell 不可用未编译）：
+  - 返回：「← 返回实例列表」改为 36×36 固定尺寸 `#backNavButton` 箭头图标（`SP_ArrowBack`+tooltip），修复仅底部空白可点的命中问题。
+  - Tab：`#tabButton` 由 pill 改为下划线样式（透明底、选中紫色字+2px 底边、TabBar 底部分割线）；`makeTabBar` 与仪表盘 tab 间距改为 Space24；影响大数据/数据库详情 Tab、部署工具仪表盘 Tab、顶栏模块 Tab。
+- 2026-06-23：公共对话框布局统一（`PageLayout`/`AppStyle`/`ServiceInstanceDialog`/`ServiceNodeDialog`，本会话 Shell 不可用未编译）：
+  - 根因：小表单误用 `applyModalDialog`(min 860×480) 导致窗口过大、内容挤在上方、底部按钮/字段易被裁切；QGroupBox 标题 margin 造成分区样式错乱。
+  - `PageLayout` 新增 `applyCompactModalDialog`(520×300)/`applyFormModalDialog`(680×540)、`wrapDialogFormSection`/`wrapDialogHintSection`/`makeDialogFooter`/`dialogScroll`；表单间距 horizontal16/vertical14。
+  - 新建实例：紧凑尺寸 + 分区标题+白底卡片(`dialogFormPanel`) + 固定底栏按钮，不再撑满 920×540。
+  - 添加节点：可滚动内容区(配置+说明) + 固定底栏(测试连接/确定/取消)，服务器行按钮与输入框同高 36px。
+  - QSS：`dialogFormPanel`/`dialogHintPanel`/`dialogFooter`/`dialogScroll`；对话框内 sectionLabel 去多余 margin；QFormLayout 标签统一样式。
+- 2026-06-23：列表表格撑满 + 节点自定义服务器输入（`PageLayout`/`ServiceProductPanel`/`ServiceNodeDialog`/`ServiceNodeConnection` 等，本会话 Shell 不可用未编译）：
+  - 表格：新增 `configureListingTable`(末列 Stretch、其余 ResizeToContents) + `refreshListingTableColumns`(刷新时不缩窄)；`wrapTableSection` 默认启用；替换 `resizeColumnsToContents()` 于 ServiceProductPanel/MainWindow/ServiceSqlDialog；Server/Project 管理页同步。
+  - 节点：`QComboBox` 改可编辑，支持选已有服务器或直接输入 IP；节点 JSON 增 `customHost`；`ServiceNodeConnection::resolveServerForNode`/`hostFromNodeLabel` 解析自定义主机(默认 SSH root@22)；实例上下文/测试连接/节点列表 IP 列均支持。
+- 2026-06-23：全局对话框/表单显示不全修复（`PageLayout`/`PathPickerWidget`/`ServerDialog`/`ProjectDialog`/`AppStyle`，本会话 Shell 不可用未编译）：
+  - 根因：`configureFormInput` 强制 minWidth=240 在双列 QFormLayout 中溢出裁切；密码「显示」按钮 fixedWidth=48 不够；PathPicker/StackedWidget 未 Expanding；SSH 私钥行隐藏时标签仍占位。
+  - `configureFormInput`/`configurePathField` 改 minWidth=0 + Expanding；新增 `configureHorizontalFormRow`/`tuneDialogFormBox`。
+  - `PathPickerWidget` 输入框 stretch、浏览按钮 minWidth=72；`ServerDialog`/`ProjectDialog` 统一 tuneDialogFormBox、固定底栏、密码行/凭据 stack 横向自适应；SSH 私钥标签与行同步显隐。
+  - QSS：`dialogFormBox` 内 QLineEdit/QComboBox/QStackedWidget min-width:0 防裁切。
+- 2026-06-23：节点配置对话框 UI 修复（`ServiceNodeDialog`/`PageLayout`）：
+  - 「+」按钮不显示：根因全局 QPushButton padding 10×16 挤占 36×36 固定尺寸；复用 `#backNavButton`（padding:0）+ 18px 粗体「+」。
+  - 必填星号改玫红 `#C2185B`：新增 `PageLayout::makeRequiredFormLabel`，服务器行标签改用 RichText 着色。
+  - 已通过 `scripts/build-release.ps1` 编译。
+- 2026-06-23：Kafka 主题页数据为 0 / 刷新慢修复（`KafkaServiceClient`/`ServiceBroker`）：
+  - 根因：Kafka 3.9 需 `kafka-get-offsets.sh --bootstrap-server`，旧 `kafka.tools.GetOffsetShell --broker-list` 静默失败；且原先 7 次串行 SSH。
+  - 修复：单次 SSH 批量执行 describe + 5 组 offset + consumer groups；兼容 3.x/2.7 类名与参数；缺失时间戳分区回退 earliest 而非 latest；offset 失败时返回明确错误。
+  - 新增 `KafkaTopicParseTest`；已通过 Release 构建与单测。
+- 2026-06-23：远程终端选中/字体/行距修复（`RemoteTerminalWidget`/`AppStyle`）：
+  - 选中铺满行尾：① `mousePressEvent` 无选区时强跳文档末尾，导致无法拖选；改到 `mouseReleaseEvent` 仅在未选中时回末尾。② `QPlainTextEdit` 选区高亮默认铺满视口宽；改 `QTextEdit` 仅高亮实际文本。
+  - 字体 13pt，优先 Cascadia Mono/Consolas 等等宽字体；行高 160%。
+  - 已通过 `scripts/build-release.ps1` 编译。
+- 2026-06-23：Elasticsearch Kibana 端口可配置：
+  - 默认打开 `http://<host>:5601`（不再用 ES 端口 +1）；节点对话框新增「Kibana 端口」字段，存 `kibanaPort`。
+  - `ServiceNodeConnectionTest::resolveElasticsearchKibanaPort` 已通过。
+- 2026-06-23：Elasticsearch 索引管理增强：
+  - 按模板基名分组（`index_face` + `index_face202603`…），组内排序；组行可点击 ▶/▼ 展开子索引。
+  - 状态列改为 green/yellow/red tag；操作列改为蓝色「快速查询」对话框（分页 + query_string）。
+  - 新增 `ElasticsearchIndexOrganizeTest`；Release 构建通过。
+- 2026-06-23：Redis/ES/数据库直连添加：
+  - `ServiceNodeDialog` 直连模式：地址、端口、密码、用户名（Redis ACL），无需登记部署服务器。
+  - Kafka 仍走 SSH 托管模式；测试连接直连不再弹 SSH 密码框。
+  - `ServiceNodeConnection::encodeInfo/decodeInfo` + 单测通过。
+- 2026-06-23：数据库直连（Oracle/PostgreSQL）：
+  - 列表改为「新建连接」一步填写地址/端口/库名/账号；移除节点管理 Tab。
+  - 双击进入表管理/SQL；旧无节点实例可通过「编辑连接」补全参数。
+- 2026-06-23：Redis 直连 Key 管理：
+  - 不再弹 SSH 密码（直连产品跳过 RemoteCredentialResolver）；新建/编辑改为 `ServiceRedisConnectionDialog`。
+  - Key 管理工具栏 DB0–DB15 切换；连接后 `SELECT` 对应库；Hash 查看表格化 field/value。
+  - 移除 Redis 节点管理 Tab；`ServiceNodeConnectionTest::resolveRedisDatabase` 已通过。
+- 2026-06-23：全局设置入口调整：
+  - 部署工具侧边栏移除「设置」项；Maven/JDBC/配置目录等统一由左下角 ⚙ 设置 进入。
+  - 设置页只需选择 PostgreSQL/Oracle 驱动 JAR（如 postgresql-42.x.jar、ojdbc8.jar），不再配置 libpq/Instant Client/sqldrivers。
+  - `JdbcSqlBridge` 通过 `java -cp jdbc-sql-runner.jar;driver.jar` 执行 SQL；构建时自动打包 `tools/jdbc-sql-runner.jar`。
+  - `SqlServiceClient` 优先走 JDBC；未配置 JAR 时仍尝试 Qt 原生驱动。
+- 2026-06-23：项目管理日志查看与分组：
+  - 工具栏「查看日志」按项目 `deploy.logDir` 打开远程/本地日志，复用 `DeploymentLogOpener`（与一键部署相同查看器）。
+  - 项目配置新增「分组」字段；列表按分组排序并显示分组标题行；右侧「分组筛选」下拉可过滤。
+- 2026-06-24：QML 主壳迁移（Workbench / Element Plus 风格）：
+  - 新增 `src/qml/`：`Theme.qml`、`MainShell.qml`、`DhSidebar`、`DhModuleTabBar`、`DhLineTabBar`。
+  - `AppShellController` 管理模块/导航/设置页状态；`WidgetHostItem` 嵌入现有 Widget 业务页。
+  - `MainWindow` 中央区改为 `QQuickWidget`；头部模块 Tab 保持按钮样式；Release 构建通过。
+  - `AGENTS.md` 更新为 QML 主壳 + Widget 渐进迁移策略。
+- 2026-06-24：QML 打包修复：
+  - `CMakeLists.txt` 改用 `qt_add_resources` 嵌入 QML（修复 qrc 未进 exe）。
+  - `scripts/package-windows.ps1` 增加 `--qmldir src/qml/DeployHub`，`dist/windows` 补齐 `Qt6Qml.dll` 等依赖。
+- 2026-06-24：QML 渐进迁移（保留 AppStyle 原样式）：
+  - 主壳混合布局：QML 侧栏/模块 Tab + Widget 内容区。
+  - `makeLineTabBar` 全面替换为 `DhLineTabBar.qml` + `LineTabBarController`（仪表盘/大数据/Kafka 等子页 Tab）。
+  - 样式对齐 `AppStyle.cpp`：`lineTabButton` 下划线 #409EFF，模块 Tab #6366F1，深色侧栏 #1E293B。
+  - 通用 QML 组件：`DhButton`/`DhPageHeader`/`DhTextArea`（色值对齐 AppStyle，不改现有 Widget 样式表）。
+  - 业务页试点：通用工具「UUID 生成」→ `UuidToolPage.qml` + `UuidToolController`。
+  - 2026-06-24 性能/渲染优化：`QmlEngineProvider` 共享 QQmlEngine；子页 Tab 与 UUID 页改回 Widget；壳层 QML 启用 `NativeTextRendering`。
+  - 2026-06-24 QML 性能+视觉：`QmlPerfConfig` 强制 OpenGL；`Visual`/`DhCard`/`DhImage`/`DhFastBlur` 全局组件；侧栏 ListView cacheBuffer+reuseItems，滚动时关闭特效。
+  - 2026-06-24 纯 QML 壳：`QQmlApplicationEngine` + `App.qml`/`MainShell.qml` + `WidgetHost` 嵌入 Widget 业务页；可选 `DEPLOY_HUB_USE_FLUENTUI` + `AppFluent.qml`；模块 Tab 间距收紧（4px）。
+  - 2026-06-24 FluentUI 集成：`DEPLOY_HUB_USE_FLUENTUI=ON` 动态链接 `fluentuiplugin`（exe ~3.4MB）；`AppFluent.qml` 补 `QtQuick.Layouts`；打包脚本剔除 qmltooling/translations/无用 QML 模块。
+- 2026-06-24：回退 QML/FluentUI 主壳（用户反馈样式错乱、点击花屏、部署子页打不开）：
+  - `main.cpp` 恢复直接启动 `MainWindow`（Widget 侧栏 + `PageLayout::makeTabBar` + 模块栈）。
+  - 移除 `QQuickWidget`/隐藏 host/`AppShellController` 绑定；默认构建不再启用 `DEPLOY_HUB_USE_FLUENTUI`。
+  - Release 构建 + `dist/windows/deploy-hub.exe` 打包通过（~3.4 MB exe，dist ~137 MB）。
+  - QML 源码保留作实验，不作为默认入口。
+- 2026-06-24：修复模块 Tab 与左侧菜单不同步：`PageLayout::makeTabBar` 误忽略 `groupOut`，改回委托 `makeModuleTabBar`；`showModule` 同步模块 Tab 选中态。
+- 2026-06-24：HTTP 请求调试 UI 重构（对齐 Postman 风格设计）：去掉标题区；5px 分栏；紧凑历史列表（方法/路径/状态/耗时）；胶囊 Tab（请求头/参数/Body/认证 + 响应体/头/Cookies）；10px 圆角表格；JSON 语法高亮；彩色 HTTP 方法标签；导出完整 JSON。
+- 2026-06-25：项目配置「重启脚本 / 服务控制」二选一：有启动/停止/重启命令时优先自定义命令并禁用脚本；`buildRestartExecutionPlan` 同步；对话框改为非模态独立窗口（可多开、最小化仅影响当前窗口）。
+- 2026-06-25：项目配置新增 `deploy.restartMode`（`restart-script` / `service-command`）启动方式下拉；UI 用 QStackedWidget 按选择显示脚本或自定义命令，保存时只写入当前模式字段。
+- 2026-06-25：修复一键部署 service-command 模式重启找不到 jar：`executeProjectRestart` 在非脚本模式下用 `wrapCommandWithWorkingDirectory` 自动 `cd` 到产物目录再执行命令（Linux `cd '<dir>' && <cmd>` / Windows `cd /d "<dir>" && <cmd>`）。新增 `ProjectServiceConfigTest` 3 个用例；Release 构建与 deploy_hub_tests 通过。
+- 2026-06-25：AI 聊天页改参考豆包风格，UI 减重：顶部 toolbar 三个文字按钮去掉，发送/停止做成输入卡片内右下角圆形图标按钮；「新对话」图标按钮放标题右侧；输入区改成圆角 QFrame（`#aiInputCard`），含 AI 头像（`images/icon.png`）+ 多行输入；输入框下方加 7 个快速操作 chip（快速/图像/PPT/编程/视频/翻译/更多），每个带 SVG 图标，chip 点击插入示例提示词；新增 `images/ai/{quick,image,presentation,code,video,translate,more}.svg` 并写入 QRC/CMakeLists。`AppStyle.cpp` 新增对应样式（`#aiInputCard` / `#aiActionChip` / `#aiSendButton` / `#aiStopButton` / `#aiNewChatButton` / `#aiChatHistory` / `#aiChatInput` / `#aiAvatar` / `#secondaryText`）。Release 构建、ctest、应用冒烟启动均通过。

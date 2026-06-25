@@ -1,5 +1,11 @@
 #include "ui/CommonToolsWidget.h"
 
+#include "ui/AiChatWidget.h"
+#include "adapters/ai/OpenAiChatClient.h"
+#include "ui/AiAssistHelper.h"
+#include "ui/AiStreamBuffer.h"
+#include "infra/AiSettingsStore.h"
+#include "infra/CredentialStore.h"
 #include "tools/CommonTools.h"
 #include "ui/HttpRequestWidget.h"
 #include "ui/PageLayout.h"
@@ -42,6 +48,7 @@
 #include <QSharedPointer>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QSignalBlocker>
 #include <QStringList>
 #include <QTableWidget>
 #include <QTextBlock>
@@ -66,7 +73,9 @@ const QColor kJsonNullColor(0xF5, 0x7C, 0x00);
 QPushButton *makeActionButton(const QString &text, QWidget *parent)
 {
     auto *button = new QPushButton(text, parent);
-    button->setMinimumHeight(PageLayout::DialogFieldHeight);
+    button->setObjectName(QStringLiteral("toolBarButton"));
+    button->setMinimumHeight(28);
+    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     return button;
 }
 
@@ -96,7 +105,8 @@ QLineEdit *addResultRow(QFormLayout *form, const QString &label, QWidget *parent
     edit->setReadOnly(true);
     PageLayout::configureFormInput(edit);
     auto *copy = new QPushButton(QStringLiteral("复制"), row);
-    copy->setMinimumHeight(PageLayout::DialogFieldHeight);
+    copy->setObjectName(QStringLiteral("formActionButton"));
+    copy->setFixedHeight(PageLayout::DialogFieldHeight);
     QObject::connect(copy, &QPushButton::clicked, edit, [edit]() {
         copyTextToClipboard(edit->text());
     });
@@ -174,14 +184,20 @@ void populateJsonTree(QTreeWidgetItem *parent, const QString &keyText, const QJs
 
 }
 
-CommonToolsWidget::CommonToolsWidget(QWidget *parent)
+CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
+                                     CredentialStore *credentials,
+                                     QWidget *parent)
     : QWidget(parent)
+    , m_aiSettings(aiSettings)
+    , m_credentials(credentials)
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
     m_stack = new QStackedWidget(this);
+    m_stack->addWidget(buildAiConfigPage());
+    m_stack->addWidget(new AiChatWidget(m_aiSettings, m_credentials, this));
     m_stack->addWidget(buildJsonViewerPage());
     m_stack->addWidget(buildDiffPage());
     m_stack->addWidget(buildImageBase64Page());
@@ -203,7 +219,9 @@ CommonToolsWidget::CommonToolsWidget(QWidget *parent)
         QStringLiteral("粘贴 Swagger/Thrift 定义或 JSON 示例，生成多组 mock 数据。"),
         QStringLiteral("生成 Mock"),
         QString(),
-        QStringLiteral("{\"name\":\"demo\",\"count\":1,\"enabled\":true}")));
+        QStringLiteral("{\"name\":\"demo\",\"count\":1,\"enabled\":true}"),
+        true,
+        QStringLiteral("You generate mock JSON data. Reply with a JSON array only, no markdown or explanation.")));
     m_stack->addWidget(buildTextToolPage(
         QStringLiteral("数据采样脱敏"),
         QStringLiteral("从样本数据中抽样并按规则脱敏导出。"),
@@ -224,6 +242,8 @@ CommonToolsWidget::CommonToolsWidget(QWidget *parent)
 QStringList CommonToolsWidget::toolLabels() const
 {
     return {
+        QStringLiteral("AI 配置"),
+        QStringLiteral("AI 聊天"),
         QStringLiteral("JSON 格式化"),
         QStringLiteral("文本比较"),
         QStringLiteral("图片/Base64"),
@@ -267,7 +287,9 @@ QWidget *CommonToolsWidget::buildTextToolPage(const QString &title,
                                               const QString &subtitle,
                                               const QString &primaryAction,
                                               const QString &secondaryAction,
-                                              const QString &placeholder)
+                                              const QString &placeholder,
+                                              bool enableAiAssist,
+                                              const QString &aiSystemPrompt)
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
@@ -286,6 +308,15 @@ QWidget *CommonToolsWidget::buildTextToolPage(const QString &title,
     if (!secondaryAction.isEmpty()) {
         secondaryButton = makeActionButton(secondaryAction, toolbar);
         toolbarLayout->addWidget(secondaryButton);
+    }
+    QPushButton *aiAssistButton = nullptr;
+    QPushButton *aiStopButton = nullptr;
+    if (enableAiAssist) {
+        aiAssistButton = makeActionButton(QStringLiteral("AI 辅助"), toolbar);
+        aiStopButton = makeActionButton(QStringLiteral("停止"), toolbar);
+        aiStopButton->setEnabled(false);
+        toolbarLayout->addWidget(aiAssistButton);
+        toolbarLayout->addWidget(aiStopButton);
     }
     toolbarLayout->addStretch();
     layout->addWidget(toolbar);
@@ -348,6 +379,16 @@ QWidget *CommonToolsWidget::buildTextToolPage(const QString &title,
         });
     }
 
+    if (enableAiAssist && aiAssistButton != nullptr && aiStopButton != nullptr) {
+        wireAiAssist(page,
+                     aiAssistButton,
+                     aiStopButton,
+                     output,
+                     message,
+                     [input]() { return input->toPlainText(); },
+                     aiSystemPrompt);
+    }
+
     return page;
 }
 
@@ -371,6 +412,9 @@ QWidget *CommonToolsWidget::buildJsonViewerPage()
     auto *collapseButton = makeActionButton(QStringLiteral("全部折叠"), toolbar);
     auto *copyButton = makeActionButton(QStringLiteral("复制格式化结果"), toolbar);
     auto *clearButton = makeActionButton(QStringLiteral("清空"), toolbar);
+    auto *aiAssistButton = makeActionButton(QStringLiteral("AI 辅助"), toolbar);
+    auto *aiStopButton = makeActionButton(QStringLiteral("停止"), toolbar);
+    aiStopButton->setEnabled(false);
     auto *search = new QLineEdit(toolbar);
     search->setPlaceholderText(QStringLiteral("搜索键或值"));
     search->setClearButtonEnabled(true);
@@ -380,6 +424,8 @@ QWidget *CommonToolsWidget::buildJsonViewerPage()
     toolbarLayout->addWidget(collapseButton);
     toolbarLayout->addWidget(copyButton);
     toolbarLayout->addWidget(clearButton);
+    toolbarLayout->addWidget(aiAssistButton);
+    toolbarLayout->addWidget(aiStopButton);
     toolbarLayout->addWidget(search, 1);
     layout->addWidget(toolbar);
 
@@ -389,7 +435,8 @@ QWidget *CommonToolsWidget::buildJsonViewerPage()
     bodyLayout->setSpacing(PageLayout::Space12);
 
     auto *input = makeEditor(QStringLiteral("{\"name\":\"deploy-hub\",\"port\":8080,\"enabled\":true,\"extra\":null}"), body);
-    auto *tree = new QTreeWidget(body);
+    auto *rightPanel = new QStackedWidget(body);
+    auto *tree = new QTreeWidget(rightPanel);
     tree->setObjectName(QStringLiteral("jsonTree"));
     tree->setColumnCount(2);
     tree->setHeaderLabels({QStringLiteral("键 / 索引"), QStringLiteral("值")});
@@ -398,8 +445,12 @@ QWidget *CommonToolsWidget::buildJsonViewerPage()
     tree->setContextMenuPolicy(Qt::CustomContextMenu);
     tree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     tree->header()->setStretchLastSection(true);
+    auto *aiOutput = makeEditor(QStringLiteral("AI 输出"), rightPanel);
+    aiOutput->setReadOnly(true);
+    rightPanel->addWidget(tree);
+    rightPanel->addWidget(aiOutput);
     bodyLayout->addWidget(input, 1);
-    bodyLayout->addWidget(tree, 1);
+    bodyLayout->addWidget(rightPanel, 1);
     layout->addWidget(body, 1);
 
     auto *message = new QLabel(page);
@@ -516,6 +567,16 @@ QWidget *CommonToolsWidget::buildJsonViewerPage()
     });
 
     rebuildTree();
+
+    wireAiAssist(page,
+                 aiAssistButton,
+                 aiStopButton,
+                 aiOutput,
+                 message,
+                 [input]() { return input->toPlainText(); },
+                 QStringLiteral("You fix and format invalid JSON. Reply with valid JSON only, no markdown or explanation."),
+                 [rightPanel]() { rightPanel->setCurrentIndex(1); });
+
     return page;
 }
 
@@ -854,11 +915,16 @@ QWidget *CommonToolsWidget::buildDiffPage()
     auto *swap = makeActionButton(QStringLiteral("交换两侧"), toolbar);
     auto *copyLeft = makeActionButton(QStringLiteral("复制源"), toolbar);
     auto *copyRight = makeActionButton(QStringLiteral("复制对比"), toolbar);
+    auto *aiAssistButton = makeActionButton(QStringLiteral("AI 辅助"), toolbar);
+    auto *aiStopButton = makeActionButton(QStringLiteral("停止"), toolbar);
+    aiStopButton->setEnabled(false);
     toolbarLayout->addWidget(openLeft);
     toolbarLayout->addWidget(openRight);
     toolbarLayout->addWidget(swap);
     toolbarLayout->addWidget(copyLeft);
     toolbarLayout->addWidget(copyRight);
+    toolbarLayout->addWidget(aiAssistButton);
+    toolbarLayout->addWidget(aiStopButton);
     toolbarLayout->addStretch();
     layout->addWidget(toolbar);
 
@@ -871,6 +937,11 @@ QWidget *CommonToolsWidget::buildDiffPage()
     editorsLayout->addWidget(left, 1);
     editorsLayout->addWidget(right, 1);
     layout->addWidget(editors, 1);
+
+    auto *aiOutput = makeEditor(QStringLiteral("AI 差异摘要"), page);
+    aiOutput->setReadOnly(true);
+    aiOutput->setMaximumHeight(180);
+    layout->addWidget(aiOutput);
 
     auto *status = new QLabel(page);
     status->setObjectName(QStringLiteral("toolMessage"));
@@ -945,6 +1016,16 @@ QWidget *CommonToolsWidget::buildDiffPage()
         copyTextToClipboard(right->toPlainText());
     });
 
+    wireAiAssist(page,
+                 aiAssistButton,
+                 aiStopButton,
+                 aiOutput,
+                 status,
+                 [left, right]() {
+        return QStringLiteral("Source:\n%1\n\nTarget:\n%2").arg(left->toPlainText(), right->toPlainText());
+    },
+                 QStringLiteral("Summarize text differences in concise Chinese. Focus on what changed, added, or removed."));
+
     return page;
 }
 
@@ -967,8 +1048,13 @@ QWidget *CommonToolsWidget::buildCronPage()
     expr->setText(QStringLiteral("0 0 12 * * ?"));
     PageLayout::configureFormInput(expr);
     auto *parseButton = makeActionButton(QStringLiteral("解析 / 预览"), exprRow);
+    auto *aiAssistButton = makeActionButton(QStringLiteral("AI 辅助"), exprRow);
+    auto *aiStopButton = makeActionButton(QStringLiteral("停止"), exprRow);
+    aiStopButton->setEnabled(false);
     exprLayout->addWidget(expr, 1);
     exprLayout->addWidget(parseButton);
+    exprLayout->addWidget(aiAssistButton);
+    exprLayout->addWidget(aiStopButton);
     layout->addWidget(exprRow);
 
     auto *builder = new QWidget(page);
@@ -1031,6 +1117,11 @@ QWidget *CommonToolsWidget::buildCronPage()
     auto *runs = new QListWidget(page);
     layout->addWidget(runs, 1);
 
+    auto *aiOutput = makeEditor(QStringLiteral("AI 解释"), page);
+    aiOutput->setReadOnly(true);
+    aiOutput->setMaximumHeight(160);
+    layout->addWidget(aiOutput);
+
     auto *message = new QLabel(page);
     message->setObjectName(QStringLiteral("toolMessage"));
     layout->addWidget(message);
@@ -1069,6 +1160,14 @@ QWidget *CommonToolsWidget::buildCronPage()
             message->setText(QStringLiteral("已列出未来 %1 次执行时间").arg(schedule.nextRuns.size()));
         }
     });
+
+    wireAiAssist(page,
+                 aiAssistButton,
+                 aiStopButton,
+                 aiOutput,
+                 message,
+                 [expr]() { return expr->text(); },
+                 QStringLiteral("Explain the cron expression in concise Chinese, including field meanings and typical schedule."));
 
     return page;
 }
@@ -1649,3 +1748,271 @@ void CommonToolsWidget::setOutput(QPlainTextEdit *output, QLabel *message, const
     output->setPlainText(text);
     message->setText(QStringLiteral("已完成"));
 }
+
+QWidget *CommonToolsWidget::buildAiConfigPage()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(PageLayout::Space12);
+    layout->addWidget(PageLayout::makeHeaderBlock(
+        QStringLiteral("AI 配置"),
+        QStringLiteral("配置 OpenAI 兼容 API（URL / Key / 模型），供通用工具中的 AI 辅助功能使用。"),
+        page));
+
+    QFormLayout *form = nullptr;
+    auto *formPanel = PageLayout::wrapDialogFormSection(QStringLiteral("连接配置"), page, &form);
+    form->setHorizontalSpacing(PageLayout::Space16);
+    form->setVerticalSpacing(PageLayout::Space14);
+
+    auto *apiBaseUrlInput = new QLineEdit(formPanel);
+    apiBaseUrlInput->setPlaceholderText(QStringLiteral("https://api.openai.com/v1"));
+    PageLayout::configureFormInput(apiBaseUrlInput);
+    form->addRow(QStringLiteral("API Base URL"), apiBaseUrlInput);
+
+    auto *passwordRow = new QWidget(formPanel);
+    PageLayout::configureHorizontalFormRow(passwordRow);
+    auto *passwordRowLayout = new QHBoxLayout(passwordRow);
+    passwordRowLayout->setContentsMargins(0, 0, 0, 0);
+    passwordRowLayout->setSpacing(PageLayout::Space8);
+    auto *apiKeyInput = new QLineEdit(passwordRow);
+    apiKeyInput->setEchoMode(QLineEdit::Password);
+    apiKeyInput->setPlaceholderText(QStringLiteral("sk-..."));
+    PageLayout::configureFormInput(apiKeyInput);
+    auto *visibilityButton = new QPushButton(QStringLiteral("显示"), passwordRow);
+    visibilityButton->setObjectName(QStringLiteral("backNavButton"));
+    visibilityButton->setCheckable(true);
+    visibilityButton->setFixedSize(48, PageLayout::DialogFieldHeight);
+    connect(visibilityButton, &QPushButton::toggled, page, [apiKeyInput, visibilityButton](bool visible) {
+        apiKeyInput->setEchoMode(visible ? QLineEdit::Normal : QLineEdit::Password);
+        visibilityButton->setText(visible ? QStringLiteral("隐藏") : QStringLiteral("显示"));
+    });
+    passwordRowLayout->addWidget(apiKeyInput, 1);
+    passwordRowLayout->addWidget(visibilityButton);
+    form->addRow(QStringLiteral("API Key"), passwordRow);
+
+    auto *modelInput = new QLineEdit(formPanel);
+    modelInput->setPlaceholderText(QStringLiteral("gpt-4o-mini"));
+    PageLayout::configureFormInput(modelInput);
+    form->addRow(QStringLiteral("模型"), modelInput);
+
+    auto *rememberKeyCheck = new QCheckBox(QStringLiteral("记住 Key"), formPanel);
+    rememberKeyCheck->setChecked(true);
+    form->addRow(QString(), rememberKeyCheck);
+
+    layout->addWidget(formPanel);
+
+    auto *actions = new QWidget(page);
+    auto *actionsLayout = new QHBoxLayout(actions);
+    actionsLayout->setContentsMargins(0, 0, 0, 0);
+    actionsLayout->setSpacing(PageLayout::Space8);
+    auto *saveButton = makeActionButton(QStringLiteral("保存配置"), actions);
+    auto *testButton = makeActionButton(QStringLiteral("测试连接"), actions);
+    actionsLayout->addWidget(saveButton);
+    actionsLayout->addWidget(testButton);
+    actionsLayout->addStretch();
+    layout->addWidget(actions);
+
+    auto *message = new QLabel(page);
+    message->setObjectName(QStringLiteral("toolMessage"));
+    layout->addWidget(message);
+    layout->addStretch();
+
+    auto *testClient = new OpenAiChatClient(page);
+
+    auto loadForm = [this, apiBaseUrlInput, apiKeyInput, modelInput, rememberKeyCheck, message]() {
+        if (m_aiSettings == nullptr) {
+            return;
+        }
+        AiSettings settings;
+        QString error;
+        if (!m_aiSettings->load(&settings, &error)) {
+            message->setText(error);
+            return;
+        }
+        apiBaseUrlInput->setText(settings.apiBaseUrl);
+        modelInput->setText(settings.model);
+        rememberKeyCheck->setChecked(settings.rememberKey);
+        apiKeyInput->clear();
+        if (m_credentials != nullptr && m_credentials->has(settings.credentialRef)) {
+            apiKeyInput->setPlaceholderText(QStringLiteral("已保存 Key，留空表示不修改"));
+        } else {
+            apiKeyInput->setPlaceholderText(QStringLiteral("sk-..."));
+        }
+        message->clear();
+    };
+    loadForm();
+
+    connect(saveButton, &QPushButton::clicked, page, [this, apiBaseUrlInput, apiKeyInput, modelInput, rememberKeyCheck, message, loadForm]() {
+        if (m_aiSettings == nullptr || m_credentials == nullptr) {
+            message->setText(QStringLiteral("AI 配置存储未初始化"));
+            return;
+        }
+
+        AiSettings settings;
+        QString loadError;
+        m_aiSettings->load(&settings, &loadError);
+
+        settings.apiBaseUrl = apiBaseUrlInput->text().trimmed();
+        settings.model = modelInput->text().trimmed();
+        settings.rememberKey = rememberKeyCheck->isChecked();
+        if (settings.credentialRef.isEmpty()) {
+            settings.credentialRef = QStringLiteral("deploy-hub/ai-api-key");
+        }
+
+        if (settings.apiBaseUrl.isEmpty()) {
+            message->setText(QStringLiteral("请填写 API Base URL"));
+            return;
+        }
+        if (settings.model.isEmpty()) {
+            message->setText(QStringLiteral("请填写模型名称"));
+            return;
+        }
+
+        QString saveError;
+        if (!m_aiSettings->save(settings, &saveError)) {
+            message->setText(saveError);
+            return;
+        }
+
+        if (settings.rememberKey) {
+            if (!apiKeyInput->text().isEmpty()) {
+                if (!m_credentials->save(settings.credentialRef, apiKeyInput->text(), &saveError)) {
+                    message->setText(saveError);
+                    return;
+                }
+            } else if (!m_credentials->has(settings.credentialRef)) {
+                message->setText(QStringLiteral("勾选记住 Key 时请填写 API Key"));
+                return;
+            }
+        } else {
+            m_credentials->remove(settings.credentialRef, &saveError);
+        }
+
+        message->setText(QStringLiteral("配置已保存"));
+        loadForm();
+    });
+
+    connect(testButton, &QPushButton::clicked, page, [this, page, apiBaseUrlInput, apiKeyInput, modelInput, message, testClient, saveButton, testButton]() {
+        AiSettings settings;
+        settings.apiBaseUrl = apiBaseUrlInput->text().trimmed();
+        settings.model = modelInput->text().trimmed();
+        settings.credentialRef = QStringLiteral("deploy-hub/ai-api-key");
+
+        QString key = apiKeyInput->text();
+        if (key.isEmpty() && m_credentials != nullptr) {
+            AiSettings stored;
+            m_aiSettings->load(&stored, nullptr);
+            key = m_credentials->load(stored.credentialRef);
+        }
+
+        QString error;
+        if (settings.apiBaseUrl.isEmpty() || settings.model.isEmpty() || key.isEmpty()) {
+            message->setText(QStringLiteral("请先填写 URL、模型和 API Key"));
+            return;
+        }
+
+        testClient->abort();
+        saveButton->setEnabled(false);
+        testButton->setEnabled(false);
+        message->setText(QStringLiteral("正在测试连接..."));
+
+        connect(testClient, &OpenAiChatClient::finished, page, [message, testButton, saveButton]() {
+            message->setText(QStringLiteral("连接成功"));
+            testButton->setEnabled(true);
+            saveButton->setEnabled(true);
+        }, Qt::SingleShotConnection);
+        connect(testClient, &OpenAiChatClient::failed, page, [message, testButton, saveButton](const QString &failedMessage) {
+            message->setText(QStringLiteral("连接失败：%1").arg(failedMessage));
+            testButton->setEnabled(true);
+            saveButton->setEnabled(true);
+        }, Qt::SingleShotConnection);
+
+        testClient->testConnection(settings.apiBaseUrl, key, settings.model);
+    });
+
+    return page;
+}
+
+bool CommonToolsWidget::resolveAiCredentials(AiSettings *settings, QString *apiKey, QString *error) const
+{
+    return AiAssistHelper::resolveCredentials(m_aiSettings, m_credentials, settings, apiKey, error);
+}
+
+void CommonToolsWidget::wireAiAssist(QWidget *page,
+                                     QPushButton *assistButton,
+                                     QPushButton *stopButton,
+                                     QPlainTextEdit *output,
+                                     QLabel *message,
+                                     const std::function<QString()> &userContentProvider,
+                                     const QString &systemPrompt,
+                                     const std::function<void()> &onStart)
+{
+    auto *client = new OpenAiChatClient(page);
+    auto *buffer = new AiStreamBuffer(output, page);
+
+    auto setBusy = [assistButton, stopButton](bool busy) {
+        assistButton->setEnabled(!busy);
+        stopButton->setEnabled(busy);
+    };
+
+    connect(client, &OpenAiChatClient::deltaReceived, page, [buffer](const QString &chunk) {
+        buffer->append(chunk);
+    });
+    connect(client, &OpenAiChatClient::finished, page, [message, buffer, setBusy]() {
+        buffer->flush();
+        message->setText(QStringLiteral("AI 已完成"));
+        setBusy(false);
+    });
+    connect(client, &OpenAiChatClient::failed, page, [message, buffer, setBusy](const QString &failedMessage) {
+        buffer->flush();
+        message->setText(QStringLiteral("AI 失败：%1").arg(failedMessage));
+        setBusy(false);
+    });
+
+    connect(assistButton, &QPushButton::clicked, page, [this, client, output, message, buffer, userContentProvider, systemPrompt, onStart, setBusy]() {
+        const QString userContent = userContentProvider().trimmed();
+        if (userContent.isEmpty()) {
+            message->setText(QStringLiteral("请先输入内容"));
+            return;
+        }
+
+        AiSettings settings;
+        QString apiKey;
+        QString error;
+        if (!resolveAiCredentials(&settings, &apiKey, &error)) {
+            message->setText(error);
+            return;
+        }
+
+        if (onStart) {
+            onStart();
+        }
+
+        client->abort();
+        buffer->reset();
+        output->clear();
+        setBusy(true);
+        message->setText(QStringLiteral("AI 生成中..."));
+
+        const QJsonArray messages{
+            QJsonObject{
+                {QStringLiteral("role"), QStringLiteral("system")},
+                {QStringLiteral("content"), systemPrompt}
+            },
+            QJsonObject{
+                {QStringLiteral("role"), QStringLiteral("user")},
+                {QStringLiteral("content"), userContent}
+            }
+        };
+        client->streamChat(settings.apiBaseUrl, apiKey, settings.model, messages);
+    });
+
+    connect(stopButton, &QPushButton::clicked, page, [client, message, buffer, setBusy]() {
+        client->abort();
+        buffer->flush();
+        message->setText(QStringLiteral("已停止"));
+        setBusy(false);
+    });
+}
+

@@ -34,15 +34,15 @@ ServiceHubWidget::ServiceHubWidget(ConfigStore *store,
     stack->addWidget(m_bigDataManager);
     stack->addWidget(m_databaseManager);
 
-    QButtonGroup *tabGroup = nullptr;
-    layout->addWidget(PageLayout::makeTabBar(
+    LineTabBarController *tabController = nullptr;
+    layout->addWidget(PageLayout::makeLineTabBar(
         {
             QStringLiteral("服务器"),
             QStringLiteral("大数据"),
             QStringLiteral("数据库")
         },
         this,
-        &tabGroup,
+        &tabController,
         stack));
     layout->addWidget(stack, 1);
 

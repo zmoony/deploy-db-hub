@@ -1,17 +1,26 @@
 #include "ui/ServiceProductPanel.h"
 
 #include "adapters/services/SqlServiceClient.h"
+#include "ui/ServiceNodeTypes.h"
 #include "infra/ServiceNodeConnection.h"
+#include "infra/RemoteOutputCleaner.h"
 #include "infra/CredentialStore.h"
 #include "infra/ConfigStore.h"
 #include "infra/DataPaths.h"
 #include "infra/ServiceInstanceStore.h"
 #include "ui/PageLayout.h"
+#include "qml/LineTabBarController.h"
 #include "ui/RemoteCredentialResolver.h"
 #include "ui/ServiceContentDialog.h"
+#include "ui/ServiceDatabaseConnectionDialog.h"
+#include "ui/ServiceElasticsearchQueryDialog.h"
+#include "ui/ServiceSqlDialog.h"
+#include <QJsonArray>
+#include <QJsonDocument>
 #include "ui/ServiceInstanceDialog.h"
 #include "ui/ServiceNodeDialog.h"
-#include "ui/ServiceSqlDialog.h"
+#include "ui/ServiceRedisConnectionDialog.h"
+#include "ui/ServiceSqlWorkbenchWidget.h"
 
 #include <QComboBox>
 #include <QFile>
@@ -21,15 +30,23 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QUrl>
+#include <QSet>
+#include <QSizePolicy>
 #include <QtConcurrent/QtConcurrent>
 
+#include <QAbstractButton>
+#include <QApplication>
+#include <QColor>
+#include <QStyle>
 #include <QButtonGroup>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QStyle>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
@@ -45,7 +62,7 @@ QVector<ServiceProductPanel::DetailTabSpec> detailTabsFor(ServiceProductKind pro
              {QStringLiteral("主题名称"), QStringLiteral("描述"), QStringLiteral("分区数量"),
               QStringLiteral("副本数量"), QStringLiteral("消费者组"), QStringLiteral("近7日"),
               QStringLiteral("昨日"), QStringLiteral("今日"), QStringLiteral("数据总量"), QStringLiteral("操作")},
-             {QStringLiteral("主题添加"), QStringLiteral("数据写入"), QStringLiteral("主题导出"), QStringLiteral("刷新")}},
+             {QStringLiteral("主题添加"), QStringLiteral("主题导出"), QStringLiteral("刷新")}},
             {QStringLiteral("消费者组管理(Consumer Group)"),
              {QStringLiteral("消费者组"), QStringLiteral("偏移量总量"), QStringLiteral("消费偏移量"),
               QStringLiteral("消费积压"), QStringLiteral("操作")},
@@ -60,18 +77,14 @@ QVector<ServiceProductPanel::DetailTabSpec> detailTabsFor(ServiceProductKind pro
             {QStringLiteral("Key 管理"),
              {QStringLiteral("Key"), QStringLiteral("类型"), QStringLiteral("TTL"),
               QStringLiteral("大小"), QStringLiteral("操作")},
-             {QStringLiteral("Key 搜索"), QStringLiteral("刷新")}},
-            {QStringLiteral("节点管理(Node)"),
-             {QStringLiteral("服务器"), QStringLiteral("信息"), QStringLiteral("安装路径"),
-              QStringLiteral("存储路径"), QStringLiteral("操作")},
-             {QStringLiteral("添加节点"), QStringLiteral("编辑"), QStringLiteral("删除"), QStringLiteral("刷新")}}
+             {QStringLiteral("Key 搜索"), QStringLiteral("Key 写入"), QStringLiteral("Key 删除"), QStringLiteral("刷新")}}
         };
     case ServiceProductKind::Elasticsearch:
         return {
             {QStringLiteral("索引管理(Index)"),
              {QStringLiteral("索引名称"), QStringLiteral("描述"), QStringLiteral("状态"),
               QStringLiteral("文档总量"), QStringLiteral("磁盘总量"), QStringLiteral("操作")},
-             {QStringLiteral("Kibana"), QStringLiteral("索引导出"), QStringLiteral("刷新")}},
+             {QStringLiteral("Kibana"), QStringLiteral("索引统计"), QStringLiteral("索引导出"), QStringLiteral("刷新")}},
             {QStringLiteral("节点管理(Node)"),
              {QStringLiteral("服务器"), QStringLiteral("信息"), QStringLiteral("安装路径"),
               QStringLiteral("存储路径"), QStringLiteral("操作")},
@@ -83,11 +96,8 @@ QVector<ServiceProductPanel::DetailTabSpec> detailTabsFor(ServiceProductKind pro
             {QStringLiteral("表管理(Table)"),
              {QStringLiteral("表名"), QStringLiteral("描述"), QStringLiteral("字段数量"),
               QStringLiteral("是否分区"), QStringLiteral("预估行数"), QStringLiteral("操作")},
-             {QStringLiteral("SQL"), QStringLiteral("表导出"), QStringLiteral("刷新")}},
-            {QStringLiteral("节点管理(Node)"),
-             {QStringLiteral("服务器"), QStringLiteral("信息"), QStringLiteral("安装路径"),
-              QStringLiteral("存储路径"), QStringLiteral("操作")},
-             {QStringLiteral("添加节点"), QStringLiteral("编辑"), QStringLiteral("删除"), QStringLiteral("刷新")}}
+             {QStringLiteral("表导出"), QStringLiteral("刷新")}},
+            {QStringLiteral("SQL"), {}, {}}
         };
     }
     return {};
@@ -118,6 +128,15 @@ QStringList rowColumnsForTab(ServiceBroker::TabKind tab, ServiceProductKind prod
             return {QStringLiteral("ip"), QStringLiteral("port"), QStringLiteral("status"),
                     QStringLiteral("dataDir"), QStringLiteral("disk")};
         }
+        if (product == ServiceProductKind::Redis) {
+            return {QStringLiteral("server"), QStringLiteral("info"), QStringLiteral("installPath"),
+                    QStringLiteral("storagePath"), QStringLiteral("status"), QStringLiteral("version"),
+                    QStringLiteral("memory")};
+        }
+        if (product == ServiceProductKind::Elasticsearch) {
+            return {QStringLiteral("server"), QStringLiteral("info"), QStringLiteral("installPath"),
+                    QStringLiteral("storagePath"), QStringLiteral("status"), QStringLiteral("cluster")};
+        }
         return {QStringLiteral("server"), QStringLiteral("info"), QStringLiteral("installPath"),
                 QStringLiteral("storagePath")};
     case ServiceBroker::TabKind::Index:
@@ -128,6 +147,8 @@ QStringList rowColumnsForTab(ServiceBroker::TabKind tab, ServiceProductKind prod
     case ServiceBroker::TabKind::Table:
         return {QStringLiteral("name"), QStringLiteral("description"), QStringLiteral("columns"),
                 QStringLiteral("partitioned"), QStringLiteral("rows")};
+    case ServiceBroker::TabKind::Sql:
+        return {};
     }
     return {};
 }
@@ -144,6 +165,169 @@ QString metadataKeyForSelection(ServiceBroker::TabKind tab, const QJsonObject &r
     default:
         return {};
     }
+}
+
+QString statusTagObjectName(const QString &status)
+{
+    const QString normalized = status.trimmed().toLower();
+    if (normalized == QStringLiteral("red")) {
+        return QStringLiteral("healthTagRed");
+    }
+    if (normalized == QStringLiteral("yellow")) {
+        return QStringLiteral("healthTagYellow");
+    }
+    return QStringLiteral("healthTagGreen");
+}
+
+QString displayElasticsearchIndexName(const QJsonObject &row, bool expanded)
+{
+    const QString rowKind = row.value(QStringLiteral("rowKind")).toString();
+    const QString name = row.value(QStringLiteral("name")).toString();
+    if (rowKind == QStringLiteral("group")) {
+        return QStringLiteral("%1 %2").arg(expanded ? QStringLiteral("▼") : QStringLiteral("▶"), name);
+    }
+    if (rowKind == QStringLiteral("child")) {
+        return QStringLiteral("    %1").arg(name);
+    }
+    return name;
+}
+
+bool isElasticsearchChildVisible(const QJsonObject &row, const QSet<QString> &expandedGroups)
+{
+    if (row.value(QStringLiteral("rowKind")).toString() != QStringLiteral("child")) {
+        return true;
+    }
+    return expandedGroups.contains(row.value(QStringLiteral("groupKey")).toString());
+}
+
+bool isDatabaseConnectionProduct(ServiceProductKind product)
+{
+    return product == ServiceProductKind::Oracle || product == ServiceProductKind::PostgreSQL;
+}
+
+bool isRedisConnectionProduct(ServiceProductKind product)
+{
+    return product == ServiceProductKind::Redis;
+}
+
+bool isStandaloneConnectionProduct(ServiceProductKind product)
+{
+    return isDatabaseConnectionProduct(product) || isRedisConnectionProduct(product);
+}
+
+RemoteConnectionContext resolveRemoteCredentials(ServiceProductKind product,
+                                                 const QJsonObject &server,
+                                                 CredentialStore *credentials,
+                                                 CredentialSessionCache *sessionCache,
+                                                 QWidget *parent,
+                                                 bool allowPrompt = true)
+{
+    if (ServiceNodeConnection::usesDirectConnect(serviceProductKindKey(product))) {
+        return {};
+    }
+    return RemoteCredentialResolver::resolve(server, credentials, sessionCache, parent, allowPrompt);
+}
+
+QString redisConnectionSummary(const QJsonObject &instance)
+{
+    const QJsonObject node = ServiceNodeConnection::primaryNode(instance);
+    if (node.isEmpty()) {
+        return QStringLiteral("-");
+    }
+    const QString host = node.value(QStringLiteral("customHost")).toString().trimmed();
+    return host.isEmpty() ? node.value(QStringLiteral("serverLabel")).toString().section(QLatin1Char(':'), 0, 0).trimmed()
+                          : host;
+}
+
+QString redisDbSummary(const QJsonObject &instance)
+{
+    const QJsonObject node = ServiceNodeConnection::primaryNode(instance);
+    if (node.isEmpty()) {
+        return QStringLiteral("-");
+    }
+    return QStringLiteral("DB%1").arg(node.value(QStringLiteral("redisDb")).toInt(0));
+}
+
+QString databaseConnectionSummary(const QJsonObject &instance, ServiceProductKind product)
+{
+    const QJsonObject node = ServiceNodeConnection::primaryNode(instance);
+    if (node.isEmpty()) {
+        return QStringLiteral("-");
+    }
+    const QString host = node.value(QStringLiteral("customHost")).toString().trimmed();
+    return host.isEmpty() ? node.value(QStringLiteral("serverLabel")).toString() : host;
+}
+
+QString databaseNameSummary(const QJsonObject &instance, ServiceProductKind product)
+{
+    const QJsonObject node = ServiceNodeConnection::primaryNode(instance);
+    if (node.isEmpty()) {
+        return QStringLiteral("-");
+    }
+    ServiceConnectionFields fields;
+    if (!ServiceNodeConnection::decodeInfo(node.value(QStringLiteral("info")).toString(),
+                                           serviceProductKindKey(product),
+                                           &fields)) {
+        return QStringLiteral("-");
+    }
+    return fields.database.isEmpty() ? QStringLiteral("-") : fields.database;
+}
+
+constexpr int kEsIndexColName = 0;
+constexpr int kEsIndexColDescription = 1;
+constexpr int kEsIndexColStatus = 2;
+constexpr int kEsIndexColDocs = 3;
+constexpr int kEsIndexColDisk = 4;
+constexpr int kEsIndexColOperation = 5;
+
+void ensureElasticsearchIndexTableLayout(QTableWidget *table)
+{
+    if (table == nullptr) {
+        return;
+    }
+    if (table->columnCount() < kEsIndexColOperation + 1) {
+        table->setColumnCount(kEsIndexColOperation + 1);
+        table->setHorizontalHeaderLabels({QStringLiteral("索引名称"),
+                                          QStringLiteral("描述"),
+                                          QStringLiteral("状态"),
+                                          QStringLiteral("文档总量"),
+                                          QStringLiteral("磁盘总量"),
+                                          QStringLiteral("操作")});
+    }
+    PageLayout::configureListingTableWithActionColumn(table, kEsIndexColOperation, kEsIndexColDescription);
+    table->horizontalHeader()->setSectionResizeMode(kEsIndexColStatus, QHeaderView::Fixed);
+    table->setColumnWidth(kEsIndexColStatus, 96);
+    table->setColumnWidth(kEsIndexColOperation, qMax(table->columnWidth(kEsIndexColOperation), 108));
+    table->verticalHeader()->setDefaultSectionSize(44);
+}
+
+void clearDetailTable(QTableWidget *table)
+{
+    if (table == nullptr) {
+        return;
+    }
+    for (int row = 0; row < table->rowCount(); ++row) {
+        for (int column = 0; column < table->columnCount(); ++column) {
+            table->setCellWidget(row, column, nullptr);
+        }
+    }
+    table->clear();
+    table->setRowCount(0);
+}
+
+QVector<QJsonObject> parseJsonObjectArray(const QString &json)
+{
+    QVector<QJsonObject> rows;
+    const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8());
+    if (!document.isArray()) {
+        return rows;
+    }
+    for (const QJsonValue &value : document.array()) {
+        if (value.isObject()) {
+            rows.append(value.toObject());
+        }
+    }
+    return rows;
 }
 
 }
@@ -199,7 +383,13 @@ ServiceBroker::TabKind ServiceProductPanel::currentTabKind() const
 
 QString ServiceProductPanel::currentSchema() const
 {
-    return m_schemaCombo != nullptr ? m_schemaCombo->currentText().trimmed() : QString();
+    if (m_schemaCombo == nullptr) {
+        return m_activeSchema;
+    }
+    if (m_product == ServiceProductKind::Redis && currentTabKind() == ServiceBroker::TabKind::Key) {
+        return QString::number(m_schemaCombo->currentIndex());
+    }
+    return m_schemaCombo->currentText().trimmed();
 }
 
 bool ServiceProductPanel::currentInstanceContext(QJsonObject *instance, QJsonObject *server) const
@@ -209,12 +399,8 @@ bool ServiceProductPanel::currentInstanceContext(QJsonObject *instance, QJsonObj
     }
     *instance = m_instances.at(m_currentInstanceIndex);
     const QJsonObject node = ServiceNodeConnection::primaryNode(*instance);
-    const QString serverId = node.value(QStringLiteral("serverId")).toString();
     QString error;
-    if (serverId.isEmpty() || !m_store->getServer(serverId, server, &error)) {
-        return false;
-    }
-    return true;
+    return ServiceNodeConnection::resolveServerForNode(node, m_store, server, &error);
 }
 
 QWidget *ServiceProductPanel::buildListPage()
@@ -228,9 +414,13 @@ QWidget *ServiceProductPanel::buildListPage()
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *addButton = new QPushButton(QStringLiteral("新建实例"));
+    auto *addButton = new QPushButton(isStandaloneConnectionProduct(m_product)
+                                          ? QStringLiteral("新建连接")
+                                          : QStringLiteral("新建实例"));
     addButton->setObjectName(QStringLiteral("primaryButton"));
-    auto *editButton = new QPushButton(QStringLiteral("编辑"));
+    auto *editButton = new QPushButton(isStandaloneConnectionProduct(m_product)
+                                           ? QStringLiteral("编辑连接")
+                                           : QStringLiteral("编辑"));
     auto *deleteButton = new QPushButton(QStringLiteral("删除"));
     deleteButton->setObjectName(QStringLiteral("dangerButton"));
     auto *refreshButton = new QPushButton(QStringLiteral("刷新"));
@@ -242,23 +432,42 @@ QWidget *ServiceProductPanel::buildListPage()
     layout->addWidget(toolbar);
 
     m_instanceTable = new QTableWidget(0, 4, page);
-    m_instanceTable->setHorizontalHeaderLabels({
-        QStringLiteral("实例名称"),
-        QStringLiteral("节点数"),
-        QStringLiteral("状态"),
-        QStringLiteral("实例 ID")
-    });
+    if (isStandaloneConnectionProduct(m_product)) {
+        if (isRedisConnectionProduct(m_product)) {
+            m_instanceTable->setHorizontalHeaderLabels({
+                QStringLiteral("连接名称"),
+                QStringLiteral("地址"),
+                QStringLiteral("数据库"),
+                QStringLiteral("状态")
+            });
+        } else {
+            m_instanceTable->setHorizontalHeaderLabels({
+                QStringLiteral("连接名称"),
+                QStringLiteral("地址"),
+                QStringLiteral("数据库"),
+                QStringLiteral("状态")
+            });
+        }
+    } else {
+        m_instanceTable->setHorizontalHeaderLabels({
+            QStringLiteral("实例名称"),
+            QStringLiteral("节点数"),
+            QStringLiteral("状态"),
+            QStringLiteral("实例 ID")
+        });
+    }
     m_instanceTable->verticalHeader()->setVisible(false);
-    PageLayout::configureDataTable(m_instanceTable);
     m_instanceTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_instanceTable->setAlternatingRowColors(true);
-    m_instanceTable->horizontalHeader()->setStretchLastSection(true);
-    m_instanceTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    PageLayout::configureListingTable(m_instanceTable);
     m_instanceTable->verticalHeader()->setDefaultSectionSize(40);
     layout->addWidget(PageLayout::wrapTableSection(
         m_instanceTable,
         &m_listEmptyState,
-        QStringLiteral("暂无 %1 实例。点击「新建实例」开始配置。").arg(serviceProductKindLabel(m_product))), 1);
+        isStandaloneConnectionProduct(m_product)
+            ? QStringLiteral("暂无 %1 连接。点击「新建连接」填写地址、端口与账号。")
+                  .arg(serviceProductKindLabel(m_product))
+            : QStringLiteral("暂无 %1 实例。点击「新建实例」开始配置。").arg(serviceProductKindLabel(m_product))), 1);
 
     connect(addButton, &QPushButton::clicked, this, &ServiceProductPanel::addInstance);
     connect(editButton, &QPushButton::clicked, this, &ServiceProductPanel::editInstance);
@@ -277,17 +486,34 @@ QWidget *ServiceProductPanel::makeInstanceBanner()
     layout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
     layout->setSpacing(PageLayout::Space12);
 
+    m_backNavButton = new QPushButton(banner);
+    m_backNavButton->setObjectName(QStringLiteral("backNavButton"));
+    m_backNavButton->setToolTip(QStringLiteral("返回实例列表"));
+    m_backNavButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_ArrowBack));
+    m_backNavButton->setIconSize(QSize(18, 18));
+    m_backNavButton->setFixedSize(PageLayout::DialogFieldHeight, PageLayout::DialogFieldHeight);
+    m_backNavButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    m_backNavButton->setCursor(Qt::PointingHandCursor);
+    m_backNavButton->setAutoDefault(false);
+    m_backNavButton->setDefault(false);
+
     m_bannerTitle = new QLabel(banner);
     m_bannerTitle->setObjectName(QStringLiteral("serviceInstanceTitle"));
+    m_bannerTitle->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+
     m_bannerStatus = new QLabel(QStringLiteral("检测中"), banner);
     m_bannerStatus->setObjectName(QStringLiteral("serviceInstanceStatusOk"));
+    m_bannerStatus->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_bannerStatus->setMinimumWidth(0);
+
     m_bannerNode = new QLabel(banner);
     m_bannerNode->setObjectName(QStringLiteral("serviceInstanceNode"));
+    m_bannerNode->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
 
-    layout->addWidget(m_bannerTitle);
-    layout->addWidget(m_bannerStatus);
-    layout->addStretch();
-    layout->addWidget(m_bannerNode);
+    layout->addWidget(m_backNavButton, 0, Qt::AlignVCenter);
+    layout->addWidget(m_bannerTitle, 0, Qt::AlignVCenter);
+    layout->addWidget(m_bannerStatus, 1, Qt::AlignVCenter);
+    layout->addWidget(m_bannerNode, 0, Qt::AlignVCenter);
     return banner;
 }
 
@@ -296,30 +522,24 @@ QWidget *ServiceProductPanel::buildDetailPage()
     m_detailPage = new QWidget;
     auto *layout = new QVBoxLayout(m_detailPage);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-
-    auto *backRow = new QHBoxLayout;
-    auto *backButton = new QPushButton(QStringLiteral("← 返回实例列表"));
-    backRow->addWidget(backButton);
-    backRow->addStretch();
-    layout->addLayout(backRow);
-    connect(backButton, &QPushButton::clicked, this, &ServiceProductPanel::backToList);
+    layout->setSpacing(PageLayout::Space16);
 
     layout->addWidget(makeInstanceBanner());
+    connect(m_backNavButton, &QPushButton::clicked, this, &ServiceProductPanel::backToList);
 
     m_detailTabStack = new QStackedWidget(m_detailPage);
     for (const DetailTabSpec &spec : m_detailTabs) {
         m_detailTabStack->addWidget(new QWidget);
     }
 
-    QButtonGroup *tabGroup = nullptr;
+    LineTabBarController *tabController = nullptr;
     QStringList tabLabels;
     for (const DetailTabSpec &spec : m_detailTabs) {
         tabLabels.append(spec.title);
     }
-    layout->addWidget(PageLayout::makeTabBar(tabLabels, m_detailPage, &tabGroup, m_detailTabStack));
-    m_detailTabGroup = tabGroup;
-    connect(tabGroup, &QButtonGroup::idClicked, this, &ServiceProductPanel::onDetailTabChanged);
+    layout->addWidget(PageLayout::makeLineTabBar(tabLabels, m_detailPage, &tabController, m_detailTabStack));
+    m_detailTabController = tabController;
+    connect(m_detailTabController, &LineTabBarController::tabActivated, this, &ServiceProductPanel::onDetailTabChanged);
 
     m_detailToolbar = new QWidget(m_detailPage);
     m_detailToolbarLayout = new QHBoxLayout(m_detailToolbar);
@@ -327,19 +547,40 @@ QWidget *ServiceProductPanel::buildDetailPage()
     m_detailToolbarLayout->setSpacing(PageLayout::Space8);
     layout->addWidget(m_detailToolbar);
 
-    m_detailTable = new QTableWidget(m_detailPage);
+    m_detailContentStack = new QStackedWidget(m_detailPage);
+    m_detailTablePage = new QWidget(m_detailContentStack);
+    auto *tablePageLayout = new QVBoxLayout(m_detailTablePage);
+    tablePageLayout->setContentsMargins(0, 0, 0, 0);
+    tablePageLayout->setSpacing(0);
+
+    m_detailTable = new QTableWidget(m_detailTablePage);
     m_detailTable->verticalHeader()->setVisible(false);
-    PageLayout::configureDataTable(m_detailTable);
     m_detailTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_detailTable->setAlternatingRowColors(true);
-    m_detailTable->horizontalHeader()->setStretchLastSection(true);
-    m_detailTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_detailTable->verticalHeader()->setDefaultSectionSize(40);
     connect(m_detailTable, &QTableWidget::cellDoubleClicked, this, &ServiceProductPanel::onDetailRowActivated);
-    layout->addWidget(PageLayout::wrapTableSection(
+    connect(m_detailTable, &QTableWidget::cellClicked, this, &ServiceProductPanel::onDetailCellClicked);
+    tablePageLayout->addWidget(PageLayout::wrapTableSection(
         m_detailTable,
         &m_detailEmptyState,
         QStringLiteral("连接远端后将在此展示数据。")), 1);
+    m_detailContentStack->addWidget(m_detailTablePage);
+
+    if (isDatabaseConnectionProduct(m_product)) {
+        m_sqlWorkbench = new ServiceSqlWorkbenchWidget(m_detailContentStack);
+        m_detailContentStack->addWidget(m_sqlWorkbench);
+        connect(m_sqlWorkbench, &ServiceSqlWorkbenchWidget::executeRequested, this, &ServiceProductPanel::executeSqlQuery);
+        connect(m_sqlWorkbench, &ServiceSqlWorkbenchWidget::tableSelected, this, [this](const QString &tableName) {
+            if (tableName.isEmpty()) {
+                return;
+            }
+            m_sqlWorkbench->setSqlText(SqlServiceClient::defaultSelectSql(serviceProductKindKey(m_product),
+                                                                          currentSchema(),
+                                                                          tableName));
+        });
+    }
+
+    layout->addWidget(m_detailContentStack, 1);
 
     onDetailTabChanged(0);
     return m_detailPage;
@@ -363,6 +604,8 @@ void ServiceProductPanel::updateSchemaCombo()
     }
     const ServiceResult loaded = SqlServiceClient::listSchemas(endpoint, serviceProductKindKey(m_product));
     if (!loaded.ok) {
+        m_schemaCombo->addItem(QStringLiteral("public"));
+        m_schemaCombo->setToolTip(loaded.message);
         return;
     }
 
@@ -414,21 +657,105 @@ void ServiceProductPanel::onDetailTabChanged(int index)
         m_schemaCombo->setMinimumWidth(120);
         m_detailToolbarLayout->addWidget(new QLabel(QStringLiteral("模式")));
         m_detailToolbarLayout->addWidget(m_schemaCombo);
-        connect(m_schemaCombo, &QComboBox::currentTextChanged, this, [this](const QString &) {
+        connect(m_schemaCombo, &QComboBox::currentTextChanged, this, [this](const QString &schema) {
+            m_activeSchema = schema.trimmed();
             refreshDetailTable();
         });
         updateSchemaCombo();
+        if (!m_activeSchema.isEmpty()) {
+            const int index = m_schemaCombo->findText(m_activeSchema);
+            if (index >= 0) {
+                m_schemaCombo->setCurrentIndex(index);
+            }
+        } else if (m_schemaCombo->count() > 0) {
+            m_activeSchema = m_schemaCombo->currentText().trimmed();
+        }
+    } else if (m_product == ServiceProductKind::Redis && currentTabKind() == ServiceBroker::TabKind::Key) {
+        m_schemaCombo = new QComboBox(m_detailToolbar);
+        PageLayout::configureFormInput(m_schemaCombo);
+        m_schemaCombo->setMinimumWidth(88);
+        for (int db = 0; db < 16; ++db) {
+            m_schemaCombo->addItem(QStringLiteral("DB%1").arg(db));
+        }
+        if (m_currentInstanceIndex >= 0 && m_currentInstanceIndex < m_instances.size()) {
+            const QJsonObject node = ServiceNodeConnection::primaryNode(m_instances.at(m_currentInstanceIndex));
+            m_schemaCombo->setCurrentIndex(qBound(0, node.value(QStringLiteral("redisDb")).toInt(0), 15));
+        }
+        m_detailToolbarLayout->addWidget(new QLabel(QStringLiteral("数据库")));
+        m_detailToolbarLayout->addWidget(m_schemaCombo);
+        connect(m_schemaCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+            m_detailTabCache.remove(m_currentDetailTab);
+            refreshDetailTable();
+        });
     }
 
     m_detailToolbarLayout->addStretch();
 
+    const bool sqlTab = currentTabKind() == ServiceBroker::TabKind::Sql;
+    m_detailToolbar->setVisible(!sqlTab);
+    if (m_detailContentStack != nullptr) {
+        if (sqlTab && m_sqlWorkbench != nullptr) {
+            m_detailContentStack->setCurrentWidget(m_sqlWorkbench);
+            refreshSqlWorkbench();
+        } else {
+            m_detailContentStack->setCurrentWidget(m_detailTablePage);
+        }
+    }
+
+    if (sqlTab) {
+        return;
+    }
+
+    clearDetailTable(m_detailTable);
+    m_kafkaGroupPartitions.clear();
+
     m_detailTable->setColumnCount(spec.tableHeaders.size());
     m_detailTable->setHorizontalHeaderLabels(spec.tableHeaders);
-    refreshDetailTable();
+    if (spec.tableHeaders.last() == QStringLiteral("操作")) {
+        int stretchColumn = 1;
+        if (m_product == ServiceProductKind::Kafka && spec.title.contains(QStringLiteral("Consumer"))) {
+            stretchColumn = 0;
+        } else if (m_product == ServiceProductKind::Elasticsearch && spec.title.contains(QStringLiteral("Index"))) {
+            ensureElasticsearchIndexTableLayout(m_detailTable);
+            stretchColumn = -1;
+        }
+        if (stretchColumn >= 0) {
+            PageLayout::configureListingTableWithActionColumn(m_detailTable,
+                                                              spec.tableHeaders.size() - 1,
+                                                              stretchColumn);
+        }
+    } else {
+        PageLayout::configureListingTable(m_detailTable);
+    }
+    restoreDetailTabFromCache(index);
+}
+
+void ServiceProductPanel::restoreDetailTabFromCache(int index)
+{
+    if (m_detailTabCache.contains(index)) {
+        applyDetailRows(m_detailTabCache.value(index), rowColumnsForTab(currentTabKind(), m_product));
+        return;
+    }
+    m_detailTable->setRowCount(0);
+    m_detailEmptyState->setText(QStringLiteral("点击「刷新」加载当前页数据。"));
+    PageLayout::updateTableEmptyState(m_detailTable, m_detailEmptyState, 0);
+}
+
+void ServiceProductPanel::showDetailLoading(const QString &message)
+{
+    m_detailTable->setRowCount(0);
+    m_detailEmptyState->setText(message);
+    PageLayout::updateTableEmptyState(m_detailTable, m_detailEmptyState, 0);
 }
 
 void ServiceProductPanel::applyDetailRows(const QVector<QJsonObject> &rows, const QStringList &columns)
 {
+    if (m_product == ServiceProductKind::Elasticsearch && currentTabKind() == ServiceBroker::TabKind::Index) {
+        m_esIndexRowsCache = rows;
+        applyElasticsearchIndexRows();
+        return;
+    }
+
     m_detailTable->setRowCount(rows.size());
     for (int row = 0; row < rows.size(); ++row) {
         const QJsonObject data = rows.at(row);
@@ -440,11 +767,101 @@ void ServiceProductPanel::applyDetailRows(const QVector<QJsonObject> &rows, cons
             m_detailTable->setItem(row, col, item);
         }
         if (columns.size() < m_detailTable->columnCount()) {
-            m_detailTable->setItem(row, m_detailTable->columnCount() - 1, new QTableWidgetItem(QStringLiteral("查看")));
+            setOperationCell(row, data);
         }
     }
-    m_detailTable->resizeColumnsToContents();
+    PageLayout::refreshListingTableColumns(m_detailTable);
+    if (m_detailTable->columnCount() > 0
+        && m_detailTable->horizontalHeaderItem(m_detailTable->columnCount() - 1) != nullptr
+        && m_detailTable->horizontalHeaderItem(m_detailTable->columnCount() - 1)->text()
+               == QStringLiteral("操作")) {
+        PageLayout::ensureTableActionColumnWidth(m_detailTable, m_detailTable->columnCount() - 1);
+    }
     PageLayout::updateTableEmptyState(m_detailTable, m_detailEmptyState, rows.size());
+}
+
+void ServiceProductPanel::applyElasticsearchIndexRows()
+{
+    ensureElasticsearchIndexTableLayout(m_detailTable);
+
+    QVector<QJsonObject> visibleRows;
+    visibleRows.reserve(m_esIndexRowsCache.size());
+    for (const QJsonObject &row : m_esIndexRowsCache) {
+        if (isElasticsearchChildVisible(row, m_expandedEsIndexGroups)) {
+            visibleRows.append(row);
+        }
+    }
+
+    m_detailTable->setRowCount(visibleRows.size());
+    for (int row = 0; row < visibleRows.size(); ++row) {
+        const QJsonObject data = visibleRows.at(row);
+        const QString rowKind = data.value(QStringLiteral("rowKind")).toString();
+        const bool expanded = m_expandedEsIndexGroups.contains(data.value(QStringLiteral("groupKey")).toString());
+
+        auto setTextCell = [&](int column, const QString &text, bool primary = false) {
+            auto *item = new QTableWidgetItem(text);
+            if (primary) {
+                item->setData(Qt::UserRole, data);
+                if (rowKind == QStringLiteral("group")) {
+                    item->setForeground(QColor(QStringLiteral("#6366F1")));
+                    QFont font = item->font();
+                    font.setBold(true);
+                    item->setFont(font);
+                } else if (rowKind == QStringLiteral("child")) {
+                    item->setForeground(QColor(QStringLiteral("#64748B")));
+                }
+            }
+            m_detailTable->setItem(row, column, item);
+        };
+
+        setTextCell(kEsIndexColName,
+                    displayElasticsearchIndexName(data, expanded),
+                    true);
+        setTextCell(kEsIndexColDescription, data.value(QStringLiteral("description")).toString());
+        setTextCell(kEsIndexColDocs, data.value(QStringLiteral("docs")).toString());
+        setTextCell(kEsIndexColDisk, data.value(QStringLiteral("disk")).toString());
+
+        setElasticsearchStatusCell(row, data.value(QStringLiteral("status")).toString());
+        setOperationCell(row, data);
+    }
+
+    PageLayout::refreshListingTableColumns(m_detailTable, kEsIndexColDescription);
+    PageLayout::ensureTableActionColumnWidth(m_detailTable, kEsIndexColOperation);
+    m_detailTable->setColumnWidth(kEsIndexColStatus, 96);
+    PageLayout::updateTableEmptyState(m_detailTable, m_detailEmptyState, visibleRows.size());
+}
+
+void ServiceProductPanel::toggleElasticsearchIndexGroup(const QString &groupKey)
+{
+    if (groupKey.isEmpty()) {
+        return;
+    }
+    if (m_expandedEsIndexGroups.contains(groupKey)) {
+        m_expandedEsIndexGroups.remove(groupKey);
+    } else {
+        m_expandedEsIndexGroups.insert(groupKey);
+    }
+    applyElasticsearchIndexRows();
+}
+
+void ServiceProductPanel::setElasticsearchStatusCell(int row, const QString &status)
+{
+    const QString text = status.isEmpty() ? QStringLiteral("-") : status;
+    auto *panel = new QWidget(m_detailTable);
+    auto *layout = new QHBoxLayout(panel);
+    layout->setContentsMargins(PageLayout::Space4, 0, PageLayout::Space4, 0);
+    layout->setSpacing(0);
+
+    auto *tag = new QLabel(text, panel);
+    tag->setObjectName(statusTagObjectName(status));
+    tag->setAlignment(Qt::AlignCenter);
+    tag->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    const QFontMetrics fm(tag->font());
+    const int tagWidth = qMax(fm.horizontalAdvance(text) + 22, 56);
+    const int tagHeight = fm.height() + 10;
+    tag->setFixedSize(tagWidth, tagHeight);
+    layout->addWidget(tag, 0, Qt::AlignCenter);
+    m_detailTable->setCellWidget(row, kEsIndexColStatus, panel);
 }
 
 void ServiceProductPanel::loadRemoteDetailAsync()
@@ -457,14 +874,21 @@ void ServiceProductPanel::loadRemoteDetailAsync()
     }
 
     const ServiceBroker::TabKind tab = currentTabKind();
-    if (tab == ServiceBroker::TabKind::Node && m_product != ServiceProductKind::Kafka) {
+    if (tab == ServiceBroker::TabKind::Sql) {
+        refreshSqlWorkbench();
+        return;
+    }
+    if (tab == ServiceBroker::TabKind::Node && m_product != ServiceProductKind::Kafka
+        && m_product != ServiceProductKind::Redis && m_product != ServiceProductKind::Elasticsearch) {
         refreshNodeTable();
         return;
     }
 
     const int generation = ++m_loadGeneration;
+    const int detailTab = m_currentDetailTab;
+    showDetailLoading();
     const RemoteConnectionContext remote =
-        RemoteCredentialResolver::resolve(server, m_credentials, m_sessionCache, this, true);
+        resolveRemoteCredentials(m_product, server, m_credentials, m_sessionCache, this, true);
     const QString productKey = serviceProductKindKey(m_product);
     const QString schema = currentSchema();
     const QJsonObject instanceCopy = instance;
@@ -474,30 +898,236 @@ void ServiceProductPanel::loadRemoteDetailAsync()
     auto *watcher = new QFutureWatcher<ServiceResult>(this);
     connect(watcher, &QFutureWatcher<ServiceResult>::finished, this, &ServiceProductPanel::onRemoteDataLoaded);
     watcher->setProperty("generation", generation);
-    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, tab, remoteCopy, schema]() {
+    watcher->setProperty("detailTab", detailTab);
+    const bool kafkaTopicQuick =
+        productKey == QStringLiteral("kafka") && tab == ServiceBroker::TabKind::Topic;
+    watcher->setProperty("kafkaTopicQuick", kafkaTopicQuick);
+    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, tab, remoteCopy, schema, kafkaTopicQuick]() {
+        if (kafkaTopicQuick) {
+            return ServiceBroker::loadKafkaTopicsQuick(instanceCopy, serverCopy, remoteCopy);
+        }
         return ServiceBroker::loadTab(instanceCopy, serverCopy, productKey, tab, remoteCopy, schema);
     }));
+}
+
+void ServiceProductPanel::startKafkaTopicStatsLoad(int generation, int detailTab, const QVector<QJsonObject> &knownTopics)
+{
+    QJsonObject instance;
+    QJsonObject server;
+    if (!currentInstanceContext(&instance, &server)) {
+        return;
+    }
+
+    const RemoteConnectionContext remote =
+        resolveRemoteCredentials(m_product, server, m_credentials, m_sessionCache, this, true);
+    const QJsonObject instanceCopy = instance;
+    const QJsonObject serverCopy = server;
+    const RemoteConnectionContext remoteCopy = remote;
+    const QVector<QJsonObject> knownTopicsCopy = knownTopics;
+
+    auto *watcher = new QFutureWatcher<ServiceResult>(this);
+    connect(watcher, &QFutureWatcher<ServiceResult>::finished, this, &ServiceProductPanel::onRemoteDataLoaded);
+    watcher->setProperty("generation", generation);
+    watcher->setProperty("detailTab", detailTab);
+    watcher->setProperty("kafkaTopicStats", true);
+    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, remoteCopy, knownTopicsCopy]() {
+        return ServiceBroker::loadKafkaTopicStats(instanceCopy, serverCopy, remoteCopy, knownTopicsCopy);
+    }));
+}
+
+void ServiceProductPanel::mergeKafkaTopicStats(const QVector<QJsonObject> &rows)
+{
+    QHash<QString, QJsonObject> byName;
+    for (const QJsonObject &row : rows) {
+        byName.insert(row.value(QStringLiteral("name")).toString(), row);
+    }
+
+    const auto setText = [this](int row, int column, const QString &text) {
+        if (QTableWidgetItem *item = m_detailTable->item(row, column)) {
+            item->setText(text);
+        }
+    };
+
+    for (int row = 0; row < m_detailTable->rowCount(); ++row) {
+        const QTableWidgetItem *nameItem = m_detailTable->item(row, 0);
+        if (nameItem == nullptr) {
+            continue;
+        }
+        const QJsonObject stats = byName.value(nameItem->text());
+        if (stats.isEmpty()) {
+            continue;
+        }
+        setText(row, 4, stats.value(QStringLiteral("groups")).toString());
+        setText(row, 5, stats.value(QStringLiteral("week")).toString());
+        setText(row, 6, stats.value(QStringLiteral("yesterday")).toString());
+        setText(row, 7, stats.value(QStringLiteral("today")).toString());
+        setText(row, 8, stats.value(QStringLiteral("total")).toString());
+        if (QTableWidgetItem *item = m_detailTable->item(row, 0)) {
+            item->setData(Qt::UserRole, stats);
+        }
+    }
+    m_detailTabCache.insert(m_currentDetailTab, rows);
 }
 
 void ServiceProductPanel::onRemoteDataLoaded()
 {
     auto *watcher = static_cast<QFutureWatcher<ServiceResult> *>(sender());
-    if (watcher == nullptr || watcher->property("generation").toInt() != m_loadGeneration) {
-        if (watcher != nullptr) {
-            watcher->deleteLater();
+    if (watcher == nullptr) {
+        return;
+    }
+
+    const bool kafkaTopicStats = watcher->property("kafkaTopicStats").toBool();
+    if (kafkaTopicStats) {
+        if (watcher->property("generation").toInt() == m_loadGeneration
+            && watcher->property("detailTab").toInt() == m_currentDetailTab) {
+            const ServiceResult result = watcher->result();
+            if (result.ok) {
+                mergeKafkaTopicStats(result.rows);
+            }
         }
+        watcher->deleteLater();
+        return;
+    }
+
+    if (watcher->property("generation").toInt() != m_loadGeneration
+        || watcher->property("detailTab").toInt() != m_currentDetailTab) {
+        watcher->deleteLater();
         return;
     }
 
     const ServiceResult result = watcher->result();
+    const bool kafkaTopicQuick = watcher->property("kafkaTopicQuick").toBool();
+    const int generation = watcher->property("generation").toInt();
+    const int detailTab = watcher->property("detailTab").toInt();
     watcher->deleteLater();
     if (!result.ok) {
         QMessageBox::warning(this, QStringLiteral("加载失败"), result.message);
+        m_detailEmptyState->setText(QStringLiteral("加载失败，请点击「刷新」重试。"));
         PageLayout::updateTableEmptyState(m_detailTable, m_detailEmptyState, 0);
         return;
     }
 
+    const int loadedTab = m_currentDetailTab;
     applyDetailRows(result.rows, rowColumnsForTab(currentTabKind(), m_product));
+    m_detailTabCache.insert(loadedTab, result.rows);
+    if (m_product == ServiceProductKind::Kafka && currentTabKind() == ServiceBroker::TabKind::ConsumerGroup) {
+        m_kafkaGroupPartitions = parseJsonObjectArray(result.text);
+        if (m_kafkaGroupPartitions.isEmpty()) {
+            m_kafkaGroupPartitions = result.rows;
+        }
+    }
+    if (kafkaTopicQuick) {
+        startKafkaTopicStatsLoad(generation, detailTab, result.rows);
+    }
+}
+
+void ServiceProductPanel::setOperationCell(int row, const QJsonObject &rowData)
+{
+    int column = m_detailTable->columnCount() - 1;
+    if (m_product == ServiceProductKind::Elasticsearch && currentTabKind() == ServiceBroker::TabKind::Index) {
+        column = kEsIndexColOperation;
+    }
+    if (column < 0) {
+        return;
+    }
+
+    if (m_product == ServiceProductKind::Kafka && currentTabKind() == ServiceBroker::TabKind::Topic) {
+        auto *panel = new QWidget(m_detailTable);
+        auto *layout = new QHBoxLayout(panel);
+        layout->setContentsMargins(PageLayout::Space4, 2, PageLayout::Space4, 2);
+        layout->setSpacing(PageLayout::Space8);
+
+        const auto addAction = [this, panel, layout, column](const QString &label, const QString &objectName) {
+            QPushButton *button = PageLayout::makeTableActionButton(label, objectName, panel);
+            connect(button, &QPushButton::clicked, this, [this, panel, column, label]() {
+                for (int tableRow = 0; tableRow < m_detailTable->rowCount(); ++tableRow) {
+                    if (m_detailTable->cellWidget(tableRow, column) == panel) {
+                        runDetailRowAction(tableRow, label);
+                        return;
+                    }
+                }
+            });
+            layout->addWidget(button);
+        };
+
+        addAction(QStringLiteral("查看"), QStringLiteral("tableActionView"));
+        addAction(QStringLiteral("写入"), QStringLiteral("tableActionWrite"));
+        addAction(QStringLiteral("删除"), QStringLiteral("tableActionDelete"));
+        layout->addStretch();
+        m_detailTable->setCellWidget(row, column, panel);
+        Q_UNUSED(rowData);
+        return;
+    }
+
+    if (m_product == ServiceProductKind::Elasticsearch && currentTabKind() == ServiceBroker::TabKind::Index) {
+        auto *panel = new QWidget(m_detailTable);
+        auto *layout = new QHBoxLayout(panel);
+        layout->setContentsMargins(PageLayout::Space4, 2, PageLayout::Space4, 2);
+        layout->setSpacing(PageLayout::Space8);
+        QPushButton *button = PageLayout::makeTableActionButton(QStringLiteral("查询"),
+                                                                QStringLiteral("tableActionView"),
+                                                                panel);
+        connect(button, &QPushButton::clicked, this, [this, panel, column]() {
+            for (int tableRow = 0; tableRow < m_detailTable->rowCount(); ++tableRow) {
+                if (m_detailTable->cellWidget(tableRow, column) == panel) {
+                    runDetailRowAction(tableRow, QStringLiteral("查询"));
+                    return;
+                }
+            }
+        });
+        layout->addWidget(button);
+        layout->addStretch();
+        m_detailTable->setCellWidget(row, column, panel);
+        Q_UNUSED(rowData);
+        return;
+    }
+
+    if (m_product == ServiceProductKind::Redis && currentTabKind() == ServiceBroker::TabKind::Key) {
+        auto *panel = new QWidget(m_detailTable);
+        auto *layout = new QHBoxLayout(panel);
+        layout->setContentsMargins(PageLayout::Space4, 2, PageLayout::Space4, 2);
+        layout->setSpacing(PageLayout::Space8);
+        QPushButton *button =
+            PageLayout::makeTableActionButton(QStringLiteral("查看"), QStringLiteral("tableActionView"), panel);
+        connect(button, &QPushButton::clicked, this, [this, panel, column]() {
+            for (int tableRow = 0; tableRow < m_detailTable->rowCount(); ++tableRow) {
+                if (m_detailTable->cellWidget(tableRow, column) == panel) {
+                    runDetailRowAction(tableRow, QStringLiteral("查看"));
+                    return;
+                }
+            }
+        });
+        layout->addWidget(button);
+        layout->addStretch();
+        m_detailTable->setCellWidget(row, column, panel);
+        Q_UNUSED(rowData);
+        return;
+    }
+
+    if (currentTabKind() == ServiceBroker::TabKind::ConsumerGroup
+        || currentTabKind() == ServiceBroker::TabKind::Node) {
+        auto *panel = new QWidget(m_detailTable);
+        auto *layout = new QHBoxLayout(panel);
+        layout->setContentsMargins(PageLayout::Space4, 2, PageLayout::Space4, 2);
+        layout->setSpacing(PageLayout::Space8);
+        QPushButton *button =
+            PageLayout::makeTableActionButton(QStringLiteral("查看"), QStringLiteral("tableActionView"), panel);
+        connect(button, &QPushButton::clicked, this, [this, panel, column]() {
+            for (int tableRow = 0; tableRow < m_detailTable->rowCount(); ++tableRow) {
+                if (m_detailTable->cellWidget(tableRow, column) == panel) {
+                    runDetailRowAction(tableRow, QStringLiteral("查看"));
+                    return;
+                }
+            }
+        });
+        layout->addWidget(button);
+        layout->addStretch();
+        m_detailTable->setCellWidget(row, column, panel);
+        Q_UNUSED(rowData);
+        return;
+    }
+
+    m_detailTable->setItem(row, column, new QTableWidgetItem(QStringLiteral("查看")));
 }
 
 void ServiceProductPanel::refreshDetailTable()
@@ -516,6 +1146,11 @@ void ServiceProductPanel::onDetailAction()
     }
 
     const QString action = button->text();
+    if (action == QStringLiteral("刷新")) {
+        refreshDetailTable();
+        return;
+    }
+
     const int nodeIndex = nodeTabIndex(m_detailTabs);
     if (m_currentDetailTab == nodeIndex) {
         if (action.contains(QStringLiteral("添加"))) {
@@ -544,7 +1179,7 @@ void ServiceProductPanel::onDetailAction()
     }
 
     const RemoteConnectionContext remote =
-        RemoteCredentialResolver::resolve(server, m_credentials, m_sessionCache, this);
+        resolveRemoteCredentials(m_product, server, m_credentials, m_sessionCache, this);
     const QJsonObject selection = selectedRowData();
     QString input;
 
@@ -554,33 +1189,28 @@ void ServiceProductPanel::onDetailAction()
                                       QStringLiteral("格式: topic,partitions,replication"),
                                       QLineEdit::Normal,
                                       QStringLiteral("demo-topic,1,1"));
-    } else if (action.contains(QStringLiteral("数据写入")) && currentTabKind() == ServiceBroker::TabKind::Topic) {
-        if (selection.value(QStringLiteral("name")).toString().isEmpty()) {
-            QMessageBox::information(this, QStringLiteral("数据写入"), QStringLiteral("请先在列表中选择目标主题。"));
-            return;
-        }
-        bool ok = false;
-        input = QInputDialog::getMultiLineText(this,
-                                               QStringLiteral("数据写入 - %1").arg(selection.value(QStringLiteral("name")).toString()),
-                                               QStringLiteral("消息内容（每行一条）"),
-                                               QString(),
-                                               &ok);
-        if (!ok || input.isEmpty()) {
-            return;
-        }
     } else if (action.contains(QStringLiteral("Key 搜索"))) {
         input = QInputDialog::getText(this, QStringLiteral("Key 搜索"), QStringLiteral("匹配模式"), QLineEdit::Normal, QStringLiteral("*"));
-    } else if (action == QStringLiteral("SQL")) {
-        input = QInputDialog::getMultiLineText(this,
-                                               QStringLiteral("SQL 查询"),
-                                               QStringLiteral("输入 SQL"),
-                                               selection.value(QStringLiteral("name")).toString().isEmpty()
-                                                   ? QStringLiteral("SELECT 1")
-                                                   : QStringLiteral("SELECT * FROM %1.%2 LIMIT 20")
-                                                         .arg(currentSchema(), selection.value(QStringLiteral("name")).toString()));
+    } else if (action.contains(QStringLiteral("Key 写入"))) {
+        input = QInputDialog::getText(this,
+                                      QStringLiteral("Key 写入"),
+                                      QStringLiteral("格式: key=value"),
+                                      QLineEdit::Normal,
+                                      selection.value(QStringLiteral("key")).toString());
         if (input.isEmpty()) {
             return;
         }
+    } else if (action == QStringLiteral("SQL")) {
+        if (m_detailTabController != nullptr) {
+            for (int i = 0; i < m_detailTabs.size(); ++i) {
+                if (ServiceBroker::tabKindFromTitle(m_detailTabs.at(i).title) == ServiceBroker::TabKind::Sql) {
+                    m_detailTabController->setCurrentIndex(i);
+                    onDetailTabChanged(i);
+                    return;
+                }
+            }
+        }
+        return;
     }
 
     const ServiceResult result = ServiceBroker::runAction(instance,
@@ -627,16 +1257,14 @@ void ServiceProductPanel::onDetailAction()
     }
 
     if (action == QStringLiteral("SQL") || action.contains(QStringLiteral("查询")) || action.contains(QStringLiteral("最新"))
-        || action.contains(QStringLiteral("搜索")) || action.contains(QStringLiteral("刷新"))) {
-        if (!result.rows.isEmpty() || action == QStringLiteral("SQL")) {
+        || action.contains(QStringLiteral("搜索"))) {
+        if (!result.rows.isEmpty() && action != QStringLiteral("SQL")) {
             ServiceSqlDialog dialog(this);
             dialog.setSql(input);
             dialog.setResult(result);
             dialog.exec();
-        } else {
-            ServiceContentDialog dialog(action, this);
-            dialog.setContent(result.message);
-            dialog.exec();
+        } else if (!result.ok) {
+            QMessageBox::warning(this, QStringLiteral("操作失败"), result.message);
         }
         if (action.contains(QStringLiteral("刷新")) || action.contains(QStringLiteral("搜索"))) {
             refreshDetailTable();
@@ -648,9 +1276,9 @@ void ServiceProductPanel::onDetailAction()
     QMessageBox::information(this, QStringLiteral("完成"), result.message);
 }
 
-void ServiceProductPanel::onDetailRowActivated(int row, int)
+void ServiceProductPanel::runDetailRowAction(int row, const QString &action)
 {
-    if (row < 0) {
+    if (row < 0 || row >= m_detailTable->rowCount()) {
         return;
     }
     const QTableWidgetItem *item = m_detailTable->item(row, 0);
@@ -662,45 +1290,224 @@ void ServiceProductPanel::onDetailRowActivated(int row, int)
     QJsonObject instance;
     QJsonObject server;
     if (!currentInstanceContext(&instance, &server)) {
+        QMessageBox::information(this, QStringLiteral("无法操作"), QStringLiteral("请先配置节点并确保服务器可用。"));
         return;
     }
+
     const QJsonObject selection = item->data(Qt::UserRole).toJsonObject();
     const RemoteConnectionContext remote =
-        RemoteCredentialResolver::resolve(server, m_credentials, m_sessionCache, this);
+        resolveRemoteCredentials(m_product, server, m_credentials, m_sessionCache, this);
 
-    QString action = QStringLiteral("快速查询");
-    if (currentTabKind() == ServiceBroker::TabKind::Key) {
-        action = QStringLiteral("Key 搜索");
-    } else if (currentTabKind() == ServiceBroker::TabKind::Topic) {
-        action = QStringLiteral("最新数据");
-    } else if (currentTabKind() == ServiceBroker::TabKind::ConsumerGroup) {
-        action = QStringLiteral("消费明细");
-    } else if (currentTabKind() == ServiceBroker::TabKind::Node) {
-        action = QStringLiteral("参数详情");
+    QString brokerAction = action;
+    if (action == QStringLiteral("查看")) {
+        if (currentTabKind() == ServiceBroker::TabKind::Topic) {
+            brokerAction = QStringLiteral("最新数据");
+        } else if (currentTabKind() == ServiceBroker::TabKind::ConsumerGroup) {
+            brokerAction = QStringLiteral("消费明细");
+        } else if (currentTabKind() == ServiceBroker::TabKind::Table) {
+            brokerAction = QStringLiteral("样例数据");
+        } else if (currentTabKind() == ServiceBroker::TabKind::Key) {
+            brokerAction = QStringLiteral("查看");
+        } else if (currentTabKind() == ServiceBroker::TabKind::Node) {
+            brokerAction = QStringLiteral("参数详情");
+        }
+    }
+
+    if (action == QStringLiteral("查询")
+        && m_product == ServiceProductKind::Elasticsearch
+        && currentTabKind() == ServiceBroker::TabKind::Index) {
+        ServiceEndpoint endpoint;
+        QString error;
+        if (!ServiceNodeConnection::resolvePrimaryNode(instance, server, serviceProductKindKey(m_product), &endpoint, &error)) {
+            QMessageBox::warning(this, QStringLiteral("无法查询"), error);
+            return;
+        }
+        const QString indexName = selection.value(QStringLiteral("queryIndex")).toString().isEmpty()
+            ? selection.value(QStringLiteral("name")).toString()
+            : selection.value(QStringLiteral("queryIndex")).toString();
+        ServiceElasticsearchQueryDialog dialog(this);
+        dialog.setEndpoint(endpoint);
+        dialog.setIndexName(indexName);
+        dialog.exec();
+        return;
+    }
+
+    if (action == QStringLiteral("查看")
+        && m_product == ServiceProductKind::Kafka
+        && currentTabKind() == ServiceBroker::TabKind::ConsumerGroup) {
+        const QString group = selection.value(QStringLiteral("group")).toString();
+        ServiceResult detail{true, {}, {}, {}};
+        for (const QJsonObject &row : m_kafkaGroupPartitions) {
+            if (row.value(QStringLiteral("group")).toString() == group) {
+                detail.rows.append(row);
+            }
+        }
+        if (detail.rows.isEmpty()) {
+            QMessageBox::information(this,
+                                     QStringLiteral("消费明细"),
+                                     QStringLiteral("未找到 %1 的分区消费数据，请先刷新列表。").arg(group));
+            return;
+        }
+        ServiceSqlDialog dialog(this);
+        dialog.setTableResult(detail,
+                              {QStringLiteral("group"),
+                               QStringLiteral("topic"),
+                               QStringLiteral("partition"),
+                               QStringLiteral("current"),
+                               QStringLiteral("logEnd"),
+                               QStringLiteral("lag")});
+        dialog.exec();
+        return;
+    }
+
+    QString input;
+    if (action == QStringLiteral("写入") && currentTabKind() == ServiceBroker::TabKind::Topic) {
+        const QString topic = selection.value(QStringLiteral("name")).toString();
+        bool ok = false;
+        input = QInputDialog::getMultiLineText(this,
+                                               QStringLiteral("数据写入 - %1").arg(topic),
+                                               QStringLiteral("消息内容（每行一条）"),
+                                               QString(),
+                                               &ok);
+        if (!ok || input.isEmpty()) {
+            return;
+        }
+    }
+
+    if (action == QStringLiteral("删除")) {
+        const QString target = selection.value(QStringLiteral("name")).toString();
+        if (target.isEmpty()) {
+            return;
+        }
+        const auto answer = QMessageBox::question(this,
+                                                  QStringLiteral("确认删除"),
+                                                  QStringLiteral("确定删除 %1 吗？").arg(target));
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    const QString productKey = serviceProductKindKey(m_product);
+    const ServiceBroker::TabKind tab = currentTabKind();
+    const QString schema = currentSchema();
+    const QJsonObject instanceCopy = instance;
+    const QJsonObject serverCopy = server;
+    const RemoteConnectionContext remoteCopy = remote;
+    const QJsonObject selectionCopy = selection;
+
+    const auto showViewResult = [this, action, brokerAction, tab](const ServiceResult &result) {
+        if (!result.ok) {
+            QMessageBox::warning(this, QStringLiteral("操作失败"), result.message);
+            return;
+        }
+        if (action != QStringLiteral("查看")) {
+            return;
+        }
+        if (!result.rows.isEmpty()) {
+            ServiceSqlDialog dialog(this);
+            if (tab == ServiceBroker::TabKind::ConsumerGroup) {
+                dialog.setTableResult(result,
+                                        {QStringLiteral("group"),
+                                         QStringLiteral("topic"),
+                                         QStringLiteral("partition"),
+                                         QStringLiteral("current"),
+                                         QStringLiteral("logEnd"),
+                                         QStringLiteral("lag")});
+            } else {
+                dialog.setResult(result);
+            }
+            dialog.exec();
+        } else {
+            ServiceContentDialog dialog(brokerAction, this);
+            dialog.setContent(result.message);
+            dialog.exec();
+        }
+    };
+
+    if (action == QStringLiteral("查看")) {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        auto *watcher = new QFutureWatcher<ServiceResult>(this);
+        connect(watcher, &QFutureWatcher<ServiceResult>::finished, this, [this, watcher, showViewResult]() {
+            QApplication::restoreOverrideCursor();
+            showViewResult(watcher->result());
+            watcher->deleteLater();
+        });
+        watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, tab, brokerAction, selectionCopy, remoteCopy, schema, input]() {
+            return ServiceBroker::runAction(instanceCopy,
+                                            serverCopy,
+                                            productKey,
+                                            tab,
+                                            brokerAction,
+                                            selectionCopy,
+                                            remoteCopy,
+                                            schema,
+                                            input);
+        }));
+        return;
     }
 
     const ServiceResult result = ServiceBroker::runAction(instance,
                                                           server,
-                                                          serviceProductKindKey(m_product),
-                                                          currentTabKind(),
-                                                          action,
+                                                          productKey,
+                                                          tab,
+                                                          brokerAction,
                                                           selection,
                                                           remote,
-                                                          currentSchema(),
-                                                          QString());
+                                                          schema,
+                                                          input);
     if (!result.ok) {
-        QMessageBox::warning(this, QStringLiteral("查看失败"), result.message);
+        QMessageBox::warning(this, QStringLiteral("操作失败"), result.message);
         return;
     }
-    if (!result.rows.isEmpty()) {
-        ServiceSqlDialog dialog(this);
-        dialog.setResult(result);
-        dialog.exec();
-    } else {
-        ServiceContentDialog dialog(action, this);
-        dialog.setContent(result.message);
-        dialog.exec();
+
+    if (action == QStringLiteral("查看")) {
+        showViewResult(result);
+        return;
     }
+
+    if (action == QStringLiteral("写入") || action == QStringLiteral("删除")) {
+        refreshDetailTable();
+        QMessageBox::information(this, QStringLiteral("完成"), result.message);
+        return;
+    }
+}
+
+void ServiceProductPanel::onDetailRowActivated(int row, int column)
+{
+    if (row < 0) {
+        return;
+    }
+    if (m_product == ServiceProductKind::Kafka && currentTabKind() == ServiceBroker::TabKind::Topic
+        && column == m_detailTable->columnCount() - 1) {
+        return;
+    }
+    if (m_product == ServiceProductKind::Elasticsearch && currentTabKind() == ServiceBroker::TabKind::Index) {
+        if (column == m_detailTable->columnCount() - 1) {
+            return;
+        }
+        runDetailRowAction(row, QStringLiteral("查询"));
+        return;
+    }
+    runDetailRowAction(row, QStringLiteral("查看"));
+}
+
+void ServiceProductPanel::onDetailCellClicked(int row, int column)
+{
+    if (row < 0 || column != 0) {
+        return;
+    }
+    if (m_product != ServiceProductKind::Elasticsearch || currentTabKind() != ServiceBroker::TabKind::Index) {
+        return;
+    }
+    const QTableWidgetItem *item = m_detailTable->item(row, 0);
+    if (item == nullptr) {
+        return;
+    }
+    const QJsonObject rowData = item->data(Qt::UserRole).toJsonObject();
+    if (rowData.value(QStringLiteral("rowKind")).toString() != QStringLiteral("group")) {
+        return;
+    }
+    toggleElasticsearchIndexGroup(rowData.value(QStringLiteral("groupKey")).toString());
 }
 
 QJsonObject ServiceProductPanel::selectedRowData() const
@@ -738,12 +1545,27 @@ void ServiceProductPanel::reloadInstanceList()
     for (int row = 0; row < m_instances.size(); ++row) {
         const QJsonObject &instance = m_instances.at(row);
         const QJsonArray nodes = instance.value(QStringLiteral("nodes")).toArray();
-        m_instanceTable->setItem(row, 0, new QTableWidgetItem(instance.value(QStringLiteral("name")).toString()));
-        m_instanceTable->setItem(row, 1, new QTableWidgetItem(QString::number(nodes.size())));
-        m_instanceTable->setItem(row, 2, new QTableWidgetItem(nodes.isEmpty() ? QStringLiteral("未配置节点") : QStringLiteral("待检测")));
-        m_instanceTable->setItem(row, 3, new QTableWidgetItem(instance.value(QStringLiteral("id")).toString()));
+        if (isStandaloneConnectionProduct(m_product)) {
+            m_instanceTable->setItem(row, 0, new QTableWidgetItem(instance.value(QStringLiteral("name")).toString()));
+            if (isRedisConnectionProduct(m_product)) {
+                m_instanceTable->setItem(row, 1, new QTableWidgetItem(redisConnectionSummary(instance)));
+                m_instanceTable->setItem(row, 2, new QTableWidgetItem(redisDbSummary(instance)));
+            } else {
+                m_instanceTable->setItem(row, 1,
+                                         new QTableWidgetItem(databaseConnectionSummary(instance, m_product)));
+                m_instanceTable->setItem(row, 2, new QTableWidgetItem(databaseNameSummary(instance, m_product)));
+            }
+            m_instanceTable->setItem(row,
+                                     3,
+                                     new QTableWidgetItem(nodes.isEmpty() ? QStringLiteral("未配置") : QStringLiteral("已配置")));
+        } else {
+            m_instanceTable->setItem(row, 0, new QTableWidgetItem(instance.value(QStringLiteral("name")).toString()));
+            m_instanceTable->setItem(row, 1, new QTableWidgetItem(QString::number(nodes.size())));
+            m_instanceTable->setItem(row, 2, new QTableWidgetItem(nodes.isEmpty() ? QStringLiteral("未配置节点") : QStringLiteral("待检测")));
+            m_instanceTable->setItem(row, 3, new QTableWidgetItem(instance.value(QStringLiteral("id")).toString()));
+        }
     }
-    m_instanceTable->resizeColumnsToContents();
+    PageLayout::refreshListingTableColumns(m_instanceTable);
     PageLayout::updateTableEmptyState(m_instanceTable, m_listEmptyState, m_instances.size());
     if (!m_instances.isEmpty() && m_instanceTable->selectionModel()->selectedRows().isEmpty()) {
         m_instanceTable->selectRow(0);
@@ -761,6 +1583,44 @@ int ServiceProductPanel::selectedInstanceIndex() const
 
 void ServiceProductPanel::addInstance()
 {
+    if (isRedisConnectionProduct(m_product)) {
+        ServiceRedisConnectionDialog dialog(this);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        QJsonObject instance = dialog.instance();
+        instance.insert(QStringLiteral("metadata"), QJsonObject{});
+        for (const QJsonObject &existing : m_instances) {
+            if (existing.value(QStringLiteral("id")).toString() == instance.value(QStringLiteral("id")).toString()) {
+                QMessageBox::warning(this, QStringLiteral("保存失败"), QStringLiteral("连接 ID 已存在，请修改连接名称。"));
+                return;
+            }
+        }
+        m_instances.append(instance);
+        persistInstances();
+        reloadInstanceList();
+        return;
+    }
+
+    if (isDatabaseConnectionProduct(m_product)) {
+        ServiceDatabaseConnectionDialog dialog(m_product, this);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        QJsonObject instance = dialog.instance();
+        instance.insert(QStringLiteral("metadata"), QJsonObject{});
+        for (const QJsonObject &existing : m_instances) {
+            if (existing.value(QStringLiteral("id")).toString() == instance.value(QStringLiteral("id")).toString()) {
+                QMessageBox::warning(this, QStringLiteral("保存失败"), QStringLiteral("连接 ID 已存在，请修改连接名称。"));
+                return;
+            }
+        }
+        m_instances.append(instance);
+        persistInstances();
+        reloadInstanceList();
+        return;
+    }
+
     ServiceInstanceDialog dialog(m_product, this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
@@ -784,7 +1644,38 @@ void ServiceProductPanel::editInstance()
 {
     const int index = selectedInstanceIndex();
     if (index < 0) {
-        QMessageBox::information(this, QStringLiteral("未选择"), QStringLiteral("请先选择实例。"));
+        QMessageBox::information(this,
+                                 QStringLiteral("未选择"),
+                                 isStandaloneConnectionProduct(m_product) ? QStringLiteral("请先选择连接。")
+                                                                      : QStringLiteral("请先选择实例。"));
+        return;
+    }
+
+    if (isRedisConnectionProduct(m_product)) {
+        ServiceRedisConnectionDialog dialog(this);
+        dialog.setInstance(m_instances.at(index), true);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        QJsonObject updated = dialog.instance();
+        updated.insert(QStringLiteral("metadata"), m_instances.at(index).value(QStringLiteral("metadata")).toObject());
+        m_instances[index] = updated;
+        persistInstances();
+        reloadInstanceList();
+        return;
+    }
+
+    if (isDatabaseConnectionProduct(m_product)) {
+        ServiceDatabaseConnectionDialog dialog(m_product, this);
+        dialog.setInstance(m_instances.at(index), true);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        QJsonObject updated = dialog.instance();
+        updated.insert(QStringLiteral("metadata"), m_instances.at(index).value(QStringLiteral("metadata")).toObject());
+        m_instances[index] = updated;
+        persistInstances();
+        reloadInstanceList();
         return;
     }
 
@@ -832,14 +1723,40 @@ void ServiceProductPanel::openSelectedInstance()
         return;
     }
     m_currentInstanceIndex = index;
-    refreshBanner();
-    refreshDetailTable();
+
+    int targetTab = m_currentDetailTab;
+    if (isStandaloneConnectionProduct(m_product)) {
+        targetTab = 0;
+    } else if (nodesForCurrentInstance().isEmpty()) {
+        const int nodeIndex = nodeTabIndex(m_detailTabs);
+        if (nodeIndex >= 0) {
+            targetTab = nodeIndex;
+        }
+    }
+    if (targetTab < 0 || targetTab >= m_detailTabs.size()) {
+        targetTab = 0;
+    }
+    if (m_detailTabController != nullptr) {
+        m_detailTabController->setCurrentIndex(targetTab);
+    }
+    if (m_detailTabStack != nullptr) {
+        m_detailTabStack->setCurrentIndex(targetTab);
+    }
+
     m_stack->setCurrentIndex(1);
+    m_detailTabCache.clear();
+    onDetailTabChanged(targetTab);
+    showDetailLoading();
+    refreshDetailTable();
+    refreshBanner();
 }
 
 void ServiceProductPanel::backToList()
 {
+    ++m_bannerGeneration;
+    ++m_loadGeneration;
     m_currentInstanceIndex = -1;
+    m_detailTabCache.clear();
     m_stack->setCurrentIndex(0);
 }
 
@@ -854,13 +1771,7 @@ QString ServiceProductPanel::primaryNodeHost() const
         return QStringLiteral("未配置节点");
     }
 
-    const QString serverId = nodes.first().toObject().value(QStringLiteral("serverId")).toString();
-    QJsonObject server;
-    QString error;
-    if (m_store->getServer(serverId, &server, &error)) {
-        return server.value(QStringLiteral("host")).toString();
-    }
-    return nodes.first().toObject().value(QStringLiteral("serverLabel")).toString();
+    return ServiceNodeConnection::hostFromNodeLabel(nodes.first().toObject());
 }
 
 void ServiceProductPanel::refreshBanner()
@@ -870,24 +1781,88 @@ void ServiceProductPanel::refreshBanner()
     }
 
     const QJsonObject &instanceRef = m_instances.at(m_currentInstanceIndex);
-    m_bannerTitle->setText(QStringLiteral("%1-%2")
-                               .arg(serviceProductKindLabel(m_product), instanceRef.value(QStringLiteral("name")).toString()));
-    m_bannerNode->setText(QStringLiteral("节点: %1").arg(primaryNodeHost()));
+    m_bannerTitle->setText(isStandaloneConnectionProduct(m_product)
+                               ? instanceRef.value(QStringLiteral("name")).toString()
+                               : QStringLiteral("%1-%2")
+                                     .arg(serviceProductKindLabel(m_product),
+                                          instanceRef.value(QStringLiteral("name")).toString()));
+
+    if (isRedisConnectionProduct(m_product)) {
+        const QJsonObject node = ServiceNodeConnection::primaryNode(instanceRef);
+        ServiceConnectionFields fields;
+        ServiceNodeConnection::decodeInfo(node.value(QStringLiteral("info")).toString(),
+                                          serviceProductKindKey(m_product),
+                                          &fields);
+        const QString host = redisConnectionSummary(instanceRef);
+        m_bannerNode->setText(QStringLiteral("%1:%2 / DB%3")
+                                  .arg(host,
+                                       QString::number(fields.port),
+                                       QString::number(node.value(QStringLiteral("redisDb")).toInt(0))));
+    } else if (isDatabaseConnectionProduct(m_product)) {
+        const QJsonObject node = ServiceNodeConnection::primaryNode(instanceRef);
+        ServiceConnectionFields fields;
+        ServiceNodeConnection::decodeInfo(node.value(QStringLiteral("info")).toString(),
+                                          serviceProductKindKey(m_product),
+                                          &fields);
+        const QString host = databaseConnectionSummary(instanceRef, m_product);
+        m_bannerNode->setText(QStringLiteral("%1:%2 / %3").arg(host, QString::number(fields.port), fields.database));
+    } else {
+        m_bannerNode->setText(QStringLiteral("节点: %1").arg(primaryNodeHost()));
+    }
+
+    const auto setStatus = [this](const QString &text, bool ok) {
+        m_bannerStatus->setToolTip(text);
+        const QString display = text.size() > 56
+                                    ? QStringLiteral("%1…").arg(text.left(55))
+                                    : text;
+        m_bannerStatus->setText(display);
+        m_bannerStatus->setObjectName(ok ? QStringLiteral("serviceInstanceStatusOk")
+                                         : QStringLiteral("serviceInstanceStatusBad"));
+        m_bannerStatus->style()->unpolish(m_bannerStatus);
+        m_bannerStatus->style()->polish(m_bannerStatus);
+    };
+
+    // Invalidate any in-flight probe from a previous instance/open.
+    ++m_bannerGeneration;
 
     QJsonObject instance;
     QJsonObject server;
     if (!currentInstanceContext(&instance, &server)) {
-        m_bannerStatus->setText(QStringLiteral("未配置节点"));
+        setStatus(QStringLiteral("未配置节点"), false);
         return;
     }
 
+    setStatus(QStringLiteral("检测中…"), true);
+
+    // Probe the instance in a background thread so entering the detail view never
+    // freezes the UI (the back button must stay responsive). Avoid a modal
+    // password prompt here; the probe degrades gracefully when no credential is
+    // cached, and data loading will prompt when actually needed.
+    const int generation = m_bannerGeneration;
     const RemoteConnectionContext remote =
-        RemoteCredentialResolver::resolve(server, m_credentials, m_sessionCache, this, true);
-    const ServiceResult probe =
-        ServiceBroker::testInstance(instance, server, serviceProductKindKey(m_product), remote);
-    m_bannerStatus->setText(probe.ok ? QStringLiteral("运行正常") : probe.message);
-    m_bannerStatus->setObjectName(probe.ok ? QStringLiteral("serviceInstanceStatusOk")
-                                           : QStringLiteral("serviceInstanceStatusBad"));
+        resolveRemoteCredentials(m_product, server, m_credentials, m_sessionCache, this, false);
+    const QString productKey = serviceProductKindKey(m_product);
+    const QJsonObject instanceCopy = instance;
+    const QJsonObject serverCopy = server;
+    const RemoteConnectionContext remoteCopy = remote;
+
+    auto *watcher = new QFutureWatcher<ServiceResult>(this);
+    watcher->setProperty("bannerGeneration", generation);
+    connect(watcher, &QFutureWatcher<ServiceResult>::finished, this, [this, watcher, setStatus]() {
+        const int gen = watcher->property("bannerGeneration").toInt();
+        const ServiceResult probe = watcher->result();
+        watcher->deleteLater();
+        if (gen != m_bannerGeneration) {
+            return;
+        }
+        const QString statusText = probe.ok
+                                       ? QStringLiteral("运行正常")
+                                       : RemoteOutputCleaner::normalizeRemoteError(probe.message);
+        setStatus(statusText.isEmpty() ? QStringLiteral("连接失败") : statusText, probe.ok);
+    });
+    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, remoteCopy]() {
+        return ServiceBroker::testInstance(instanceCopy, serverCopy, productKey, remoteCopy);
+    }));
 }
 
 QJsonArray ServiceProductPanel::nodesForCurrentInstance() const
@@ -918,13 +1893,7 @@ void ServiceProductPanel::refreshNodeTable()
     for (const QJsonValue &value : nodes) {
         const QJsonObject node = value.toObject();
         if (m_product == ServiceProductKind::Kafka) {
-            QString host = node.value(QStringLiteral("serverLabel")).toString();
-            const QString serverId = node.value(QStringLiteral("serverId")).toString();
-            QJsonObject server;
-            QString error;
-            if (m_store != nullptr && !serverId.isEmpty() && m_store->getServer(serverId, &server, &error)) {
-                host = server.value(QStringLiteral("host")).toString();
-            }
+            const QString host = ServiceNodeConnection::hostFromNodeLabel(node);
             rows.append(QJsonObject{
                 {QStringLiteral("ip"), host},
                 {QStringLiteral("port"), node.value(QStringLiteral("info")).toString()},
@@ -933,11 +1902,25 @@ void ServiceProductPanel::refreshNodeTable()
                 {QStringLiteral("disk"), QStringLiteral("-")}
             });
         } else {
+            const QString connectionMode = node.value(QStringLiteral("connectionMode")).toString();
+            const bool direct = connectionMode == QStringLiteral("direct")
+                || serviceProductUsesDirectConnect(m_product);
+            QString infoLabel = node.value(QStringLiteral("info")).toString();
+            if (direct) {
+                ServiceConnectionFields fields;
+                if (ServiceNodeConnection::decodeInfo(infoLabel, serviceProductKindKey(m_product), &fields)) {
+                    infoLabel = fields.username.isEmpty()
+                                    ? QStringLiteral("端口 %1").arg(fields.port)
+                                    : QStringLiteral("%1 @ 端口 %2").arg(fields.username).arg(fields.port);
+                }
+            }
             rows.append(QJsonObject{
                 {QStringLiteral("server"), node.value(QStringLiteral("serverLabel")).toString()},
-                {QStringLiteral("info"), node.value(QStringLiteral("info")).toString()},
-                {QStringLiteral("installPath"), node.value(QStringLiteral("installPath")).toString()},
-                {QStringLiteral("storagePath"), node.value(QStringLiteral("storagePath")).toString()}
+                {QStringLiteral("info"), infoLabel},
+                {QStringLiteral("installPath"),
+                 direct ? QStringLiteral("-") : node.value(QStringLiteral("installPath")).toString()},
+                {QStringLiteral("storagePath"),
+                 direct ? QStringLiteral("-") : node.value(QStringLiteral("storagePath")).toString()}
             });
         }
     }
@@ -1012,4 +1995,100 @@ void ServiceProductPanel::deleteNode()
     nodes.removeAt(row);
     saveNodesForCurrentInstance(nodes);
     refreshNodeTable();
+}
+
+void ServiceProductPanel::updateSqlConnectionSummary()
+{
+    if (m_sqlWorkbench == nullptr || m_currentInstanceIndex < 0 || m_currentInstanceIndex >= m_instances.size()) {
+        return;
+    }
+
+    const QJsonObject &instance = m_instances.at(m_currentInstanceIndex);
+    const QJsonObject node = ServiceNodeConnection::primaryNode(instance);
+    ServiceConnectionFields fields;
+    ServiceNodeConnection::decodeInfo(node.value(QStringLiteral("info")).toString(),
+                                      serviceProductKindKey(m_product),
+                                      &fields);
+    const QString host = databaseConnectionSummary(instance, m_product);
+    m_sqlWorkbench->setConnectionSummary(QStringLiteral("%1:%2 / %3")
+                                             .arg(host, QString::number(fields.port), fields.database));
+}
+
+void ServiceProductPanel::refreshSqlWorkbench()
+{
+    if (m_sqlWorkbench == nullptr) {
+        return;
+    }
+
+    updateSqlConnectionSummary();
+
+    QJsonObject instance;
+    QJsonObject server;
+    if (!currentInstanceContext(&instance, &server)) {
+        m_sqlWorkbench->setTables({});
+        return;
+    }
+
+    const QString productKey = serviceProductKindKey(m_product);
+    const QString schema = currentSchema();
+    const QJsonObject instanceCopy = instance;
+    const QJsonObject serverCopy = server;
+
+    auto *watcher = new QFutureWatcher<ServiceResult>(this);
+    connect(watcher, &QFutureWatcher<ServiceResult>::finished, this, [this, watcher]() {
+        const ServiceResult result = watcher->result();
+        watcher->deleteLater();
+        if (!result.ok || m_sqlWorkbench == nullptr) {
+            return;
+        }
+        QStringList tables;
+        for (const QJsonObject &row : result.rows) {
+            tables.append(row.value(QStringLiteral("name")).toString());
+        }
+        m_sqlWorkbench->setTables(tables);
+    });
+    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, schema]() {
+        return ServiceBroker::loadTab(instanceCopy, serverCopy, productKey, ServiceBroker::TabKind::Table, {}, schema);
+    }));
+}
+
+void ServiceProductPanel::executeSqlQuery(const QString &sql)
+{
+    if (m_sqlWorkbench == nullptr || sql.trimmed().isEmpty()) {
+        return;
+    }
+
+    QJsonObject instance;
+    QJsonObject server;
+    if (!currentInstanceContext(&instance, &server)) {
+        QMessageBox::information(this, QStringLiteral("无法执行"), QStringLiteral("请先配置数据库连接。"));
+        return;
+    }
+
+    m_sqlWorkbench->setExecuting(true);
+    const QString productKey = serviceProductKindKey(m_product);
+    const QString schema = currentSchema();
+    const QJsonObject instanceCopy = instance;
+    const QJsonObject serverCopy = server;
+    const QString sqlCopy = sql;
+
+    auto *watcher = new QFutureWatcher<ServiceResult>(this);
+    connect(watcher, &QFutureWatcher<ServiceResult>::finished, this, [this, watcher]() {
+        if (m_sqlWorkbench != nullptr) {
+            m_sqlWorkbench->setExecuting(false);
+            m_sqlWorkbench->showResult(watcher->result());
+        }
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, schema, sqlCopy]() {
+        return ServiceBroker::runAction(instanceCopy,
+                                        serverCopy,
+                                        productKey,
+                                        ServiceBroker::TabKind::Sql,
+                                        QStringLiteral("SQL"),
+                                        {},
+                                        {},
+                                        schema,
+                                        sqlCopy);
+    }));
 }

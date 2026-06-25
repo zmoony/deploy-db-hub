@@ -91,11 +91,9 @@ void ServerManagerWidget::setupTable()
         QStringLiteral("默认目录")
     });
     m_table->verticalHeader()->setVisible(false);
-    PageLayout::configureDataTable(m_table);
+    PageLayout::configureListingTable(m_table);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setAlternatingRowColors(true);
-    m_table->horizontalHeader()->setStretchLastSection(true);
-    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_table->verticalHeader()->setDefaultSectionSize(40);
 }
 
@@ -186,9 +184,10 @@ void ServerManagerWidget::reload()
 
 void ServerManagerWidget::addServer()
 {
-    ServerDialog dialog(this);
-    dialog.setCredentialStore(m_credentials);
-    dialog.setServer(QJsonObject{
+    auto *dialog = new ServerDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setCredentialStore(m_credentials);
+    dialog->setServer(QJsonObject{
         {QStringLiteral("id"), QStringLiteral("prod-linux-1")},
         {QStringLiteral("name"), QStringLiteral("Prod Linux 1")},
         {QStringLiteral("os"), QStringLiteral("linux")},
@@ -201,20 +200,18 @@ void ServerManagerWidget::addServer()
         {QStringLiteral("winrm"), QJsonValue::Null}
     }, false, false);
 
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    QString error;
-    const QJsonObject server = dialog.server();
-    if (!m_store->upsertServer(server.value(QStringLiteral("id")).toString(), server, &error)) {
-        QMessageBox::warning(this, QStringLiteral("保存失败"), error);
-        return;
-    }
-
-    persistCredentials(server, dialog);
-    reload();
-    emit serversChanged();
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        QString error;
+        const QJsonObject server = dialog->server();
+        if (!m_store->upsertServer(server.value(QStringLiteral("id")).toString(), server, &error)) {
+            QMessageBox::warning(this, QStringLiteral("保存失败"), error);
+            return;
+        }
+        persistCredentials(server, *dialog);
+        reload();
+        emit serversChanged();
+    });
+    dialog->show();
 }
 
 void ServerManagerWidget::editServer()
@@ -233,22 +230,22 @@ void ServerManagerWidget::editServer()
     }
 
     const QString ref = credentialRefFor(server);
-    ServerDialog dialog(this);
-    dialog.setCredentialStore(m_credentials);
-    dialog.setServer(server, true, !ref.isEmpty() && m_credentials->has(ref));
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    const QJsonObject updated = dialog.server();
-    if (!m_store->upsertServer(id, updated, &error)) {
-        QMessageBox::warning(this, QStringLiteral("保存失败"), error);
-        return;
-    }
-
-    persistCredentials(updated, dialog);
-    reload();
-    emit serversChanged();
+    auto *dialog = new ServerDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setCredentialStore(m_credentials);
+    dialog->setServer(server, true, !ref.isEmpty() && m_credentials->has(ref));
+    connect(dialog, &QDialog::accepted, this, [this, dialog, id]() {
+        QString error;
+        const QJsonObject updated = dialog->server();
+        if (!m_store->upsertServer(id, updated, &error)) {
+            QMessageBox::warning(this, QStringLiteral("保存失败"), error);
+            return;
+        }
+        persistCredentials(updated, *dialog);
+        reload();
+        emit serversChanged();
+    });
+    dialog->show();
 }
 
 void ServerManagerWidget::openServerMonitor()

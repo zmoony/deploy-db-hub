@@ -18,22 +18,6 @@ QJsonObject metadataObject(const QJsonObject &instance)
     return instance.value(QStringLiteral("metadata")).toObject();
 }
 
-QString offsetKey(const QString &topic, const QString &partition)
-{
-    return topic + QLatin1Char('\t') + partition;
-}
-
-QHash<QString, qlonglong> offsetsToMap(const ServiceResult &result)
-{
-    QHash<QString, qlonglong> map;
-    for (const QJsonObject &row : result.rows) {
-        const QString key = offsetKey(row.value(QStringLiteral("topic")).toString(),
-                                      row.value(QStringLiteral("partition")).toString());
-        map.insert(key, row.value(QStringLiteral("offset")).toString().toLongLong());
-    }
-    return map;
-}
-
 qlonglong nonNegative(qlonglong value)
 {
     return value < 0 ? 0 : value;
@@ -66,6 +50,99 @@ QString metadataKeyForTab(ServiceBroker::TabKind tab)
     }
 }
 
+void applyRedisDatabaseOverride(ServiceEndpoint *endpoint, const QString &schema)
+{
+    if (endpoint == nullptr || schema.isEmpty()) {
+        return;
+    }
+    bool ok = false;
+    const int db = schema.toInt(&ok);
+    if (ok && db >= 0 && db <= 15) {
+        endpoint->redisDatabase = db;
+    }
+}
+
+ServiceResult buildKafkaTopicRows(const QJsonObject &instance, const KafkaTopicDashboard &dashboard)
+{
+    const bool hasTimeStats = !dashboard.atToday.isEmpty();
+    const bool hasOffsets = !dashboard.latest.isEmpty() && !dashboard.earliest.isEmpty();
+    const bool hasGroups = !dashboard.groupPartitions.isEmpty();
+    QHash<QString, qlonglong> totalByTopic;
+    QHash<QString, qlonglong> todayByTopic;
+    QHash<QString, qlonglong> yesterdayByTopic;
+    QHash<QString, qlonglong> weekByTopic;
+    for (auto it = dashboard.latest.constBegin(); it != dashboard.latest.constEnd(); ++it) {
+        const QString key = it.key();
+        const QString topic = key.section(QLatin1Char('\t'), 0, 0);
+        const qlonglong latestOffset = it.value();
+        const qlonglong earliestOffset = dashboard.earliest.value(key, 0);
+        totalByTopic[topic] += nonNegative(latestOffset - earliestOffset);
+        if (hasTimeStats) {
+            const qlonglong todayOffset = dashboard.atToday.value(key, earliestOffset);
+            const qlonglong yesterdayOffset = dashboard.atYesterday.value(key, earliestOffset);
+            const qlonglong weekOffset = dashboard.atWeek.value(key, earliestOffset);
+            todayByTopic[topic] += nonNegative(latestOffset - todayOffset);
+            yesterdayByTopic[topic] += nonNegative(todayOffset - yesterdayOffset);
+            weekByTopic[topic] += nonNegative(latestOffset - weekOffset);
+        }
+    }
+
+    QHash<QString, QSet<QString>> groupsByTopic;
+    if (hasGroups) {
+        for (const QJsonObject &row : dashboard.groupPartitions) {
+            const QString topic = row.value(QStringLiteral("topic")).toString();
+            const QString group = row.value(QStringLiteral("group")).toString();
+            if (!topic.isEmpty() && !group.isEmpty()) {
+                groupsByTopic[topic].insert(group);
+            }
+        }
+    }
+
+    ServiceResult rows{true, {}, {}, {}};
+    for (const QJsonObject &topic : dashboard.topics) {
+        const QString name = topic.value(QStringLiteral("name")).toString();
+        const QString metaKey = QStringLiteral("topics|%1").arg(name);
+        rows.rows.append(QJsonObject{
+            {QStringLiteral("name"), name},
+            {QStringLiteral("description"), ServiceBroker::metadataDescription(instance, metaKey)},
+            {QStringLiteral("partitions"), topic.value(QStringLiteral("partitions")).toString()},
+            {QStringLiteral("replication"), topic.value(QStringLiteral("replication")).toString()},
+            {QStringLiteral("groups"), hasGroups ? QString::number(groupsByTopic.value(name).size())
+                                                 : QStringLiteral("-")},
+            {QStringLiteral("week"), hasTimeStats ? QString::number(weekByTopic.value(name, 0))
+                                                  : QStringLiteral("-")},
+            {QStringLiteral("yesterday"), hasTimeStats ? QString::number(yesterdayByTopic.value(name, 0))
+                                                       : QStringLiteral("-")},
+            {QStringLiteral("today"), hasTimeStats ? QString::number(todayByTopic.value(name, 0))
+                                                   : QStringLiteral("-")},
+            {QStringLiteral("total"), hasOffsets ? QString::number(totalByTopic.value(name, 0))
+                                                 : QStringLiteral("-")}
+        });
+    }
+    return rows;
+}
+
+ServiceResult buildKafkaTopicRowsQuick(const QJsonObject &instance, const QVector<QJsonObject> &topics)
+{
+    ServiceResult rows{true, {}, {}, {}};
+    for (const QJsonObject &topic : topics) {
+        const QString name = topic.value(QStringLiteral("name")).toString();
+        const QString metaKey = QStringLiteral("topics|%1").arg(name);
+        rows.rows.append(QJsonObject{
+            {QStringLiteral("name"), name},
+            {QStringLiteral("description"), ServiceBroker::metadataDescription(instance, metaKey)},
+            {QStringLiteral("partitions"), topic.value(QStringLiteral("partitions")).toString()},
+            {QStringLiteral("replication"), topic.value(QStringLiteral("replication")).toString()},
+            {QStringLiteral("groups"), QStringLiteral("-")},
+            {QStringLiteral("week"), QStringLiteral("-")},
+            {QStringLiteral("yesterday"), QStringLiteral("-")},
+            {QStringLiteral("today"), QStringLiteral("-")},
+            {QStringLiteral("total"), QStringLiteral("-")}
+        });
+    }
+    return rows;
+}
+
 }
 
 bool ServiceBroker::resolveContext(const QJsonObject &instance,
@@ -93,6 +170,9 @@ ServiceBroker::TabKind ServiceBroker::tabKindFromTitle(const QString &title)
     }
     if (title.contains(QStringLiteral("Key"))) {
         return TabKind::Key;
+    }
+    if (title == QStringLiteral("SQL") || title.contains(QStringLiteral("SQL"))) {
+        return TabKind::Sql;
     }
     if (title.contains(QStringLiteral("Table")) || title.contains(QStringLiteral("表管理"))) {
         return TabKind::Table;
@@ -165,6 +245,9 @@ ServiceResult ServiceBroker::loadTab(const QJsonObject &instance,
     if (!resolveContext(instance, server, productKey, &endpoint, &error)) {
         return {false, error, {}, {}};
     }
+    if (productKey == QStringLiteral("redis")) {
+        applyRedisDatabaseOverride(&endpoint, schema);
+    }
 
     if (tab == TabKind::Node && productKey == QStringLiteral("kafka")) {
         ServiceResult rows{true, {}, {}, {}};
@@ -202,6 +285,44 @@ ServiceResult ServiceBroker::loadTab(const QJsonObject &instance,
         const QJsonArray nodes = instance.value(QStringLiteral("nodes")).toArray();
         for (const QJsonValue &value : nodes) {
             const QJsonObject node = value.toObject();
+            if (productKey == QStringLiteral("redis")) {
+                ServiceEndpoint nodeEndpoint = endpoint;
+                const QString info = node.value(QStringLiteral("info")).toString();
+                ServiceNodeConnection::parseInfo(info, productKey, &nodeEndpoint, nullptr);
+                const ServiceResult probe = RedisServiceClient::serverInfo(nodeEndpoint);
+                const QJsonObject detail = probe.rows.isEmpty() ? QJsonObject{} : probe.rows.first();
+                rows.rows.append(QJsonObject{
+                    {QStringLiteral("server"), node.value(QStringLiteral("serverLabel")).toString()},
+                    {QStringLiteral("info"), info},
+                    {QStringLiteral("installPath"), node.value(QStringLiteral("installPath")).toString()},
+                    {QStringLiteral("storagePath"), node.value(QStringLiteral("storagePath")).toString()},
+                    {QStringLiteral("status"), probe.ok ? detail.value(QStringLiteral("status")).toString()
+                                                       : QStringLiteral("探测失败")},
+                    {QStringLiteral("version"), probe.ok ? detail.value(QStringLiteral("version")).toString()
+                                                         : QStringLiteral("-")},
+                    {QStringLiteral("memory"), probe.ok ? detail.value(QStringLiteral("memory")).toString()
+                                                        : QStringLiteral("-")}
+                });
+                continue;
+            }
+            if (productKey == QStringLiteral("elasticsearch")) {
+                ServiceEndpoint nodeEndpoint = endpoint;
+                const QString info = node.value(QStringLiteral("info")).toString();
+                ServiceNodeConnection::parseInfo(info, productKey, &nodeEndpoint, nullptr);
+                const ServiceResult probe = ElasticsearchServiceClient::clusterHealth(nodeEndpoint);
+                const QJsonObject detail = probe.rows.isEmpty() ? QJsonObject{} : probe.rows.first();
+                rows.rows.append(QJsonObject{
+                    {QStringLiteral("server"), node.value(QStringLiteral("serverLabel")).toString()},
+                    {QStringLiteral("info"), info},
+                    {QStringLiteral("installPath"), node.value(QStringLiteral("installPath")).toString()},
+                    {QStringLiteral("storagePath"), node.value(QStringLiteral("storagePath")).toString()},
+                    {QStringLiteral("status"), probe.ok ? detail.value(QStringLiteral("status")).toString()
+                                                       : QStringLiteral("探测失败")},
+                    {QStringLiteral("cluster"), probe.ok ? detail.value(QStringLiteral("cluster")).toString()
+                                                         : QStringLiteral("-")}
+                });
+                continue;
+            }
             rows.rows.append(QJsonObject{
                 {QStringLiteral("server"), node.value(QStringLiteral("serverLabel")).toString()},
                 {QStringLiteral("info"), node.value(QStringLiteral("info")).toString()},
@@ -213,67 +334,7 @@ ServiceResult ServiceBroker::loadTab(const QJsonObject &instance,
     }
 
     if (productKey == QStringLiteral("kafka") && tab == TabKind::Topic) {
-        const ServiceResult described = KafkaServiceClient::describeAllTopics(endpoint, remote);
-        if (!described.ok) {
-            return described;
-        }
-
-        const qint64 todayStart = QDate::currentDate().startOfDay().toMSecsSinceEpoch();
-        const qint64 dayMs = 24LL * 60LL * 60LL * 1000LL;
-        const qint64 yesterdayStart = todayStart - dayMs;
-        const qint64 weekStart = todayStart - 6LL * dayMs;
-
-        const QHash<QString, qlonglong> latest = offsetsToMap(KafkaServiceClient::topicOffsets(endpoint, remote, -1));
-        const QHash<QString, qlonglong> earliest = offsetsToMap(KafkaServiceClient::topicOffsets(endpoint, remote, -2));
-        const QHash<QString, qlonglong> atToday = offsetsToMap(KafkaServiceClient::topicOffsets(endpoint, remote, todayStart));
-        const QHash<QString, qlonglong> atYesterday = offsetsToMap(KafkaServiceClient::topicOffsets(endpoint, remote, yesterdayStart));
-        const QHash<QString, qlonglong> atWeek = offsetsToMap(KafkaServiceClient::topicOffsets(endpoint, remote, weekStart));
-
-        QHash<QString, qlonglong> totalByTopic;
-        QHash<QString, qlonglong> todayByTopic;
-        QHash<QString, qlonglong> yesterdayByTopic;
-        QHash<QString, qlonglong> weekByTopic;
-        for (auto it = latest.constBegin(); it != latest.constEnd(); ++it) {
-            const QString key = it.key();
-            const QString topic = key.section(QLatin1Char('\t'), 0, 0);
-            const qlonglong latestOffset = it.value();
-            const qlonglong earliestOffset = earliest.value(key, 0);
-            const qlonglong todayOffset = atToday.value(key, latestOffset);
-            const qlonglong yesterdayOffset = atYesterday.value(key, latestOffset);
-            const qlonglong weekOffset = atWeek.value(key, latestOffset);
-            totalByTopic[topic] += nonNegative(latestOffset - earliestOffset);
-            todayByTopic[topic] += nonNegative(latestOffset - todayOffset);
-            yesterdayByTopic[topic] += nonNegative(todayOffset - yesterdayOffset);
-            weekByTopic[topic] += nonNegative(latestOffset - weekOffset);
-        }
-
-        QHash<QString, QSet<QString>> groupsByTopic;
-        const ServiceResult groups = KafkaServiceClient::describeConsumerGroups(endpoint, remote);
-        for (const QJsonObject &row : groups.rows) {
-            const QString topic = row.value(QStringLiteral("topic")).toString();
-            const QString group = row.value(QStringLiteral("group")).toString();
-            if (!topic.isEmpty() && !group.isEmpty()) {
-                groupsByTopic[topic].insert(group);
-            }
-        }
-
-        ServiceResult rows{true, {}, {}, {}};
-        for (const QJsonObject &topic : described.rows) {
-            const QString name = topic.value(QStringLiteral("name")).toString();
-            const QString metaKey = QStringLiteral("topics|%1").arg(name);
-            rows.rows.append(QJsonObject{
-                {QStringLiteral("name"), name},
-                {QStringLiteral("description"), metadataDescription(instance, metaKey)},
-                {QStringLiteral("partitions"), topic.value(QStringLiteral("partitions")).toString()},
-                {QStringLiteral("replication"), topic.value(QStringLiteral("replication")).toString()},
-                {QStringLiteral("groups"), QString::number(groupsByTopic.value(name).size())},
-                {QStringLiteral("week"), QString::number(weekByTopic.value(name, 0))},
-                {QStringLiteral("yesterday"), QString::number(yesterdayByTopic.value(name, 0))},
-                {QStringLiteral("today"), QString::number(todayByTopic.value(name, 0))},
-                {QStringLiteral("total"), QString::number(totalByTopic.value(name, 0))}
-            });
-        }
-        return rows;
+        return loadKafkaTopicStats(instance, server, remote);
     }
 
     if (productKey == QStringLiteral("kafka") && tab == TabKind::ConsumerGroup) {
@@ -295,8 +356,10 @@ ServiceResult ServiceBroker::loadTab(const QJsonObject &instance,
                 order.append(group);
             }
             totalByGroup[group] += row.value(QStringLiteral("logEnd")).toString().toLongLong();
-            currentByGroup[group] += row.value(QStringLiteral("current")).toString().toLongLong();
-            lagByGroup[group] += row.value(QStringLiteral("lag")).toString().toLongLong();
+            const QString currentText = row.value(QStringLiteral("current")).toString();
+            const QString lagText = row.value(QStringLiteral("lag")).toString();
+            currentByGroup[group] += currentText == QStringLiteral("-") ? 0 : currentText.toLongLong();
+            lagByGroup[group] += lagText == QStringLiteral("-") ? 0 : lagText.toLongLong();
         }
 
         ServiceResult rows{true, {}, {}, {}};
@@ -308,6 +371,7 @@ ServiceResult ServiceBroker::loadTab(const QJsonObject &instance,
                 {QStringLiteral("lag"), QString::number(lagByGroup.value(group, 0))}
             });
         }
+        rows.text = described.text;
         return rows;
     }
 
@@ -320,17 +384,22 @@ ServiceResult ServiceBroker::loadTab(const QJsonObject &instance,
         if (!indices.ok) {
             return indices;
         }
+        const QVector<QJsonObject> organized = ElasticsearchServiceClient::organizeIndexRows(indices.rows);
         ServiceResult rows{true, {}, {}, {}};
-        for (const QJsonObject &index : indices.rows) {
+        for (const QJsonObject &index : organized) {
             const QString name = index.value(QStringLiteral("name")).toString();
+            const QString rowKind = index.value(QStringLiteral("rowKind")).toString();
             const QString metaKey = QStringLiteral("indices|%1").arg(name);
-            rows.rows.append(QJsonObject{
-                {QStringLiteral("name"), name},
-                {QStringLiteral("description"), metadataDescription(instance, metaKey)},
-                {QStringLiteral("status"), index.value(QStringLiteral("status")).toString()},
-                {QStringLiteral("docs"), index.value(QStringLiteral("docs")).toString()},
-                {QStringLiteral("disk"), index.value(QStringLiteral("disk")).toString()}
-            });
+            QString description = metadataDescription(instance, metaKey);
+            if (rowKind == QStringLiteral("group")) {
+                const int childCount = index.value(QStringLiteral("childCount")).toInt();
+                if (description.isEmpty()) {
+                    description = QStringLiteral("%1 个子索引").arg(childCount);
+                }
+            }
+            QJsonObject row = index;
+            row.insert(QStringLiteral("description"), description);
+            rows.rows.append(row);
         }
         return rows;
     }
@@ -349,7 +418,7 @@ ServiceResult ServiceBroker::loadTab(const QJsonObject &instance,
             const QString metaKey = QStringLiteral("tables|%1.%2").arg(activeSchema, name);
             rows.rows.append(QJsonObject{
                 {QStringLiteral("name"), name},
-                {QStringLiteral("description"), metadataDescription(instance, metaKey)},
+                {QStringLiteral("description"), ServiceBroker::metadataDescription(instance, metaKey)},
                 {QStringLiteral("columns"), table.value(QStringLiteral("columns")).toString()},
                 {QStringLiteral("partitioned"), table.value(QStringLiteral("partitioned")).toString()},
                 {QStringLiteral("rows"), table.value(QStringLiteral("rows")).toString()}
@@ -375,6 +444,9 @@ ServiceResult ServiceBroker::runAction(const QJsonObject &instance,
     QString error;
     if (!resolveContext(instance, server, productKey, &endpoint, &error)) {
         return {false, error, {}, {}};
+    }
+    if (productKey == QStringLiteral("redis")) {
+        applyRedisDatabaseOverride(&endpoint, schema);
     }
 
     if (action.contains(QStringLiteral("Kibana"))) {
@@ -428,16 +500,36 @@ ServiceResult ServiceBroker::runAction(const QJsonObject &instance,
         if (action.contains(QStringLiteral("搜索")) || action.contains(QStringLiteral("刷新"))) {
             return RedisServiceClient::listKeys(endpoint, input.isEmpty() ? QStringLiteral("*") : input);
         }
+        if (action.contains(QStringLiteral("写入"))) {
+            const QString key = selection.value(QStringLiteral("key")).toString();
+            if (key.isEmpty() && input.contains(QLatin1Char('='))) {
+                const QStringList parts = input.split(QLatin1Char('='));
+                return RedisServiceClient::writeKey(endpoint, parts.value(0).trimmed(), parts.mid(1).join(QLatin1Char('=')).trimmed());
+            }
+            return RedisServiceClient::writeKey(endpoint, key.isEmpty() ? input.section(QLatin1Char('='), 0, 0).trimmed() : key,
+                                                input.section(QLatin1Char('='), 1).trimmed());
+        }
+        if (action.contains(QStringLiteral("删除"))) {
+            return RedisServiceClient::deleteKey(endpoint, selection.value(QStringLiteral("key")).toString());
+        }
         return RedisServiceClient::readKey(endpoint, selection.value(QStringLiteral("key")).toString());
     }
 
     if (productKey == QStringLiteral("elasticsearch") && tab == TabKind::Index) {
-        const QString index = selection.value(QStringLiteral("name")).toString();
-        if (action.contains(QStringLiteral("查询")) || action.contains(QStringLiteral("最新"))) {
-            return ElasticsearchServiceClient::searchIndex(endpoint, index);
+        const QString index = selection.value(QStringLiteral("queryIndex")).toString().isEmpty()
+            ? selection.value(QStringLiteral("name")).toString()
+            : selection.value(QStringLiteral("queryIndex")).toString();
+        if (action.contains(QStringLiteral("快速查询")) || action.contains(QStringLiteral("查询"))
+            || action.contains(QStringLiteral("最新"))) {
+            const int from = selection.value(QStringLiteral("from")).toInt(0);
+            const int size = selection.value(QStringLiteral("size")).toInt(10);
+            return ElasticsearchServiceClient::searchIndex(endpoint, index, from, size, input);
         }
         if (action.contains(QStringLiteral("导出"))) {
             return ElasticsearchServiceClient::listIndices(endpoint);
+        }
+        if (action.contains(QStringLiteral("统计"))) {
+            return ElasticsearchServiceClient::indexCount(endpoint, index);
         }
     }
 
@@ -448,9 +540,12 @@ ServiceResult ServiceBroker::runAction(const QJsonObject &instance,
                                                       : schema;
         if (action == QStringLiteral("SQL") || action.contains(QStringLiteral("查询"))) {
             const QString sql = input.isEmpty()
-                ? QStringLiteral("SELECT * FROM %1.%2 LIMIT 20").arg(activeSchema, table)
+                ? SqlServiceClient::defaultSelectSql(productKey, activeSchema, table)
                 : input;
             return SqlServiceClient::executeQuery(endpoint, productKey, sql);
+        }
+        if (action.contains(QStringLiteral("样例")) || action.contains(QStringLiteral("最新"))) {
+            return SqlServiceClient::sampleRows(endpoint, productKey, activeSchema, table);
         }
         if (action.contains(QStringLiteral("导出"))) {
             return SqlServiceClient::listTables(endpoint, productKey, activeSchema);
@@ -462,4 +557,45 @@ ServiceResult ServiceBroker::runAction(const QJsonObject &instance,
     }
 
     return {false, QStringLiteral("不支持的操作: %1").arg(action), {}, {}};
+}
+
+ServiceResult ServiceBroker::loadKafkaTopicsQuick(const QJsonObject &instance,
+                                                  const QJsonObject &server,
+                                                  const RemoteConnectionContext &remote)
+{
+    ServiceEndpoint endpoint;
+    QString error;
+    if (!resolveContext(instance, server, QStringLiteral("kafka"), &endpoint, &error)) {
+        return {false, error, {}, {}};
+    }
+
+    const ServiceResult described = KafkaServiceClient::describeAllTopics(endpoint, remote);
+    if (!described.ok) {
+        return described;
+    }
+    return buildKafkaTopicRowsQuick(instance, described.rows);
+}
+
+ServiceResult ServiceBroker::loadKafkaTopicStats(const QJsonObject &instance,
+                                                 const QJsonObject &server,
+                                                 const RemoteConnectionContext &remote,
+                                                 const QVector<QJsonObject> &knownTopics)
+{
+    ServiceEndpoint endpoint;
+    QString error;
+    if (!resolveContext(instance, server, QStringLiteral("kafka"), &endpoint, &error)) {
+        return {false, error, {}, {}};
+    }
+
+    const qint64 todayStart = QDate::currentDate().startOfDay().toMSecsSinceEpoch();
+    const qint64 dayMs = 24LL * 60LL * 60LL * 1000LL;
+    const qint64 yesterdayStart = todayStart - dayMs;
+    const qint64 weekStart = todayStart - 6LL * dayMs;
+
+    const KafkaTopicDashboard dashboard =
+        KafkaServiceClient::loadTopicDashboard(endpoint, remote, todayStart, yesterdayStart, weekStart, knownTopics);
+    if (!dashboard.ok) {
+        return {false, dashboard.message, {}, {}};
+    }
+    return buildKafkaTopicRows(instance, dashboard);
 }

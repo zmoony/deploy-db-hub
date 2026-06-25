@@ -1,7 +1,8 @@
 param(
     [string]$QtRoot = "D:\systemInsall\Qt",
     [string]$QtVersion = "6.11.1",
-    [string]$QtKit = "mingw_64"
+    [string]$QtKit = "mingw_64",
+    [switch]$UseFluentUI
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,11 +29,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $MingwBin "g++.exe"))) {
 
 $env:Path = "$MingwBin;$(Join-Path $QtPrefix 'bin');$(Split-Path -Parent $CMake);$(Split-Path -Parent $Ninja);$env:Path"
 
+$FluentUiFlag = if ($UseFluentUI) { "-DDEPLOY_HUB_USE_FLUENTUI=ON" } else { "-DDEPLOY_HUB_USE_FLUENTUI=OFF" }
+
 & $CMake -S $ProjectRoot -B $BuildDir -G "Ninja" `
     -DCMAKE_BUILD_TYPE=Release `
     -DCMAKE_MAKE_PROGRAM="$Ninja" `
     -DCMAKE_C_COMPILER="$(Join-Path $MingwBin 'gcc.exe')" `
     -DCMAKE_CXX_COMPILER="$(Join-Path $MingwBin 'g++.exe')" `
-    -DCMAKE_PREFIX_PATH="$QtPrefix"
+    -DCMAKE_PREFIX_PATH="$QtPrefix" `
+    $FluentUiFlag
 
 & $CMake --build $BuildDir --config Release

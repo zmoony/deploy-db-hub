@@ -90,22 +90,22 @@ namespace PageLayout {
 
 void applyPage(QVBoxLayout *layout)
 {
-    layout->setContentsMargins(Space16, Space16, Space16, Space16);
-    layout->setSpacing(Space16);
+    layout->setContentsMargins(Space12, Space12, Space12, Space12);
+    layout->setSpacing(Space12);
 }
 
 void applyDialog(QVBoxLayout *layout)
 {
-    layout->setContentsMargins(Space24, Space24, Space24, Space24);
-    layout->setSpacing(Space24);
+    layout->setContentsMargins(Space16, Space16, Space16, Space16);
+    layout->setSpacing(Space16);
 }
 
 void applyForm(QFormLayout *form)
 {
     form->setSpacing(Space12);
     form->setContentsMargins(0, 0, 0, 0);
-    form->setHorizontalSpacing(Space16);
-    form->setVerticalSpacing(Space14);
+    form->setHorizontalSpacing(Space12);
+    form->setVerticalSpacing(Space10);
 }
 
 void applyDialogForm(QFormLayout *form)
@@ -703,8 +703,8 @@ QWidget *wrapSidebarNavigation(QListWidget *navigation, QPushButton **settingsBu
     panel->setAttribute(Qt::WA_StyledBackground, true);
 
     auto *panelLayout = new QVBoxLayout(panel);
-    panelLayout->setContentsMargins(Space12, Space16, Space12, Space16);
-    panelLayout->setSpacing(Space12);
+    panelLayout->setContentsMargins(Space8, Space12, Space8, Space12);
+    panelLayout->setSpacing(Space8);
 
     auto *brand = new QWidget(panel);
     brand->setObjectName(QStringLiteral("sidebarBrand"));
@@ -732,8 +732,8 @@ QWidget *wrapSidebarNavigation(QListWidget *navigation, QPushButton **settingsBu
     footer->setObjectName(QStringLiteral("sidebarFooter"));
     auto *footerLayout = new QVBoxLayout(footer);
     footerLayout->setContentsMargins(0, 0, 0, 0);
-    footerLayout->setSpacing(Space8);
-    auto *settings = new QPushButton(QStringLiteral("⚙  设置"), footer);
+    footerLayout->setSpacing(Space4);
+    auto *settings = new QPushButton(QStringLiteral("⚙ 设置"), footer);
     settings->setObjectName(QStringLiteral("sidebarFooterButton"));
     settings->setCheckable(true);
     settings->setCursor(Qt::PointingHandCursor);

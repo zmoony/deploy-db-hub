@@ -70,37 +70,9 @@ class DashboardHeroWidget final : public QWidget
 public:
     explicit DashboardHeroWidget(QWidget *parent = nullptr)
         : QWidget(parent)
-        , m_visual(QStringLiteral(":/images/dashboard-hero-visual.png"))
     {
-        if (m_visual.isNull()) {
-            m_visual.load(QDir(QCoreApplication::applicationDirPath())
-                              .filePath(QStringLiteral("images/dashboard-hero-visual.png")));
-        }
         setObjectName(QStringLiteral("dashboardHero"));
     }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(QStringLiteral("#F0EEFF")));
-        painter.drawRoundedRect(rect(), 24, 24);
-
-        if (!m_visual.isNull()) {
-            const QSize targetSize(336, 118);
-            const QRect target(rect().right() - targetSize.width() - 20,
-                               rect().center().y() - targetSize.height() / 2,
-                               targetSize.width(),
-                               targetSize.height());
-            painter.drawPixmap(target, m_visual);
-        }
-    }
-
-private:
-    QPixmap m_visual;
 };
 
 QString formatByteSize(qint64 bytes)
@@ -213,10 +185,10 @@ QWidget *makeDashboardHero(QLabel **projectLabel,
     Q_UNUSED(onlineRateLabel);
 
     auto *hero = new DashboardHeroWidget;
-    hero->setFixedHeight(132);
+    hero->setFixedHeight(96);
     auto *layout = new QHBoxLayout(hero);
-    layout->setContentsMargins(PageLayout::Space20, PageLayout::Space16, PageLayout::Space20, PageLayout::Space16);
-    layout->setSpacing(PageLayout::Space20);
+    layout->setContentsMargins(PageLayout::Space16, PageLayout::Space12, PageLayout::Space16, PageLayout::Space12);
+    layout->setSpacing(PageLayout::Space16);
 
     auto *textBlock = new QWidget(hero);
     auto *textLayout = new QVBoxLayout(textBlock);
@@ -236,16 +208,20 @@ QFrame *makeDashboardStatCard(const QString &icon, const QString &title, const Q
 {
     auto *frame = new QFrame;
     frame->setObjectName(QStringLiteral("dashboardStatCard"));
-    frame->setFixedHeight(102);
+    frame->setFixedHeight(88);
     auto *layout = new QVBoxLayout(frame);
-    layout->setContentsMargins(PageLayout::Space14, PageLayout::Space12, PageLayout::Space14, PageLayout::Space12);
+    layout->setContentsMargins(PageLayout::Space12, PageLayout::Space10, PageLayout::Space12, PageLayout::Space10);
     layout->setSpacing(PageLayout::Space6);
 
     auto *topRow = new QHBoxLayout;
     topRow->setContentsMargins(0, 0, 0, 0);
-    topRow->setSpacing(PageLayout::Space10);
+    topRow->setSpacing(PageLayout::Space8);
     auto *iconLabel = makeDashboardLabel(icon, QStringLiteral("dashboardStatIconBox"));
     iconLabel->setAlignment(Qt::AlignCenter);
+    QFont iconFont = iconLabel->font();
+    iconFont.setPixelSize(14);
+    iconFont.setBold(true);
+    iconLabel->setFont(iconFont);
     auto *textBlock = new QWidget(frame);
     auto *textLayout = new QVBoxLayout(textBlock);
     textLayout->setContentsMargins(0, 0, 0, 0);
@@ -294,14 +270,18 @@ QFrame *makeDashboardQuickAction(const QString &icon, const QString &label, cons
 {
     auto *widget = new QFrame;
     widget->setObjectName(QStringLiteral("dashboardQuickAction"));
-    widget->setFixedHeight(64);
+    widget->setFixedHeight(56);
     widget->setCursor(Qt::PointingHandCursor);
     auto *layout = new QHBoxLayout(widget);
-    layout->setContentsMargins(PageLayout::Space12, PageLayout::Space10, PageLayout::Space12, PageLayout::Space10);
-    layout->setSpacing(PageLayout::Space10);
+    layout->setContentsMargins(PageLayout::Space10, PageLayout::Space8, PageLayout::Space10, PageLayout::Space8);
+    layout->setSpacing(PageLayout::Space8);
 
     auto *iconLabel = makeDashboardLabel(icon, QStringLiteral("dashboardQuickIconBox"));
     iconLabel->setAlignment(Qt::AlignCenter);
+    QFont iconFont = iconLabel->font();
+    iconFont.setPixelSize(14);
+    iconFont.setBold(true);
+    iconLabel->setFont(iconFont);
     auto *textBlock = new QWidget(widget);
     auto *textLayout = new QVBoxLayout(textBlock);
     textLayout->setContentsMargins(0, 0, 0, 0);
@@ -375,8 +355,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *root = new QWidget(this);
     auto *rootLayout = new QHBoxLayout(root);
-    rootLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
-    rootLayout->setSpacing(PageLayout::Space12);
+    rootLayout->setContentsMargins(PageLayout::Space12, PageLayout::Space12, PageLayout::Space12, PageLayout::Space12);
+    rootLayout->setSpacing(PageLayout::Space8);
 
     m_navigation = PageLayout::createSidebarNavigationList();
     rootLayout->addWidget(PageLayout::wrapSidebarNavigation(m_navigation, &m_settingsButton));
@@ -666,10 +646,10 @@ QWidget *MainWindow::createDashboardPage()
     auto *metrics = new QGridLayout;
     metrics->setHorizontalSpacing(PageLayout::Space12);
     metrics->setVerticalSpacing(PageLayout::Space12);
-    metrics->addWidget(makeDashboardStatCard(QStringLiteral("📦"), QStringLiteral("项目"), QStringLiteral("已登记部署单元"), &m_metricProjects), 0, 0);
-    metrics->addWidget(makeDashboardStatCard(QStringLiteral("🖥"), QStringLiteral("服务器"), QStringLiteral("Linux / Windows"), &m_metricServers), 0, 1);
-    metrics->addWidget(makeDashboardStatCard(QStringLiteral("✅"), QStringLiteral("最近成功"), QStringLiteral("最近部署结果"), &m_metricRecentSuccess), 0, 2);
-    metrics->addWidget(makeDashboardStatCard(QStringLiteral("⚠"), QStringLiteral("待处理失败"), QStringLiteral("需要关注"), &m_metricPendingFailures), 0, 3);
+    metrics->addWidget(makeDashboardStatCard(QStringLiteral("▦"), QStringLiteral("项目"), QStringLiteral("已登记部署单元"), &m_metricProjects), 0, 0);
+    metrics->addWidget(makeDashboardStatCard(QStringLiteral("▣"), QStringLiteral("服务器"), QStringLiteral("Linux / Windows"), &m_metricServers), 0, 1);
+    metrics->addWidget(makeDashboardStatCard(QStringLiteral("✓"), QStringLiteral("最近成功"), QStringLiteral("最近部署结果"), &m_metricRecentSuccess), 0, 2);
+    metrics->addWidget(makeDashboardStatCard(QStringLiteral("!"), QStringLiteral("待处理失败"), QStringLiteral("需要关注"), &m_metricPendingFailures), 0, 3);
     m_metricRecentSuccess->setText(QStringLiteral("-"));
     m_metricPendingFailures->setText(QStringLiteral("-"));
     overviewLayout->addLayout(metrics);
@@ -710,19 +690,19 @@ QWidget *MainWindow::createDashboardPage()
     miniGrid->setHorizontalSpacing(PageLayout::Space12);
     miniGrid->setVerticalSpacing(PageLayout::Space12);
     auto *deployQuickAction = makeDashboardQuickAction(
-        QStringLiteral("🔄"),
+        QStringLiteral("↻"),
         QStringLiteral("一键发布"),
         QStringLiteral("快速部署项目到服务器"));
     auto *uploadQuickAction = makeDashboardQuickAction(
-        QStringLiteral("📂"),
+        QStringLiteral("⇧"),
         QStringLiteral("上传文件"),
         QStringLiteral("上传本地文件到服务器"));
     auto *logsQuickAction = makeDashboardQuickAction(
-        QStringLiteral("📜"),
+        QStringLiteral("≡"),
         QStringLiteral("查看日志"),
         QStringLiteral("查看部署日志与运行记录"));
     auto *monitorQuickAction = makeDashboardQuickAction(
-        QStringLiteral("📊"),
+        QStringLiteral("◉"),
         QStringLiteral("实时监控"),
         QStringLiteral("跟踪服务器运行状态"));
     miniGrid->addWidget(deployQuickAction, 0, 0);

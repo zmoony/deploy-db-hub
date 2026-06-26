@@ -29,10 +29,10 @@ constexpr int Space6 = 6;
 constexpr int Space8 = 8;
 constexpr int Space10 = 10;
 constexpr int Space12 = 12;
-constexpr int Space14 = 12;
-constexpr int Space16 = 12;
-constexpr int Space20 = 16;
-constexpr int Space24 = 16;
+constexpr int Space14 = 14;
+constexpr int Space16 = 16;
+constexpr int Space20 = 20;
+constexpr int Space24 = 24;
 constexpr int DialogMinWidth = 860;
 constexpr int DialogMinHeight = 480;
 constexpr int DialogDefaultWidth = 920;
@@ -49,9 +49,9 @@ constexpr int MainWindowDefaultWidth = 1464;
 constexpr int MainWindowDefaultHeight = 820;
 constexpr int MainWindowMinWidth = 960;
 constexpr int MainWindowMinHeight = 640;
-constexpr int SidebarNavWidth = 160;
+constexpr int SidebarNavWidth = 236;
 constexpr int DialogFieldMinWidth = 240;
-constexpr int DialogFieldHeight = 32;
+constexpr int DialogFieldHeight = 40;
 
 void applyPage(QVBoxLayout *layout);
 void applyDialog(QVBoxLayout *layout);
@@ -109,7 +109,10 @@ QWidget *makeQmlContentPage(const QUrl &source,
                             QWidget *parent);
 
 QWidget *wrapContentPanel(QWidget *page);
+QWidget *wrapContentPadding(QWidget *page);
 QWidget *wrapScrollableContentPanel(QWidget *page);
+QWidget *wrapScrollableCardStack(QWidget *page);
+QWidget *wrapModulePage(QWidget *page);
 QListWidget *createSidebarNavigationList(QWidget *parent = nullptr);
 QWidget *wrapSidebarNavigation(QListWidget *navigation, QPushButton **settingsButtonOut = nullptr);
 void configureDataTable(QTableWidget *table);
@@ -120,5 +123,6 @@ void ensureTableActionColumnWidth(QTableWidget *table, int actionColumn);
 QPushButton *makeTableActionButton(const QString &label, const QString &objectName, QWidget *parent);
 QWidget *wrapTableSection(QTableWidget *table, QLabel **emptyStateOut, const QString &emptyMessage);
 void updateTableEmptyState(QTableWidget *table, QLabel *emptyState, int rowCount);
+void applyLighterCardShadow(QWidget *widget);
 
 }

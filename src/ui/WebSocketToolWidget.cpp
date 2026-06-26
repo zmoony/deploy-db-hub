@@ -20,12 +20,7 @@ WebSocketToolWidget::WebSocketToolWidget(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("WebSocket 测试"),
-        QStringLiteral("连接 ws:// 或 wss:// 服务，发送与接收消息；支持连接、断开。"),
-        this));
-
-    auto *connectRow = new QWidget(this);
+auto *connectRow = new QWidget(this);
     auto *connectLayout = new QHBoxLayout(connectRow);
     connectLayout->setContentsMargins(0, 0, 0, 0);
     connectLayout->setSpacing(PageLayout::Space8);

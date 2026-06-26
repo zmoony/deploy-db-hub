@@ -25,6 +25,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QIcon>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -39,6 +40,8 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPair>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -76,6 +79,67 @@ QPushButton *makeActionButton(const QString &text, QWidget *parent)
     button->setObjectName(QStringLiteral("toolBarButton"));
     button->setMinimumHeight(28);
     button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    return button;
+}
+
+QIcon makeAiConfigIcon(const QString &kind, const QColor &color)
+{
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPen pen(color, 1.6);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    if (kind == QStringLiteral("save")) {
+        painter.drawRoundedRect(QRectF(3, 2.5, 10, 11), 2, 2);
+        painter.drawLine(QPointF(5, 4.5), QPointF(10.5, 4.5));
+        painter.drawRoundedRect(QRectF(5, 9, 6, 3.5), 1, 1);
+    } else if (kind == QStringLiteral("test")) {
+        painter.drawEllipse(QPointF(8, 8), 5, 5);
+        painter.drawLine(QPointF(8, 5), QPointF(8, 8));
+        painter.drawLine(QPointF(8, 8), QPointF(10.5, 9.5));
+    } else if (kind == QStringLiteral("arrow")) {
+        painter.drawLine(QPointF(5.5, 3.5), QPointF(10.5, 8));
+        painter.drawLine(QPointF(10.5, 8), QPointF(5.5, 12.5));
+    } else if (kind == QStringLiteral("bulb")) {
+        painter.drawEllipse(QRectF(5, 2.5, 6, 7));
+        painter.drawLine(QPointF(6.5, 10.5), QPointF(9.5, 10.5));
+        painter.drawLine(QPointF(7, 13), QPointF(9, 13));
+        painter.drawLine(QPointF(8, 9.5), QPointF(8, 11.5));
+    }
+
+    painter.end();
+    return QIcon(pixmap);
+}
+
+QPushButton *makeAiConfigActionButton(const QString &text,
+                                      const QString &iconKind,
+                                      const QColor &iconColor,
+                                      const QString &objectName,
+                                      QWidget *parent)
+{
+    auto *button = new QPushButton(parent);
+    button->setObjectName(objectName);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    button->setFixedHeight(32);
+    auto *buttonLayout = new QHBoxLayout(button);
+    buttonLayout->setContentsMargins(10, 0, 12, 0);
+    buttonLayout->setSpacing(6);
+    auto *iconLabel = new QLabel(button);
+    iconLabel->setPixmap(makeAiConfigIcon(iconKind, iconColor).pixmap(14, 14));
+    iconLabel->setFixedSize(14, 14);
+    iconLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    auto *textLabel = new QLabel(text, button);
+    textLabel->setObjectName(QStringLiteral("aiConfigActionLabel"));
+    textLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    buttonLayout->addWidget(iconLabel);
+    buttonLayout->addWidget(textLabel);
     return button;
 }
 
@@ -296,8 +360,6 @@ QWidget *CommonToolsWidget::buildTextToolPage(const QString &title,
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
 
-    layout->addWidget(PageLayout::makeHeaderBlock(title, subtitle, page));
-
     auto *toolbar = new QWidget(page);
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
@@ -398,12 +460,7 @@ QWidget *CommonToolsWidget::buildJsonViewerPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("JSON 格式化"),
-        QStringLiteral("粘贴 JSON 后查看树形结构，支持折叠、搜索、复制；不同类型值用不同颜色标注。"),
-        page));
-
-    auto *toolbar = new QWidget(page);
+auto *toolbar = new QWidget(page);
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
@@ -586,12 +643,7 @@ QWidget *CommonToolsWidget::buildRegexPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("正则表达式"),
-        QStringLiteral("上方填写正则，下方粘贴待匹配文本；匹配与分组（含命名分组）分行展示。"),
-        page));
-
-    auto *pattern = new QLineEdit(page);
+auto *pattern = new QLineEdit(page);
     pattern->setPlaceholderText(QStringLiteral("(deploy)-(?<id>\\d+)"));
     PageLayout::configureFormInput(pattern);
     layout->addWidget(pattern);
@@ -670,12 +722,7 @@ QWidget *CommonToolsWidget::buildTimestampPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("时间戳"),
-        QStringLiteral("默认展示当前毫秒时间戳；支持毫秒/秒、时间戳转时间、时间转时间戳，并自定义格式。"),
-        page));
-
-    auto *nowRow = new QWidget(page);
+auto *nowRow = new QWidget(page);
     auto *nowLayout = new QHBoxLayout(nowRow);
     nowLayout->setContentsMargins(0, 0, 0, 0);
     nowLayout->setSpacing(PageLayout::Space8);
@@ -782,12 +829,7 @@ QWidget *CommonToolsWidget::buildHtmlEntityPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("HTML 特殊字符"),
-        QStringLiteral("常见 HTML 实体速查（双击复制编码）；下方支持文本编码/解码。"),
-        page));
-
-    auto *table = new QTableWidget(page);
+auto *table = new QTableWidget(page);
     table->setColumnCount(3);
     table->setHorizontalHeaderLabels({QStringLiteral("实体"), QStringLiteral("字符"), QStringLiteral("说明")});
     PageLayout::configureDataTable(table);
@@ -848,12 +890,7 @@ QWidget *CommonToolsWidget::buildHttpStatusPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("HTTP 状态码"),
-        QStringLiteral("输入状态码或关键字过滤；双击任意行复制「编码 含义」。"),
-        page));
-
-    auto *search = new QLineEdit(page);
+auto *search = new QLineEdit(page);
     search->setPlaceholderText(QStringLiteral("如 404 或 Not Found"));
     search->setClearButtonEnabled(true);
     PageLayout::configureFormInput(search);
@@ -901,12 +938,7 @@ QWidget *CommonToolsWidget::buildDiffPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("文本比较"),
-        QStringLiteral("源文件在左、对比文件在右；可选本地文件或直接粘贴，自动对比，不同的行标红。"),
-        page));
-
-    auto *toolbar = new QWidget(page);
+auto *toolbar = new QWidget(page);
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
@@ -1035,12 +1067,7 @@ QWidget *CommonToolsWidget::buildCronPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("Cron 表达式"),
-        QStringLiteral("支持 秒 分 时 日 月 周 年（5~7 段）；可由字段生成、解析说明并预览未来执行时间。"),
-        page));
-
-    auto *exprRow = new QWidget(page);
+auto *exprRow = new QWidget(page);
     auto *exprLayout = new QHBoxLayout(exprRow);
     exprLayout->setContentsMargins(0, 0, 0, 0);
     exprLayout->setSpacing(PageLayout::Space8);
@@ -1178,12 +1205,7 @@ QWidget *CommonToolsWidget::buildImageBase64Page()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("图片 / Base64"),
-        QStringLiteral("支持本地图片或网络 URL 图片，预览后转 Base64；也可粘贴 Base64 还原为图片。"),
-        page));
-
-    struct ImageState {
+struct ImageState {
         QByteArray bytes;
         QString mime;
     };
@@ -1379,12 +1401,7 @@ QWidget *CommonToolsWidget::buildUuidPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("UUID 生成"),
-        QStringLiteral("批量生成 UUID v4，可选大写、去横线。"),
-        page));
-
-    auto *options = new QWidget(page);
+auto *options = new QWidget(page);
     auto *optionsLayout = new QHBoxLayout(options);
     optionsLayout->setContentsMargins(0, 0, 0, 0);
     optionsLayout->setSpacing(PageLayout::Space8);
@@ -1427,12 +1444,7 @@ QWidget *CommonToolsWidget::buildHashPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("哈希计算"),
-        QStringLiteral("输入文本，一次计算 MD5 / SHA1 / SHA256 / SHA512。"),
-        page));
-
-    auto *input = makeEditor(QStringLiteral("待计算文本"), page);
+auto *input = makeEditor(QStringLiteral("待计算文本"), page);
     layout->addWidget(input, 1);
 
     auto *compute = makeActionButton(QStringLiteral("计算哈希"), page);
@@ -1465,12 +1477,7 @@ QWidget *CommonToolsWidget::buildUrlCodecPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("URL 编解码"),
-        QStringLiteral("URL percent-encoding 编码与解码。"),
-        page));
-
-    auto *toolbar = new QWidget(page);
+auto *toolbar = new QWidget(page);
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
@@ -1513,12 +1520,7 @@ QWidget *CommonToolsWidget::buildBase64TextPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("Base64 文本"),
-        QStringLiteral("文本与 Base64 互转（UTF-8）。"),
-        page));
-
-    auto *toolbar = new QWidget(page);
+auto *toolbar = new QWidget(page);
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
@@ -1575,12 +1577,7 @@ QWidget *CommonToolsWidget::buildJwtPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("JWT 解析"),
-        QStringLiteral("解析 JWT 的 Header 与 Payload（仅解码，不校验签名）。"),
-        page));
-
-    auto *toolbar = new QWidget(page);
+auto *toolbar = new QWidget(page);
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
@@ -1626,12 +1623,7 @@ QWidget *CommonToolsWidget::buildNumberBasePage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("进制转换"),
-        QStringLiteral("在二/八/十/十六进制之间互转（最多 64 位）。"),
-        page));
-
-    auto *inputRow = new QWidget(page);
+auto *inputRow = new QWidget(page);
     auto *inputLayout = new QHBoxLayout(inputRow);
     inputLayout->setContentsMargins(0, 0, 0, 0);
     inputLayout->setSpacing(PageLayout::Space8);
@@ -1689,12 +1681,7 @@ QWidget *CommonToolsWidget::buildCasePage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("命名转换"),
-        QStringLiteral("在 camelCase / PascalCase / snake_case / kebab-case / CONSTANT_CASE 之间转换。"),
-        page));
-
-    auto *input = new QLineEdit(page);
+auto *input = new QLineEdit(page);
     input->setPlaceholderText(QStringLiteral("如 deploy hub service 或 deployHubService"));
     PageLayout::configureFormInput(input);
     layout->addWidget(input);
@@ -1751,24 +1738,66 @@ void CommonToolsWidget::setOutput(QPlainTextEdit *output, QLabel *message, const
 
 QWidget *CommonToolsWidget::buildAiConfigPage()
 {
+    constexpr int kFormLabelWidth = 124;
+
     auto *page = new QWidget(this);
+    page->setObjectName(QStringLiteral("aiConfigPage"));
+    page->setProperty("cardStackPage", true);
+    page->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("AI 配置"),
-        QStringLiteral("配置 OpenAI 兼容 API（URL / Key / 模型），供通用工具中的 AI 辅助功能使用。"),
-        page));
+    layout->setSpacing(PageLayout::Space16);
+auto *formPanel = new QFrame(page);
+    formPanel->setObjectName(QStringLiteral("aiConfigSection"));
+    formPanel->setAttribute(Qt::WA_StyledBackground, true);
+    formPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    PageLayout::applyLighterCardShadow(formPanel);
+    auto *formPanelLayout = new QVBoxLayout(formPanel);
+    formPanelLayout->setContentsMargins(PageLayout::Space24, PageLayout::Space16, PageLayout::Space24, PageLayout::Space16);
+    formPanelLayout->setSpacing(PageLayout::Space12);
 
-    QFormLayout *form = nullptr;
-    auto *formPanel = PageLayout::wrapDialogFormSection(QStringLiteral("连接配置"), page, &form);
-    form->setHorizontalSpacing(PageLayout::Space16);
-    form->setVerticalSpacing(PageLayout::Space14);
+    formPanelLayout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("连接配置"), formPanel));
+
+    auto makeFieldLabel = [kFormLabelWidth](const QString &text, QWidget *parent) {
+        auto *label = new QLabel(text, parent);
+        label->setObjectName(QStringLiteral("formFieldLabel"));
+        label->setFixedWidth(kFormLabelWidth);
+        label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        return label;
+    };
+    auto makeHintLabel = [](const QString &text, QWidget *parent) {
+        auto *label = new QLabel(text, parent);
+        label->setObjectName(QStringLiteral("formFieldHint"));
+        return label;
+    };
+    auto makeFormRow = [makeFieldLabel, kFormLabelWidth](const QString &labelText,
+                                                         QWidget *field,
+                                                         QLabel *hint,
+                                                         QWidget *parent) {
+        auto *row = new QWidget(parent);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(PageLayout::Space16);
+        rowLayout->addWidget(makeFieldLabel(labelText, row), 0, Qt::AlignTop);
+        auto *fieldBlock = new QWidget(row);
+        auto *fieldLayout = new QVBoxLayout(fieldBlock);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(PageLayout::Space4);
+        fieldLayout->addWidget(field);
+        if (hint != nullptr) {
+            fieldLayout->addWidget(hint);
+        }
+        rowLayout->addWidget(fieldBlock, 1);
+        return row;
+    };
 
     auto *apiBaseUrlInput = new QLineEdit(formPanel);
     apiBaseUrlInput->setPlaceholderText(QStringLiteral("https://api.openai.com/v1"));
     PageLayout::configureFormInput(apiBaseUrlInput);
-    form->addRow(QStringLiteral("API Base URL"), apiBaseUrlInput);
+    formPanelLayout->addWidget(makeFormRow(QStringLiteral("API Base URL"),
+                                           apiBaseUrlInput,
+                                           makeHintLabel(QStringLiteral("例如：https://api.openai.com/v1"), formPanel),
+                                           formPanel));
 
     auto *passwordRow = new QWidget(formPanel);
     PageLayout::configureHorizontalFormRow(passwordRow);
@@ -1777,46 +1806,149 @@ QWidget *CommonToolsWidget::buildAiConfigPage()
     passwordRowLayout->setSpacing(PageLayout::Space8);
     auto *apiKeyInput = new QLineEdit(passwordRow);
     apiKeyInput->setEchoMode(QLineEdit::Password);
-    apiKeyInput->setPlaceholderText(QStringLiteral("sk-..."));
+    apiKeyInput->setPlaceholderText(QStringLiteral("••••••••••••••••"));
     PageLayout::configureFormInput(apiKeyInput);
     auto *visibilityButton = new QPushButton(QStringLiteral("显示"), passwordRow);
-    visibilityButton->setObjectName(QStringLiteral("backNavButton"));
+    visibilityButton->setObjectName(QStringLiteral("aiVisibilityButton"));
     visibilityButton->setCheckable(true);
-    visibilityButton->setFixedSize(48, PageLayout::DialogFieldHeight);
+    visibilityButton->setFixedSize(56, PageLayout::DialogFieldHeight);
     connect(visibilityButton, &QPushButton::toggled, page, [apiKeyInput, visibilityButton](bool visible) {
         apiKeyInput->setEchoMode(visible ? QLineEdit::Normal : QLineEdit::Password);
         visibilityButton->setText(visible ? QStringLiteral("隐藏") : QStringLiteral("显示"));
     });
     passwordRowLayout->addWidget(apiKeyInput, 1);
     passwordRowLayout->addWidget(visibilityButton);
-    form->addRow(QStringLiteral("API Key"), passwordRow);
+    formPanelLayout->addWidget(makeFormRow(QStringLiteral("API Key"),
+                                           passwordRow,
+                                           makeHintLabel(QStringLiteral("您的 API Key 将安全存储在本地，不会上传到任何服务器。"), formPanel),
+                                           formPanel));
 
-    auto *modelInput = new QLineEdit(formPanel);
+    auto *modelInput = new QComboBox(formPanel);
+    modelInput->setEditable(true);
+    modelInput->addItems({
+        QStringLiteral("gpt-4o-mini"),
+        QStringLiteral("gpt-4o"),
+        QStringLiteral("Qwen/Qwen2-7B"),
+        QStringLiteral("deepseek-chat")
+    });
     modelInput->setPlaceholderText(QStringLiteral("gpt-4o-mini"));
     PageLayout::configureFormInput(modelInput);
-    form->addRow(QStringLiteral("模型"), modelInput);
+    formPanelLayout->addWidget(makeFormRow(QStringLiteral("模型"),
+                                           modelInput,
+                                           makeHintLabel(QStringLiteral("选择要使用的 AI 模型"), formPanel),
+                                           formPanel));
 
     auto *rememberKeyCheck = new QCheckBox(QStringLiteral("记住 Key"), formPanel);
     rememberKeyCheck->setChecked(true);
-    form->addRow(QString(), rememberKeyCheck);
+    auto *rememberBlock = new QWidget(formPanel);
+    auto *rememberLayout = new QVBoxLayout(rememberBlock);
+    rememberLayout->setContentsMargins(0, 0, 0, 0);
+    rememberLayout->setSpacing(PageLayout::Space4);
+    rememberLayout->addWidget(rememberKeyCheck);
+    rememberLayout->addWidget(makeHintLabel(QStringLiteral("下次启动时自动填充已保存凭据。"), formPanel));
+    auto *rememberRow = new QWidget(formPanel);
+    auto *rememberRowLayout = new QHBoxLayout(rememberRow);
+    rememberRowLayout->setContentsMargins(kFormLabelWidth + PageLayout::Space16, 0, 0, 0);
+    rememberRowLayout->setSpacing(0);
+    rememberRowLayout->addWidget(rememberBlock, 1);
+    formPanelLayout->addWidget(rememberRow);
 
+    auto *actions = new QWidget(formPanel);
+    actions->setObjectName(QStringLiteral("aiConfigActions"));
+    auto *actionsLayout = new QHBoxLayout(actions);
+    actionsLayout->setContentsMargins(0, PageLayout::Space8, 0, 0);
+    actionsLayout->setSpacing(PageLayout::Space12);
+    auto *saveButton = makeAiConfigActionButton(QStringLiteral("保存配置"),
+                                                QStringLiteral("save"),
+                                                QColor(QStringLiteral("#FFFFFF")),
+                                                QStringLiteral("aiConfigSaveButton"),
+                                                actions);
+    auto *testButton = makeAiConfigActionButton(QStringLiteral("测试连接"),
+                                                QStringLiteral("test"),
+                                                QColor(QStringLiteral("#374151")),
+                                                QStringLiteral("aiConfigTestButton"),
+                                                actions);
+    actionsLayout->addWidget(saveButton, 0, Qt::AlignLeft);
+    actionsLayout->addWidget(testButton, 0, Qt::AlignLeft);
+    actionsLayout->addStretch();
+    formPanelLayout->addWidget(actions);
+
+    auto *message = new QLabel(formPanel);
+    message->setObjectName(QStringLiteral("toolMessage"));
+    message->setContentsMargins(0, PageLayout::Space4, 0, 0);
+    formPanelLayout->addWidget(message);
     layout->addWidget(formPanel);
 
-    auto *actions = new QWidget(page);
-    auto *actionsLayout = new QHBoxLayout(actions);
-    actionsLayout->setContentsMargins(0, 0, 0, 0);
-    actionsLayout->setSpacing(PageLayout::Space8);
-    auto *saveButton = makeActionButton(QStringLiteral("保存配置"), actions);
-    auto *testButton = makeActionButton(QStringLiteral("测试连接"), actions);
-    actionsLayout->addWidget(saveButton);
-    actionsLayout->addWidget(testButton);
-    actionsLayout->addStretch();
-    layout->addWidget(actions);
+    auto *helpPanel = new QFrame(page);
+    helpPanel->setObjectName(QStringLiteral("aiQuickHelpPanel"));
+    helpPanel->setAttribute(Qt::WA_StyledBackground, true);
+    helpPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    PageLayout::applyLighterCardShadow(helpPanel);
+    auto *helpLayout = new QVBoxLayout(helpPanel);
+    helpLayout->setContentsMargins(PageLayout::Space24, PageLayout::Space16, PageLayout::Space24, PageLayout::Space16);
+    helpLayout->setSpacing(PageLayout::Space12);
+    helpLayout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("快速开始"), helpPanel));
 
-    auto *message = new QLabel(page);
-    message->setObjectName(QStringLiteral("toolMessage"));
-    layout->addWidget(message);
-    layout->addStretch();
+    auto *steps = new QWidget(helpPanel);
+    auto *stepsLayout = new QHBoxLayout(steps);
+    stepsLayout->setContentsMargins(0, 0, 0, 0);
+    stepsLayout->setSpacing(PageLayout::Space16);
+    struct HelpStep {
+        QString number;
+        QString title;
+        QString subtitle;
+        QString link;
+    };
+    const QList<HelpStep> helpItems = {
+        {QStringLiteral("1"), QStringLiteral("获取 API Key"), QStringLiteral("从 OpenAI 兼容服务商获取访问凭据"), QStringLiteral("查看文档 →")},
+        {QStringLiteral("2"), QStringLiteral("配置连接信息"), QStringLiteral("填写 Base URL、API Key 和模型名称"), QString()},
+        {QStringLiteral("3"), QStringLiteral("开始使用"), QStringLiteral("在 AI 聊天、辅助分析等工具中使用"), QString()}
+    };
+    for (int i = 0; i < helpItems.size(); ++i) {
+        const HelpStep &item = helpItems.at(i);
+        auto *step = new QWidget(steps);
+        step->setObjectName(QStringLiteral("quickHelpStep"));
+        auto *stepLayout = new QHBoxLayout(step);
+        stepLayout->setContentsMargins(0, 0, 0, 0);
+        stepLayout->setSpacing(PageLayout::Space12);
+        auto *badge = new QLabel(item.number, step);
+        badge->setObjectName(QStringLiteral("quickHelpBadge"));
+        badge->setAlignment(Qt::AlignCenter);
+        auto *textBlock = new QWidget(step);
+        auto *textLayout = new QVBoxLayout(textBlock);
+        textLayout->setContentsMargins(0, 0, 0, 0);
+        textLayout->setSpacing(PageLayout::Space4);
+        auto *title = new QLabel(item.title, textBlock);
+        title->setObjectName(QStringLiteral("quickHelpTitle"));
+        auto *subtitle = new QLabel(item.subtitle, textBlock);
+        subtitle->setObjectName(QStringLiteral("quickHelpItem"));
+        subtitle->setWordWrap(true);
+        textLayout->addWidget(title);
+        textLayout->addWidget(subtitle);
+        if (!item.link.isEmpty()) {
+            auto *link = new QLabel(item.link, textBlock);
+            link->setObjectName(QStringLiteral("quickHelpLink"));
+            textLayout->addWidget(link);
+        }
+        stepLayout->addWidget(badge);
+        stepLayout->addWidget(textBlock, 1);
+        stepsLayout->addWidget(step, 1);
+        if (i + 1 < helpItems.size()) {
+            auto *arrow = new QLabel(steps);
+            arrow->setObjectName(QStringLiteral("quickHelpArrow"));
+            arrow->setPixmap(makeAiConfigIcon(QStringLiteral("arrow"), QColor(QStringLiteral("#9CA3AF"))).pixmap(16, 16));
+            arrow->setAlignment(Qt::AlignCenter);
+            stepsLayout->addWidget(arrow);
+        }
+    }
+    auto *bulb = new QLabel(steps);
+    bulb->setObjectName(QStringLiteral("quickHelpBulb"));
+    bulb->setPixmap(makeAiConfigIcon(QStringLiteral("bulb"), QColor(QStringLiteral("#4E8EFA"))).pixmap(20, 20));
+    bulb->setAlignment(Qt::AlignCenter);
+    bulb->setToolTip(QStringLiteral("API Key 保存在本地凭据存储中，不上传服务器。"));
+    stepsLayout->addWidget(bulb, 0, Qt::AlignTop);
+    helpLayout->addWidget(steps);
+    layout->addWidget(helpPanel);
 
     auto *testClient = new OpenAiChatClient(page);
 
@@ -1831,13 +1963,19 @@ QWidget *CommonToolsWidget::buildAiConfigPage()
             return;
         }
         apiBaseUrlInput->setText(settings.apiBaseUrl);
-        modelInput->setText(settings.model);
+        if (!settings.model.isEmpty()) {
+            const int modelIndex = modelInput->findText(settings.model);
+            if (modelIndex >= 0) {
+                modelInput->setCurrentIndex(modelIndex);
+            } else {
+                modelInput->setEditText(settings.model);
+            }
+        }
         rememberKeyCheck->setChecked(settings.rememberKey);
         apiKeyInput->clear();
+        apiKeyInput->setPlaceholderText(QStringLiteral("••••••••••••••••"));
         if (m_credentials != nullptr && m_credentials->has(settings.credentialRef)) {
-            apiKeyInput->setPlaceholderText(QStringLiteral("已保存 Key，留空表示不修改"));
-        } else {
-            apiKeyInput->setPlaceholderText(QStringLiteral("sk-..."));
+            apiKeyInput->setText(m_credentials->load(settings.credentialRef));
         }
         message->clear();
     };
@@ -1854,7 +1992,7 @@ QWidget *CommonToolsWidget::buildAiConfigPage()
         m_aiSettings->load(&settings, &loadError);
 
         settings.apiBaseUrl = apiBaseUrlInput->text().trimmed();
-        settings.model = modelInput->text().trimmed();
+        settings.model = modelInput->currentText().trimmed();
         settings.rememberKey = rememberKeyCheck->isChecked();
         if (settings.credentialRef.isEmpty()) {
             settings.credentialRef = QStringLiteral("deploy-hub/ai-api-key");
@@ -1896,7 +2034,7 @@ QWidget *CommonToolsWidget::buildAiConfigPage()
     connect(testButton, &QPushButton::clicked, page, [this, page, apiBaseUrlInput, apiKeyInput, modelInput, message, testClient, saveButton, testButton]() {
         AiSettings settings;
         settings.apiBaseUrl = apiBaseUrlInput->text().trimmed();
-        settings.model = modelInput->text().trimmed();
+        settings.model = modelInput->currentText().trimmed();
         settings.credentialRef = QStringLiteral("deploy-hub/ai-api-key");
 
         QString key = apiKeyInput->text();
@@ -2015,4 +2153,3 @@ void CommonToolsWidget::wireAiAssist(QWidget *page,
         setBusy(false);
     });
 }
-

@@ -36,11 +36,7 @@ ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent, bo
     }
 
     if (showPageHeader) {
-        layout->addWidget(PageLayout::makeHeaderBlock(
-            QStringLiteral("服务器管理"),
-            QStringLiteral("维护 Linux SSH / Windows WinRM 连接信息与默认部署目录。"),
-            this));
-    }
+}
 
     auto *toolbarWidget = new QWidget(this);
     auto *toolbar = new QHBoxLayout(toolbarWidget);

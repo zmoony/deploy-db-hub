@@ -357,3 +357,47 @@
 - 2026-06-25：项目配置新增 `deploy.restartMode`（`restart-script` / `service-command`）启动方式下拉；UI 用 QStackedWidget 按选择显示脚本或自定义命令，保存时只写入当前模式字段。
 - 2026-06-25：修复一键部署 service-command 模式重启找不到 jar：`executeProjectRestart` 在非脚本模式下用 `wrapCommandWithWorkingDirectory` 自动 `cd` 到产物目录再执行命令（Linux `cd '<dir>' && <cmd>` / Windows `cd /d "<dir>" && <cmd>`）。新增 `ProjectServiceConfigTest` 3 个用例；Release 构建与 deploy_hub_tests 通过。
 - 2026-06-25：AI 聊天页改参考豆包风格，UI 减重：顶部 toolbar 三个文字按钮去掉，发送/停止做成输入卡片内右下角圆形图标按钮；「新对话」图标按钮放标题右侧；输入区改成圆角 QFrame（`#aiInputCard`），含 AI 头像（`images/icon.png`）+ 多行输入；输入框下方加 7 个快速操作 chip（快速/图像/PPT/编程/视频/翻译/更多），每个带 SVG 图标，chip 点击插入示例提示词；新增 `images/ai/{quick,image,presentation,code,video,translate,more}.svg` 并写入 QRC/CMakeLists。`AppStyle.cpp` 新增对应样式（`#aiInputCard` / `#aiActionChip` / `#aiSendButton` / `#aiStopButton` / `#aiNewChatButton` / `#aiChatHistory` / `#aiChatInput` / `#aiAvatar` / `#secondaryText`）。Release 构建、ctest、应用冒烟启动均通过。
+- 2026-06-26：按参考图完成第 1 轮 UI 主壳/主题系统重构（不改业务逻辑）：
+  - 新增 `src/ui/Theme.h` 固定 Deploy Hub 设计 token：Primary `#3B82F6`、Hover `#2563EB`、背景 `#F7F9FC`、卡片 `#FFFFFF`、边框 `#E5E7EB`、标题 `#111827`、次级文字 `#6B7280`，圆角 8/10，页面 padding 24，输入高度 40。
+  - `AppStyle` 改为从 `src/ui/style.qss` 资源读取统一 QSS，并保留 `AppStyle::apply()` 入口；主程序/测试目标均纳入资源与主题头文件。
+  - `MainWindow` 主壳改为参考图结构：左侧白底 236px 固定导航、右侧浅灰工作区、顶部 52px 轻量模块 Tab + Admin/版本信息；左侧导航仍按当前大模块切换菜单，避免改动功能路径。
+  - `PageLayout` 统一主页面间距与表单高度；新增静态测试约束主壳 token 和“侧栏按模块切换”行为。
+  - 已通过 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure`。
+  - 2026-06-26：修复侧栏变红回归。根因是 `style.qss` 从 `AppStyle.cpp` 拆出后继续使用 `%15/%16...` 这类 `QString::arg` 占位符，多段 `.arg()` 会把 `%16` 误解析为 `%1` 后跟字符，导致侧栏背景映射到 Danger 红色。改为 `@C1@...@C20@` 命名 token 替换，并新增 `AppStyleTest::sidebarStyleUsesSidebarPaletteSlots` 防回归；Release 构建、CTest、启动截图验证均通过。
+  - 2026-06-26：继续按参考图优化主框架：左侧当前模块菜单项全部加 18px 统一线性图标（代码绘制，不引入新依赖）；左侧保持“顶部模块切换后显示当前模块菜单”的功能路径；外层背景为浅灰底板，左侧白色圆角导航面板，右侧滚动内容为白色圆角内容卡片；输入框 hover/focus 边框、Primary/Secondary 按钮高度与宽度继续对齐设计 token。新增 `PageLayoutTest::sidebarNavigationUsesIcons` 防回归；Release 构建、CTest、启动截图验证均通过。
+  - 2026-06-26：AI 配置页按统一配置页模板重构（仅 UI/UX，不改保存、凭据、测试连接逻辑）：
+    - 页面结构调整为 `PageHeader → 连接配置 Section → 操作按钮 → 快速开始 Help`。
+    - 表单改为 label/输入/说明的垂直字段组：Base URL、API Key（保留显示/隐藏）、模型、记住 Key。
+    - 保存按钮使用 Primary 样式，测试连接使用 Secondary 样式；新增本地保存说明、OpenAI 兼容接口提示和“查看文档”帮助文案。
+    - `style.qss` 增加 `aiConfigSection`、`aiQuickHelpPanel`、`formFieldLabel`、`formFieldHint` 等统一样式；`PageLayoutTest::aiConfigPageUsesUnifiedTemplate` 防回归。
+    - 已通过 `scripts/build-release.ps1`、`ctest --test-dir build-release --output-on-failure` 和启动冒烟截图。
+  - 2026-06-26：根据参考图二次校准主壳与 AI 配置页：
+    - 顶部模块 Tab 保持 36px 高度，非选中透明文字，选中为紧凑蓝色胶囊，模块间距加大到 24px。
+    - 主窗口壳层改为参考图比例：外层左右留白、左侧固定菜单面板与右侧内容间距 24px。
+    - AI 配置页从全宽纵向字段改回参考图式两列表单行：左侧 124px label，右侧输入框与 hint；按钮行与记住 Key 行复用同一表单行结构。
+    - 快速开始改为横向 3 步结构，带圆形编号 badge 和文案，匹配参考图工具软件样式。
+    - 扩展静态测试约束两列布局、Quick Help badge、模块 Tab 36px 高度；Release 构建与 CTest 通过。
+  - 2026-06-26：继续按用户反馈收敛主壳与 AI 配置页（仅 UI/UX）：
+    - 主壳左侧外边距归零，右侧内容顶部按 `8 + 52 = 60px` 对齐左侧 Deploy Hub 品牌下横线；模块 Tab 仍保持 36px，但从胶囊按钮改为轻量下划线风格，降低按钮感并避免遮挡。
+    - 左侧菜单选中态增加浅蓝边框层次，菜单列表贴左侧面板边缘；保留“顶部大模块切换后左侧菜单随模块变化”的功能路径。
+    - AI 配置页按钮行移出“连接配置” Section，与 Section 成为兄弟层级；保存/测试按钮增加 16px 线性图标，按钮尺寸继续使用 40px 高度。
+    - API Key 加载已保存 Key 时默认以密码点显示，点击“显示”可明文查看；无保存 Key 时 placeholder 使用点状掩码。
+    - 复选框 checked 状态使用 `images/ui/check.svg` 白色线性勾；Quick Help 链接色固定 `#4E8EFA`，步骤 1/2/3 增加箭头串联，底部增加线性灯泡提示图标。
+    - 新增静态测试锁定按钮层级、Quick Help 箭头/灯泡、复选框勾选图标、主壳左侧无外边距。
+    - `scripts\build-release.ps1` 已通过（首次 120s 超时后重跑；中间一次 CMake/Ninja restat 权限短暂失败，确认无残留进程后重跑通过，仅保留既有 FluentUI 插件链接范围警告）；`ctest --test-dir build-release --output-on-failure` 通过。
+  - 2026-06-26：根据截图继续修复 AI 配置页与顶部 Tab：
+    - “保存配置/测试连接”按钮行从连接配置 Section 内移出，改为连接配置 Section 的兄弟节点并从左侧顶头开始；AI 配置与快速开始继续保持同级 Section。
+    - 压缩 AI 配置页垂直间距：页面 spacing 20→16，Section 上下 padding 20→16，字段 hint 间距 6→4，Quick Help 上下 padding 20→16，减少首屏底部遮挡。
+    - AI 配置页按钮尺寸降为 36px 高、112~128px 宽；Quick Help 编号 badge 降为 32px。
+    - 顶部模块 Tab 修复裁切：按钮从 `max-height:32px + padding:8px 16px` 改为 36px 高、垂直 padding 0，并在布局中垂直居中；右侧内容底部外边距 24→8，释放底部空间。
+    - 验证：`ctest --test-dir build-release --output-on-failure` 通过。`scripts\build-release.ps1` 编译到链接阶段失败，原因是 `build-release\deploy-hub.exe` 正在运行（PID 24828）导致 Windows 无法覆盖 exe；测试目标已成功链接。
+  - 2026-06-24：按设计稿二次对齐顶部模块 Tab 与 AI 配置页：
+    - 模块 Tab 从下划线改回蓝色胶囊（选中白字蓝底、未选中灰字透明底），Tab 间距 8px。
+    - AI 配置「保存/测试」按钮移入「连接配置」卡片内左对齐；模型字段改为可编辑 QComboBox；快速开始右侧保留灯泡图标。
+    - `PageLayoutTest::aiConfigPageUsesUnifiedTemplate` 更新为校验胶囊 Tab 32px 高度；Release 构建通过。
+  - 2026-06-24：修复 AI 配置页按钮裁切与「快速开始」卡片不可见：
+    - 根因：`fitFirstScreen` 禁用滚动导致内容被裁切；`aiConfigActions` 限高 36px 与按钮 40px 冲突。
+    - 去掉 AI 配置页 `fitFirstScreen`，改走可滚动内容区；按钮放回「连接配置」卡片底部；「快速开始」独立第二卡片；按钮区高度统一 40px。
+  - 2026-06-26：AI 配置页改为线框图 card-stack 结构：
+    - 新增 `cardStackPage` + `wrapScrollableCardStack`：透明滚动区，不再用外层 `contentPanel`/`contentScroll` 白底大框包裹整页。
+    - 页面结构：标题 → API 配置卡片（含按钮）→ 快速开始卡片；两张卡片并列在灰色工作区背景上。

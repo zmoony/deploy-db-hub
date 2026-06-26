@@ -1,5 +1,6 @@
 #include "ui/PageLayout.h"
 
+#include "ui/Theme.h"
 #include "qml/LineTabBarController.h"
 #include "qml/QmlEngineProvider.h"
 
@@ -20,6 +21,7 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QFontMetrics>
+#include <QGraphicsDropShadowEffect>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QMainWindow>
@@ -42,6 +44,7 @@ public:
         : QListWidget(parent)
     {
         setObjectName(QStringLiteral("sidebarNav"));
+        setIconSize(QSize(18, 18));
         setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         setFrameShape(QFrame::NoFrame);
@@ -90,8 +93,8 @@ namespace PageLayout {
 
 void applyPage(QVBoxLayout *layout)
 {
-    layout->setContentsMargins(Space12, Space12, Space12, Space12);
-    layout->setSpacing(Space12);
+    layout->setContentsMargins(Space24, Space24, Space24, Space24);
+    layout->setSpacing(Space24);
 }
 
 void applyDialog(QVBoxLayout *layout)
@@ -102,10 +105,10 @@ void applyDialog(QVBoxLayout *layout)
 
 void applyForm(QFormLayout *form)
 {
-    form->setSpacing(Space12);
+    form->setSpacing(Space16);
     form->setContentsMargins(0, 0, 0, 0);
-    form->setHorizontalSpacing(Space12);
-    form->setVerticalSpacing(Space10);
+    form->setHorizontalSpacing(Space16);
+    form->setVerticalSpacing(Space16);
 }
 
 void applyDialogForm(QFormLayout *form)
@@ -271,6 +274,21 @@ void configureFormInput(QWidget *widget)
     if (auto *lineEdit = qobject_cast<QLineEdit *>(widget)) {
         lineEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
+}
+
+void applyLighterCardShadow(QWidget *widget)
+{
+    if (widget == nullptr || widget->graphicsEffect() != nullptr) {
+        return;
+    }
+
+    // Approximate Element Plus --el-box-shadow-lighter:
+    // 0 1px 2px rgba(0, 0, 0, 0.03), 0 0 6px rgba(0, 0, 0, 0.02)
+    auto *shadow = new QGraphicsDropShadowEffect(widget);
+    shadow->setBlurRadius(6);
+    shadow->setOffset(0, 1);
+    shadow->setColor(QColor(0, 0, 0, 18));
+    widget->setGraphicsEffect(shadow);
 }
 
 void configurePathField(QWidget *widget)
@@ -526,15 +544,10 @@ void refreshListingTableColumns(QTableWidget *table, int stretchColumn)
 
 QWidget *makeHeaderBlock(const QString &title, const QString &subtitle, QWidget *parent)
 {
-    auto *block = new QWidget(parent);
-    auto *layout = new QVBoxLayout(block);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(Space8);
-    layout->addWidget(makePageTitle(title, block));
-    if (!subtitle.isEmpty()) {
-        layout->addWidget(makePageSubtitle(subtitle, block));
-    }
-    return block;
+    Q_UNUSED(title);
+    Q_UNUSED(subtitle);
+    Q_UNUSED(parent);
+    return nullptr;
 }
 
 namespace {
@@ -564,7 +577,7 @@ QWidget *makeTabBarInternal(const QStringList &labels,
         button->setCursor(Qt::PointingHandCursor);
         button->setFocusPolicy(Qt::NoFocus);
         tabGroup->addButton(button, i);
-        tabLayout->addWidget(button);
+        tabLayout->addWidget(button, 0, Qt::AlignVCenter);
     }
     tabLayout->addStretch();
 
@@ -662,13 +675,28 @@ QWidget *wrapContentPanel(QWidget *page)
     auto *panel = new QFrame;
     panel->setObjectName(QStringLiteral("contentPanel"));
     auto *panelLayout = new QVBoxLayout(panel);
-    panelLayout->setContentsMargins(0, 0, 0, 0);
-    panelLayout->setSpacing(0);
+    panelLayout->setContentsMargins(Space24, Space24, Space24, Space24);
+    panelLayout->setSpacing(Space24);
     if (page != nullptr) {
         page->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         panelLayout->addWidget(page, 1);
     }
     return panel;
+}
+
+QWidget *wrapContentPadding(QWidget *page)
+{
+    auto *shell = new QWidget;
+    shell->setObjectName(QStringLiteral("contentPaddingShell"));
+    shell->setAttribute(Qt::WA_StyledBackground, true);
+    auto *panelLayout = new QVBoxLayout(shell);
+    panelLayout->setContentsMargins(Space24, Space24, Space24, Space24);
+    panelLayout->setSpacing(0);
+    if (page != nullptr) {
+        page->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+        panelLayout->addWidget(page);
+    }
+    return shell;
 }
 
 QWidget *wrapScrollableContentPanel(QWidget *page)
@@ -683,6 +711,34 @@ QWidget *wrapScrollableContentPanel(QWidget *page)
     scroll->setAttribute(Qt::WA_StyledBackground, true);
     scroll->setWidget(wrapContentPanel(page));
     return scroll;
+}
+
+QWidget *wrapScrollableCardStack(QWidget *page)
+{
+    auto *scroll = new QScrollArea;
+    scroll->setObjectName(QStringLiteral("cardStackScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    scroll->setAttribute(Qt::WA_StyledBackground, true);
+    scroll->setWidget(wrapContentPadding(page));
+    return scroll;
+}
+
+QWidget *wrapModulePage(QWidget *page)
+{
+    if (page == nullptr) {
+        return nullptr;
+    }
+    if (page->property("cardStackPage").toBool()) {
+        return wrapScrollableCardStack(page);
+    }
+    if (page->property("fitFirstScreen").toBool()) {
+        return wrapContentPanel(page);
+    }
+    return wrapScrollableContentPanel(page);
 }
 
 QListWidget *createSidebarNavigationList(QWidget *parent)
@@ -703,13 +759,13 @@ QWidget *wrapSidebarNavigation(QListWidget *navigation, QPushButton **settingsBu
     panel->setAttribute(Qt::WA_StyledBackground, true);
 
     auto *panelLayout = new QVBoxLayout(panel);
-    panelLayout->setContentsMargins(Space8, Space12, Space8, Space12);
-    panelLayout->setSpacing(Space8);
+    panelLayout->setContentsMargins(0, Space12, Space16, Space16);
+    panelLayout->setSpacing(Space12);
 
     auto *brand = new QWidget(panel);
     brand->setObjectName(QStringLiteral("sidebarBrand"));
     auto *brandLayout = new QHBoxLayout(brand);
-    brandLayout->setContentsMargins(0, 0, 0, 0);
+    brandLayout->setContentsMargins(Space20, 0, 0, 0);
     brandLayout->setSpacing(Space8);
     auto *brandMark = new QLabel(QStringLiteral("D"), brand);
     brandMark->setObjectName(QStringLiteral("sidebarBrandMark"));
@@ -731,9 +787,9 @@ QWidget *wrapSidebarNavigation(QListWidget *navigation, QPushButton **settingsBu
     auto *footer = new QWidget(panel);
     footer->setObjectName(QStringLiteral("sidebarFooter"));
     auto *footerLayout = new QVBoxLayout(footer);
-    footerLayout->setContentsMargins(0, 0, 0, 0);
+    footerLayout->setContentsMargins(Space20, 0, 0, 0);
     footerLayout->setSpacing(Space4);
-    auto *settings = new QPushButton(QStringLiteral("⚙ 设置"), footer);
+    auto *settings = new QPushButton(QStringLiteral("设置"), footer);
     settings->setObjectName(QStringLiteral("sidebarFooterButton"));
     settings->setCheckable(true);
     settings->setCursor(Qt::PointingHandCursor);

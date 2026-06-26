@@ -51,6 +51,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -64,6 +65,71 @@
 #include <functional>
 
 namespace {
+
+QIcon makeSidebarLineIcon(const QString &label)
+{
+    const bool active = false;
+    Q_UNUSED(active);
+    const QColor color(QStringLiteral("#64748B"));
+    QPixmap pixmap(18, 18);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPen pen(color, 1.6);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    const QRectF r(3.0, 3.0, 12.0, 12.0);
+    if (label.contains(QStringLiteral("AI"))) {
+        painter.drawRoundedRect(r.adjusted(1, 1, -1, -1), 3, 3);
+        painter.drawLine(QPointF(9, 6), QPointF(9, 12));
+        painter.drawLine(QPointF(6, 9), QPointF(12, 9));
+    } else if (label.contains(QStringLiteral("JSON")) || label.contains(QStringLiteral("文本")) || label.contains(QStringLiteral("HTML"))) {
+        painter.drawLine(QPointF(7, 5), QPointF(4, 9));
+        painter.drawLine(QPointF(4, 9), QPointF(7, 13));
+        painter.drawLine(QPointF(11, 5), QPointF(14, 9));
+        painter.drawLine(QPointF(14, 9), QPointF(11, 13));
+    } else if (label.contains(QStringLiteral("图片"))) {
+        painter.drawRoundedRect(r, 2, 2);
+        painter.drawEllipse(QPointF(7, 7), 1.2, 1.2);
+        painter.drawLine(QPointF(5, 13), QPointF(8, 10));
+        painter.drawLine(QPointF(8, 10), QPointF(11, 13));
+        painter.drawLine(QPointF(11, 13), QPointF(14, 9));
+    } else if (label.contains(QStringLiteral("HTTP")) || label.contains(QStringLiteral("WebSocket"))) {
+        painter.drawEllipse(r);
+        painter.drawLine(QPointF(4, 9), QPointF(14, 9));
+        painter.drawArc(QRectF(6, 3, 6, 12), 90 * 16, 180 * 16);
+        painter.drawArc(QRectF(6, 3, 6, 12), -90 * 16, 180 * 16);
+    } else if (label.contains(QStringLiteral("部署")) || label.contains(QStringLiteral("项目")) || label.contains(QStringLiteral("服务器"))) {
+        painter.drawRoundedRect(QRectF(4, 5, 10, 8), 2, 2);
+        painter.drawLine(QPointF(7, 5), QPointF(7, 4));
+        painter.drawLine(QPointF(11, 5), QPointF(11, 4));
+        painter.drawLine(QPointF(6, 11), QPointF(12, 11));
+    } else if (label.contains(QStringLiteral("仪表盘")) || label.contains(QStringLiteral("历史")) || label.contains(QStringLiteral("日志"))) {
+        painter.drawRoundedRect(r, 2, 2);
+        painter.drawLine(QPointF(6, 12), QPointF(6, 9));
+        painter.drawLine(QPointF(9, 12), QPointF(9, 6));
+        painter.drawLine(QPointF(12, 12), QPointF(12, 8));
+    } else if (label.contains(QStringLiteral("设置"))) {
+        painter.drawEllipse(QPointF(9, 9), 4.5, 4.5);
+        painter.drawEllipse(QPointF(9, 9), 1.5, 1.5);
+        painter.drawLine(QPointF(9, 2.5), QPointF(9, 4.5));
+        painter.drawLine(QPointF(9, 13.5), QPointF(9, 15.5));
+        painter.drawLine(QPointF(2.5, 9), QPointF(4.5, 9));
+        painter.drawLine(QPointF(13.5, 9), QPointF(15.5, 9));
+    } else {
+        painter.drawRoundedRect(r, 2, 2);
+        painter.drawLine(QPointF(6, 7), QPointF(12, 7));
+        painter.drawLine(QPointF(6, 10), QPointF(12, 10));
+        painter.drawLine(QPointF(6, 13), QPointF(10, 13));
+    }
+
+    painter.end();
+    return QIcon(pixmap);
+}
 
 class DashboardHeroWidget final : public QWidget
 {
@@ -355,17 +421,18 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *root = new QWidget(this);
     auto *rootLayout = new QHBoxLayout(root);
-    rootLayout->setContentsMargins(PageLayout::Space12, PageLayout::Space12, PageLayout::Space12, PageLayout::Space12);
-    rootLayout->setSpacing(PageLayout::Space8);
+    rootLayout->setContentsMargins(0, 0, PageLayout::Space24, 0);
+    rootLayout->setSpacing(PageLayout::Space24);
 
     m_navigation = PageLayout::createSidebarNavigationList();
     rootLayout->addWidget(PageLayout::wrapSidebarNavigation(m_navigation, &m_settingsButton));
 
     auto *content = new QWidget(root);
+    content->setObjectName(QStringLiteral("mainWorkspace"));
     content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *contentLayout = new QVBoxLayout(content);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(PageLayout::Space12);
+    contentLayout->setContentsMargins(0, PageLayout::Space8, 0, PageLayout::Space8);
+    contentLayout->setSpacing(0);
 
     m_moduleStack = new QStackedWidget;
     m_moduleStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -409,8 +476,17 @@ MainWindow::MainWindow(QWidget *parent)
     m_settingsPage = PageLayout::wrapScrollableContentPanel(createGlobalSettingsPage());
     m_contentStack->addWidget(m_settingsPage);
 
-    auto *moduleBar = PageLayout::makeTabBar(m_moduleTitles, content, &m_moduleTabGroup, nullptr, 1);
-    contentLayout->addWidget(moduleBar);
+    auto *topBar = new QWidget(content);
+    topBar->setObjectName(QStringLiteral("topBar"));
+    topBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *topBarLayout = new QHBoxLayout(topBar);
+    topBarLayout->setContentsMargins(0, 0, 0, 0);
+    topBarLayout->setSpacing(PageLayout::Space16);
+
+    auto *moduleBar = PageLayout::makeTabBar(m_moduleTitles, topBar, &m_moduleTabGroup, nullptr, 1);
+    topBarLayout->addWidget(moduleBar, 1, Qt::AlignVCenter);
+
+    contentLayout->addWidget(topBar);
     contentLayout->addWidget(m_contentStack, 1);
     rootLayout->addWidget(content, 1);
 
@@ -448,10 +524,7 @@ void MainWindow::addModule(const QString &title, const QList<QPair<QString, QWid
     QStringList labels;
     for (const auto &page : pages) {
         labels.append(page.first);
-        const bool fitFirstScreen = page.second != nullptr && page.second->property("fitFirstScreen").toBool();
-        stack->addWidget(fitFirstScreen
-                             ? PageLayout::wrapContentPanel(page.second)
-                             : PageLayout::wrapScrollableContentPanel(page.second));
+        stack->addWidget(PageLayout::wrapModulePage(page.second));
     }
     m_modulePages.append(stack);
     m_moduleNavigationLabels.append(labels);
@@ -470,10 +543,7 @@ void MainWindow::addModuleFromPages(const QString &title, const QStringList &lab
             continue;
         }
         validLabels.append(labels.at(i));
-        const bool fitFirstScreen = pages.at(i)->property("fitFirstScreen").toBool();
-        stack->addWidget(fitFirstScreen
-                             ? PageLayout::wrapContentPanel(pages.at(i))
-                             : PageLayout::wrapScrollableContentPanel(pages.at(i)));
+        stack->addWidget(PageLayout::wrapModulePage(pages.at(i)));
         attachedPages.append(pages.at(i));
     }
     m_modulePages.append(stack);
@@ -504,7 +574,10 @@ void MainWindow::showModule(int index)
     }
     m_navigation->blockSignals(true);
     m_navigation->clear();
-    m_navigation->addItems(m_moduleNavigationLabels.at(index));
+    for (const QString &label : m_moduleNavigationLabels.at(index)) {
+        auto *item = new QListWidgetItem(makeSidebarLineIcon(label), label, m_navigation);
+        item->setSizeHint(QSize(0, 40));
+    }
     m_navigation->setCurrentRow(0);
     m_navigation->blockSignals(false);
     m_modulePages.at(index)->setCurrentIndex(0);
@@ -821,13 +894,7 @@ QWidget *MainWindow::createDeployPage()
     auto *layout = new QVBoxLayout(page);
     PageLayout::applyPage(layout);
     layout->setSpacing(PageLayout::Space16);
-
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("一键部署"),
-        QStringLiteral("左侧选择项目、服务器与日志，右侧实时查看进度与部署输出。"),
-        page));
-
-    auto *body = new QHBoxLayout;
+auto *body = new QHBoxLayout;
     body->setContentsMargins(0, 0, 0, 0);
     body->setSpacing(PageLayout::Space16);
     layout->addLayout(body, 1);
@@ -984,13 +1051,7 @@ QWidget *MainWindow::createHistoryPage()
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
     PageLayout::applyPage(layout);
-
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("历史记录"),
-        QStringLiteral("查看每次部署的状态、版本与日志路径。"),
-        page));
-
-    auto *historyTable = createTable(
+auto *historyTable = createTable(
         {QStringLiteral("部署 ID"), QStringLiteral("项目"), QStringLiteral("状态"), QStringLiteral("版本"), QStringLiteral("日志")},
         {});
     m_historyTable = historyTable;
@@ -1029,13 +1090,7 @@ QWidget *MainWindow::createDeploySettingsPage()
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
     PageLayout::applyPage(layout);
-
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("设置"),
-        QStringLiteral("配置 Maven、本地仓库和数据目录。配置目录默认仍为程序目录下的 config。"),
-        page));
-
-    AppSettings settings;
+AppSettings settings;
     QString settingsError;
     AppSettingsStore(AppSettingsStore::defaultSettingsFile()).load(&settings, &settingsError);
 
@@ -1101,13 +1156,7 @@ QWidget *MainWindow::createGlobalSettingsPage()
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
     PageLayout::applyPage(layout);
-
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("全局设置"),
-        QStringLiteral("配置数据库 JDBC 驱动。Java 使用「部署工具 → 设置 / 一键部署」中的 JDK 配置。"),
-        page));
-
-    AppSettings settings;
+AppSettings settings;
     QString settingsError;
     AppSettingsStore(AppSettingsStore::defaultSettingsFile()).load(&settings, &settingsError);
 

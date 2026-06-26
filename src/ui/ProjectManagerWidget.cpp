@@ -77,13 +77,7 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
 {
     auto *layout = new QVBoxLayout(this);
     PageLayout::applyPage(layout);
-
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("项目管理"),
-        QStringLiteral("配置构建命令、产物路径、目标服务器与失败策略。"),
-        this));
-
-    auto *toolbarWidget = new QWidget(this);
+auto *toolbarWidget = new QWidget(this);
     auto *toolbar = new QHBoxLayout(toolbarWidget);
     toolbar->setContentsMargins(0, 0, 0, 0);
     toolbar->setSpacing(PageLayout::Space12);

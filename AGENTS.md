@@ -13,6 +13,7 @@
 - 单元测试使用 Qt Test 并接入 CTest。
 - 配置结构字段名必须与 `docs/schemas/` 保持一致。
 - 远程协议先通过接口隔离，真实 SSH/WinRM 实现不得泄漏到核心状态机。
+- AI 配置页/Widget 业务页样式统一通过 `AppStyle::apply` 初始化；样式表集中存放在 `src/ui/style.qss`，使用 `@C1@` ~ `@C20@` 占位符并在 `AppStyle.cpp` 中替换为主题色值；禁止在业务页内联超长 raw string 样式表。
 
 ## 验证
 

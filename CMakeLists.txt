@@ -94,6 +94,7 @@ qt_add_executable(deploy-hub WIN32
     src/ui/AppStyle.h
     src/ui/PageLayout.cpp
     src/ui/PageLayout.h
+    src/ui/Theme.h
     src/ui/DeployWorker.cpp
     src/ui/DeployWorker.h
     src/ui/CommonToolsWidget.cpp
@@ -202,7 +203,9 @@ qt_add_resources(deploy-hub "deploy_hub_app"
         images/ai/video.svg
         images/ai/translate.svg
         images/ai/more.svg
-)
+        images/ui/check.svg
+        src/ui/style.qss
+  )
 
 qt_add_resources(deploy-hub "deploy_hub_qml"
     PREFIX "/"
@@ -397,6 +400,7 @@ qt_add_executable(deploy_hub_tests
     src/infra/AppBranding.h
     src/ui/PageLayout.cpp
     src/ui/PageLayout.h
+    src/ui/Theme.h
     src/ui/PathPickerWidget.cpp
     src/ui/PathPickerWidget.h
     src/ui/ProjectDialog.cpp

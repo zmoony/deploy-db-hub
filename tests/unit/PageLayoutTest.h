@@ -9,4 +9,8 @@ class PageLayoutTest final : public QObject
 private slots:
     void fitWindowToScreenCentersWindow();
     void pageTransferDoesNotShowDetachedPages();
+    void desktopShellTokensMatchReferenceLayout();
+    void sidebarNavigationRemainsModuleScoped();
+    void sidebarNavigationUsesIcons();
+    void aiConfigPageUsesUnifiedTemplate();
 };

@@ -8,4 +8,5 @@ class AppStyleTest final : public QObject
 
 private slots:
     void comboBoxTextIsNotPaintedTwice();
+    void sidebarStyleUsesSidebarPaletteSlots();
 };

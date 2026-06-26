@@ -1,0 +1,1 @@
+powershell -File scripts\build-release.ps1 -UseFluentUI

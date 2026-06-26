@@ -20,13 +20,7 @@ ServiceHubWidget::ServiceHubWidget(ConfigStore *store,
     auto *layout = new QVBoxLayout(this);
     PageLayout::applyPage(layout);
     layout->setSpacing(PageLayout::Space12);
-
-    layout->addWidget(PageLayout::makeHeaderBlock(
-        QStringLiteral("服务管理"),
-        QStringLiteral("统一管理服务器、大数据组件与数据库连接，支持配置、运维与内容查看。"),
-        this));
-
-    auto *stack = new QStackedWidget(this);
+auto *stack = new QStackedWidget(this);
     m_serverManager = new ServerManagerWidget(store, this, false);
     m_bigDataManager = new BigDataManagerWidget(store, credentials, sessionCache, this);
     m_databaseManager = new DatabaseManagerWidget(store, credentials, sessionCache, this);

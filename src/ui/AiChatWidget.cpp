@@ -72,29 +72,11 @@ AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(PageLayout::Space12);
 
-    // Header: title + subtitle (left), new-chat icon button (right)
     auto *header = new QWidget(this);
     auto *headerLayout = new QHBoxLayout(header);
     headerLayout->setContentsMargins(0, 0, 0, 0);
     headerLayout->setSpacing(PageLayout::Space12);
-
-    auto *titleStack = new QWidget(header);
-    auto *titleLayout = new QVBoxLayout(titleStack);
-    titleLayout->setContentsMargins(0, 0, 0, 0);
-    titleLayout->setSpacing(2);
-    auto *titleLabel = new QLabel(QStringLiteral("AI 聊天"), titleStack);
-    QFont titleFont = titleLabel->font();
-    titleFont.setPixelSize(18);
-    titleFont.setBold(true);
-    titleLabel->setFont(titleFont);
-    auto *subtitleLabel = new QLabel(
-        QStringLiteral("多轮对话，使用「AI 配置」中的 OpenAI 兼容接口；支持流式输出。"),
-        titleStack);
-    subtitleLabel->setObjectName(QStringLiteral("secondaryText"));
-    subtitleLabel->setWordWrap(true);
-    titleLayout->addWidget(titleLabel);
-    titleLayout->addWidget(subtitleLabel);
-    headerLayout->addWidget(titleStack, 1);
+    headerLayout->addStretch();
 
     m_newChatButton = new QPushButton(header);
     m_newChatButton->setObjectName(QStringLiteral("aiNewChatButton"));

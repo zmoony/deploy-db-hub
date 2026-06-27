@@ -1782,3 +1782,102 @@
             padding: 4px 8px;
             color: @C2@;
         }
+
+        /* Pixso tool-style global overrides */
+        QFrame#toolCard,
+        QFrame#contentPanel,
+        QFrame#dashboardStatCard,
+        QFrame#dashboardQuickAction,
+        QFrame#serviceInstanceBanner,
+        QFrame#dashboardHero,
+        QWidget#dashboardHero,
+        QWidget#serviceInstanceBanner {
+            background-color: #FFFFFF;
+            border: 1px solid @C4@;
+            border-radius: @C21@px;
+        }
+
+        QWidget#moduleTabBar,
+        QWidget#lineTabBar {
+            background-color: #FFFFFF;
+            border: none;
+            border-bottom: 1px solid @C4@;
+            border-radius: 0;
+            padding: 0 24px;
+            min-height: 56px;
+            max-height: 56px;
+        }
+
+        QPushButton#moduleTabButton {
+            background-color: transparent;
+            color: @C3@;
+            border: 1px solid transparent;
+            border-radius: @C5@px;
+            padding: 0 16px;
+            min-height: 36px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        QPushButton#moduleTabButton:checked,
+        QPushButton#moduleTabButton:hover,
+        QPushButton#moduleTabButton:checked:hover {
+            background-color: @C6@;
+            color: #FFFFFF;
+            border: 1px solid @C6@;
+        }
+
+        QPushButton#primaryButton,
+        QPushButton#toolPrimaryButton {
+            background-color: @C6@;
+            color: #FFFFFF;
+            border: none;
+            border-radius: @C5@px;
+            padding: 0 16px;
+            min-height: 36px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        QPushButton#primaryButton:hover,
+        QPushButton#toolPrimaryButton:hover {
+            background-color: @C10@;
+        }
+
+        QPushButton#secondaryButton {
+            background-color: #FFFFFF;
+            color: @C3@;
+            border: 1px solid @C4@;
+            border-radius: @C5@px;
+            padding: 0 16px;
+            min-height: 36px;
+            font-size: 14px;
+        }
+
+        QListWidget#sidebarNav::item {
+            min-height: 40px;
+            border-radius: @C5@px;
+            padding: 0 12px;
+            margin: 1px 0;
+            color: @C17@;
+            font-size: 14px;
+        }
+        QListWidget#sidebarNav::item:selected {
+            background-color: @C19@;
+            color: @C20@;
+            font-weight: 500;
+            border: none;
+        }
+        QListWidget#sidebarNav::item:hover {
+            background-color: @C18@;
+        }
+
+        QLineEdit, QPlainTextEdit, QTextEdit {
+            background-color: @C22@;
+            border: 1px solid @C4@;
+            border-radius: @C5@px;
+            padding: 8px 12px;
+            color: @C2@;
+            font-size: 13px;
+        }
+        QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {
+            border: 1px solid @C6@;
+        }

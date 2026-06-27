@@ -4,8 +4,7 @@
 #include "ui/CommonToolsWidget.h"
 #include "ui/PageLayout.h"
 
-#include <QApplication>
-#include <QClipboard>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
@@ -33,15 +32,6 @@ const QColor kJsonNumberColor(0xC2, 0x18, 0x5B);
 const QColor kJsonBoolColor(0x6A, 0x1B, 0x9A);
 const QColor kJsonNullColor(0xF5, 0x7C, 0x00);
 
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
 QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
 {
     auto *editor = new QPlainTextEdit(parent);
@@ -49,13 +39,6 @@ QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
     editor->setMinimumHeight(220);
     editor->setLineWrapMode(QPlainTextEdit::NoWrap);
     return editor;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
 }
 
 QString jsonScalarText(const QJsonValue &value)
@@ -143,13 +126,13 @@ JsonToolPage::JsonToolPage(QWidget *parent)
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *formatButton = makeActionButton(QStringLiteral("格式化"), toolbar);
-    auto *expandButton = makeActionButton(QStringLiteral("全部展开"), toolbar);
-    auto *collapseButton = makeActionButton(QStringLiteral("全部折叠"), toolbar);
-    auto *copyButton = makeActionButton(QStringLiteral("复制格式化结果"), toolbar);
-    auto *clearButton = makeActionButton(QStringLiteral("清空"), toolbar);
-    auto *aiAssistButton = makeActionButton(QStringLiteral("AI 辅助"), toolbar);
-    auto *aiStopButton = makeActionButton(QStringLiteral("停止"), toolbar);
+    auto *formatButton = Helpers::makeToolButton(QStringLiteral("格式化"), toolbar);
+    auto *expandButton = Helpers::makeToolButton(QStringLiteral("全部展开"), toolbar);
+    auto *collapseButton = Helpers::makeToolButton(QStringLiteral("全部折叠"), toolbar);
+    auto *copyButton = Helpers::makeToolButton(QStringLiteral("复制格式化结果"), toolbar);
+    auto *clearButton = Helpers::makeToolButton(QStringLiteral("清空"), toolbar);
+    auto *aiAssistButton = Helpers::makeToolButton(QStringLiteral("AI 辅助"), toolbar);
+    auto *aiStopButton = Helpers::makeToolButton(QStringLiteral("停止"), toolbar);
     aiStopButton->setEnabled(false);
     auto *search = new QLineEdit(toolbar);
     search->setPlaceholderText(QStringLiteral("搜索键或值"));
@@ -235,7 +218,7 @@ JsonToolPage::JsonToolPage(QWidget *parent)
             message->setText(QStringLiteral("无法复制：%1").arg(error));
             return;
         }
-        copyTextToClipboard(formatted);
+        Helpers::copyToClipboard(formatted);
         message->setText(QStringLiteral("已复制格式化结果"));
     });
     connect(clearButton, &QPushButton::clicked, this, [input, tree, search, message]() {
@@ -251,7 +234,7 @@ JsonToolPage::JsonToolPage(QWidget *parent)
             return;
         }
         const QString value = item->text(1);
-        copyTextToClipboard(value.isEmpty() ? item->text(0) : value);
+        Helpers::copyToClipboard(value.isEmpty() ? item->text(0) : value);
         message->setText(QStringLiteral("已复制选中内容"));
     };
 
@@ -270,11 +253,11 @@ JsonToolPage::JsonToolPage(QWidget *parent)
             return;
         }
         if (chosen == copyValue) {
-            copyTextToClipboard(item->text(1));
+            Helpers::copyToClipboard(item->text(1));
         } else if (chosen == copyKey) {
-            copyTextToClipboard(item->text(0));
+            Helpers::copyToClipboard(item->text(0));
         } else if (chosen == copyPair) {
-            copyTextToClipboard(QStringLiteral("%1: %2").arg(item->text(0), item->text(1)));
+            Helpers::copyToClipboard(QStringLiteral("%1: %2").arg(item->text(0), item->text(1)));
         }
         message->setText(QStringLiteral("已复制选中内容"));
     });

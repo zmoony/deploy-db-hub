@@ -2,8 +2,7 @@
 
 #include "ui/PageLayout.h"
 
-#include <QApplication>
-#include <QClipboard>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QFile>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -20,25 +19,6 @@
 #include <QSharedPointer>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -61,11 +41,11 @@ ImageBase64ToolPage::ImageBase64ToolPage(QWidget *parent)
     auto *urlLayout = new QHBoxLayout(urlRow);
     urlLayout->setContentsMargins(0, 0, 0, 0);
     urlLayout->setSpacing(PageLayout::Space8);
-    auto *pickButton = makeActionButton(QStringLiteral("选择本地图片"), urlRow);
+    auto *pickButton = Helpers::makeToolButton(QStringLiteral("选择本地图片"), urlRow);
     auto *urlEdit = new QLineEdit(urlRow);
     urlEdit->setPlaceholderText(QStringLiteral("https://example.com/image.png"));
     PageLayout::configureFormInput(urlEdit);
-    auto *urlButton = makeActionButton(QStringLiteral("从 URL 加载"), urlRow);
+    auto *urlButton = Helpers::makeToolButton(QStringLiteral("从 URL 加载"), urlRow);
     urlLayout->addWidget(pickButton);
     urlLayout->addWidget(urlEdit, 1);
     urlLayout->addWidget(urlButton);
@@ -75,10 +55,10 @@ ImageBase64ToolPage::ImageBase64ToolPage(QWidget *parent)
     auto *actionsLayout = new QHBoxLayout(actions);
     actionsLayout->setContentsMargins(0, 0, 0, 0);
     actionsLayout->setSpacing(PageLayout::Space8);
-    auto *toBase64 = makeActionButton(QStringLiteral("图片 → Base64"), actions);
-    auto *toImage = makeActionButton(QStringLiteral("Base64 → 图片"), actions);
-    auto *copyButton = makeActionButton(QStringLiteral("复制 Base64"), actions);
-    auto *clearButton = makeActionButton(QStringLiteral("清空"), actions);
+    auto *toBase64 = Helpers::makeToolButton(QStringLiteral("图片 → Base64"), actions);
+    auto *toImage = Helpers::makeToolButton(QStringLiteral("Base64 → 图片"), actions);
+    auto *copyButton = Helpers::makeToolButton(QStringLiteral("复制 Base64"), actions);
+    auto *clearButton = Helpers::makeToolButton(QStringLiteral("清空"), actions);
     actionsLayout->addWidget(toBase64);
     actionsLayout->addWidget(toImage);
     actionsLayout->addWidget(copyButton);
@@ -227,7 +207,7 @@ ImageBase64ToolPage::ImageBase64ToolPage(QWidget *parent)
     });
 
     connect(copyButton, &QPushButton::clicked, this, [base64Edit]() {
-        copyTextToClipboard(base64Edit->toPlainText());
+        Helpers::copyToClipboard(base64Edit->toPlainText());
     });
     connect(clearButton, &QPushButton::clicked, this, [state, base64Edit, preview, message]() {
         state->bytes.clear();

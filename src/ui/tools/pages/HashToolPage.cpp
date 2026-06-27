@@ -5,21 +5,10 @@
 #include "ui/tools/ToolEditor.h"
 #include "ui/tools/ToolResultRow.h"
 
+#include "ui/tools/ToolUiHelpers.h"
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -36,7 +25,7 @@ HashToolPage::HashToolPage(QWidget *parent)
     input->setPlaceholderText(QStringLiteral("待计算文本"));
     layout->addWidget(input, 1);
 
-    auto *compute = makeActionButton(QStringLiteral("计算哈希"), this);
+    auto *compute = Helpers::makeToolButton(QStringLiteral("计算哈希"), this);
     layout->addWidget(compute, 0, Qt::AlignLeft);
 
     auto *md5 = new ToolResultRow(QStringLiteral("MD5"), this);

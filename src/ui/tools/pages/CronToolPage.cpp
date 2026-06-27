@@ -4,6 +4,7 @@
 #include "ui/CommonToolsWidget.h"
 #include "ui/PageLayout.h"
 
+#include "ui/tools/ToolUiHelpers.h"
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -14,15 +15,6 @@
 #include <QVBoxLayout>
 
 namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
 
 QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
 {
@@ -55,9 +47,9 @@ CronToolPage::CronToolPage(QWidget *parent)
     auto *expr = new QLineEdit(exprRow);
     expr->setText(QStringLiteral("0 0 12 * * ?"));
     PageLayout::configureFormInput(expr);
-    auto *parseButton = makeActionButton(QStringLiteral("解析 / 预览"), exprRow);
-    auto *aiAssistButton = makeActionButton(QStringLiteral("AI 辅助"), exprRow);
-    auto *aiStopButton = makeActionButton(QStringLiteral("停止"), exprRow);
+    auto *parseButton = Helpers::makeToolButton(QStringLiteral("解析 / 预览"), exprRow);
+    auto *aiAssistButton = Helpers::makeToolButton(QStringLiteral("AI 辅助"), exprRow);
+    auto *aiStopButton = Helpers::makeToolButton(QStringLiteral("停止"), exprRow);
     aiStopButton->setEnabled(false);
     exprLayout->addWidget(expr, 1);
     exprLayout->addWidget(parseButton);
@@ -91,7 +83,7 @@ CronToolPage::CronToolPage(QWidget *parent)
         cellLayout->addWidget(edit);
         builderLayout->addWidget(cell, 1);
     }
-    auto *composeButton = makeActionButton(QStringLiteral("由字段生成"), builder);
+    auto *composeButton = Helpers::makeToolButton(QStringLiteral("由字段生成"), builder);
     builderLayout->addWidget(composeButton);
     layout->addWidget(builder);
 
@@ -107,7 +99,7 @@ CronToolPage::CronToolPage(QWidget *parent)
         {QStringLiteral("每月 1 号"), QStringLiteral("0 0 0 1 * ?")}
     };
     for (const auto &preset : presetList) {
-        auto *button = makeActionButton(preset.first, presets);
+        auto *button = Helpers::makeToolButton(preset.first, presets);
         const QString value = preset.second;
         connect(button, &QPushButton::clicked, expr, [expr, value]() {
             expr->setText(value);

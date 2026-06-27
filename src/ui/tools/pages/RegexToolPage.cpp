@@ -3,6 +3,7 @@
 #include "tools/CommonTools.h"
 #include "ui/PageLayout.h"
 
+#include "ui/tools/ToolUiHelpers.h"
 #include <QCheckBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -15,15 +16,6 @@
 #include <QVBoxLayout>
 
 namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
 
 QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
 {
@@ -59,7 +51,7 @@ RegexToolPage::RegexToolPage(QWidget *parent)
     auto *ignoreCase = new QCheckBox(QStringLiteral("忽略大小写"), options);
     auto *multiline = new QCheckBox(QStringLiteral("多行 ^$"), options);
     auto *dotAll = new QCheckBox(QStringLiteral(". 匹配换行"), options);
-    auto *matchButton = makeActionButton(QStringLiteral("匹配"), options);
+    auto *matchButton = Helpers::makeToolButton(QStringLiteral("匹配"), options);
     optionsLayout->addWidget(ignoreCase);
     optionsLayout->addWidget(multiline);
     optionsLayout->addWidget(dotAll);

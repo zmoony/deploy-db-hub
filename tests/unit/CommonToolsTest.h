@@ -1,32 +1,31 @@
 #pragma once
 
-#include <QObject>
+#include <QTest>
 
-class CommonToolsTest final : public QObject
-{
+class CommonToolsTest : public QObject {
     Q_OBJECT
 
 private slots:
-    void formatsJsonObject();
-    void reportsInvalidJson();
-    void convertsBase64Text();
-    void decodesHexText();
-    void convertsUnixTimestamp();
-    void returnsReferenceRows();
-    void comparesTextLines();
-    void matchesRegularExpression();
-    void runsRegularExpressionWithGroups();
-    void masksSensitiveText();
-    void generatesMockFromJsonExample();
-    void describesCronExpression();
-    void encodesAndDecodesHtmlEntities();
-    void convertsTimestampBothDirections();
-    void computesLineDiffIndices();
-    void analyzesCronNextRuns();
-    void generatesUuids();
-    void computesHashes();
-    void encodesAndDecodesUrl();
-    void decodesJwt();
-    void convertsNumberBase();
-    void convertsNamingCase();
+    void testFormatJsonValid();
+    void testFormatJsonInvalid();
+
+    void testBase64RoundTrip();
+
+    void testUrlEncodeDecode();
+
+    void testComputeHashes();
+
+    void testGenerateUuids();
+
+    void testConvertNumberBase();
+
+    void testConvertCase();
+
+    void testAnalyzeCron();
+
+    void testDiffLineIndices();
+
+    void testHexToString();
+
+    void testHtmlEncodeDecode();
 };

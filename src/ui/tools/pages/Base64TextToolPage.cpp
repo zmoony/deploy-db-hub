@@ -4,33 +4,13 @@
 #include "ui/PageLayout.h"
 #include "ui/tools/ToolEditor.h"
 
-#include <QApplication>
-#include <QClipboard>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -47,9 +27,9 @@ Base64TextToolPage::Base64TextToolPage(QWidget *parent)
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *encode = makeActionButton(QStringLiteral("文本 → Base64"), toolbar);
-    auto *decode = makeActionButton(QStringLiteral("Base64 → 文本"), toolbar);
-    auto *copy = makeActionButton(QStringLiteral("复制结果"), toolbar);
+    auto *encode = Helpers::makeToolButton(QStringLiteral("文本 → Base64"), toolbar);
+    auto *decode = Helpers::makeToolButton(QStringLiteral("Base64 → 文本"), toolbar);
+    auto *copy = Helpers::makeToolButton(QStringLiteral("复制结果"), toolbar);
     toolbarLayout->addWidget(encode);
     toolbarLayout->addWidget(decode);
     toolbarLayout->addWidget(copy);
@@ -90,7 +70,7 @@ Base64TextToolPage::Base64TextToolPage(QWidget *parent)
         message->setText(QStringLiteral("已解码"));
     });
     connect(copy, &QPushButton::clicked, this, [output]() {
-        copyTextToClipboard(output->text());
+        Helpers::copyToClipboard(output->text());
     });
 }
 

@@ -4,23 +4,12 @@
 #include "ui/PageLayout.h"
 #include "ui/tools/ToolEditor.h"
 
+#include "ui/tools/ToolUiHelpers.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -37,7 +26,7 @@ DataMaskToolPage::DataMaskToolPage(QWidget *parent)
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *primaryButton = makeActionButton(QStringLiteral("脱敏"), toolbar);
+    auto *primaryButton = Helpers::makeToolButton(QStringLiteral("脱敏"), toolbar);
     toolbarLayout->addWidget(primaryButton);
     toolbarLayout->addStretch();
     layout->addWidget(toolbar);

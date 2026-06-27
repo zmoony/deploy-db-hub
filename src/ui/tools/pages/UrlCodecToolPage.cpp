@@ -4,31 +4,11 @@
 #include "ui/PageLayout.h"
 #include "ui/tools/ToolEditor.h"
 
-#include <QApplication>
-#include <QClipboard>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -45,9 +25,9 @@ UrlCodecToolPage::UrlCodecToolPage(QWidget *parent)
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *encode = makeActionButton(QStringLiteral("编码"), toolbar);
-    auto *decode = makeActionButton(QStringLiteral("解码"), toolbar);
-    auto *copy = makeActionButton(QStringLiteral("复制结果"), toolbar);
+    auto *encode = Helpers::makeToolButton(QStringLiteral("编码"), toolbar);
+    auto *decode = Helpers::makeToolButton(QStringLiteral("解码"), toolbar);
+    auto *copy = Helpers::makeToolButton(QStringLiteral("复制结果"), toolbar);
     toolbarLayout->addWidget(encode);
     toolbarLayout->addWidget(decode);
     toolbarLayout->addWidget(copy);
@@ -74,7 +54,7 @@ UrlCodecToolPage::UrlCodecToolPage(QWidget *parent)
         output->setText(CommonTools::urlDecode(input->text()));
     });
     connect(copy, &QPushButton::clicked, this, [output]() {
-        copyTextToClipboard(output->text());
+        Helpers::copyToClipboard(output->text());
     });
 }
 

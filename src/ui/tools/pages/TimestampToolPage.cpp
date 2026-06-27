@@ -3,8 +3,7 @@
 #include "tools/CommonTools.h"
 #include "ui/PageLayout.h"
 
-#include <QApplication>
-#include <QClipboard>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QComboBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -14,25 +13,6 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -51,7 +31,7 @@ TimestampToolPage::TimestampToolPage(QWidget *parent)
     nowLayout->setSpacing(PageLayout::Space8);
     auto *nowLabel = new QLabel(nowRow);
     nowLabel->setObjectName(QStringLiteral("sectionLabel"));
-    auto *copyNow = makeActionButton(QStringLiteral("复制当前毫秒"), nowRow);
+    auto *copyNow = Helpers::makeToolButton(QStringLiteral("复制当前毫秒"), nowRow);
     nowLayout->addWidget(nowLabel, 1);
     nowLayout->addWidget(copyNow);
     layout->addWidget(nowRow);
@@ -69,7 +49,7 @@ TimestampToolPage::TimestampToolPage(QWidget *parent)
     nowTimer->start();
     updateNow();
     connect(copyNow, &QPushButton::clicked, this, []() {
-        copyTextToClipboard(QString::number(CommonTools::currentTimestampMs()));
+        Helpers::copyToClipboard(QString::number(CommonTools::currentTimestampMs()));
     });
 
     auto *form = new QFormLayout;
@@ -88,7 +68,7 @@ TimestampToolPage::TimestampToolPage(QWidget *parent)
     auto *tsInput = new QLineEdit(this);
     tsInput->setText(QString::number(CommonTools::currentTimestampMs()));
     PageLayout::configureFormInput(tsInput);
-    auto *toDate = makeActionButton(QStringLiteral("时间戳 → 时间"), this);
+    auto *toDate = Helpers::makeToolButton(QStringLiteral("时间戳 → 时间"), this);
     auto *tsRow = new QWidget(this);
     auto *tsRowLayout = new QHBoxLayout(tsRow);
     tsRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -100,7 +80,7 @@ TimestampToolPage::TimestampToolPage(QWidget *parent)
     auto *dateInput = new QLineEdit(this);
     dateInput->setText(CommonTools::timestampToDateText(CommonTools::currentTimestampMs(), true, QString()));
     PageLayout::configureFormInput(dateInput);
-    auto *toTs = makeActionButton(QStringLiteral("时间 → 时间戳"), this);
+    auto *toTs = Helpers::makeToolButton(QStringLiteral("时间 → 时间戳"), this);
     auto *dateRow = new QWidget(this);
     auto *dateRowLayout = new QHBoxLayout(dateRow);
     dateRowLayout->setContentsMargins(0, 0, 0, 0);

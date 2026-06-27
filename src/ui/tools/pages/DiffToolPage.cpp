@@ -4,8 +4,7 @@
 #include "ui/CommonToolsWidget.h"
 #include "ui/PageLayout.h"
 
-#include <QApplication>
-#include <QClipboard>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QColor>
 #include <QFile>
 #include <QFileDialog>
@@ -23,15 +22,6 @@
 
 namespace {
 
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
 QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
 {
     auto *editor = new QPlainTextEdit(parent);
@@ -39,13 +29,6 @@ QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
     editor->setMinimumHeight(220);
     editor->setLineWrapMode(QPlainTextEdit::NoWrap);
     return editor;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
 }
 
 void applyHighlights(QPlainTextEdit *editor, const QVector<int> &lines)
@@ -87,13 +70,13 @@ DiffToolPage::DiffToolPage(QWidget *parent)
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *openLeft = makeActionButton(QStringLiteral("选择源文件"), toolbar);
-    auto *openRight = makeActionButton(QStringLiteral("选择对比文件"), toolbar);
-    auto *swap = makeActionButton(QStringLiteral("交换两侧"), toolbar);
-    auto *copyLeft = makeActionButton(QStringLiteral("复制源"), toolbar);
-    auto *copyRight = makeActionButton(QStringLiteral("复制对比"), toolbar);
-    auto *aiAssistButton = makeActionButton(QStringLiteral("AI 辅助"), toolbar);
-    auto *aiStopButton = makeActionButton(QStringLiteral("停止"), toolbar);
+    auto *openLeft = Helpers::makeToolButton(QStringLiteral("选择源文件"), toolbar);
+    auto *openRight = Helpers::makeToolButton(QStringLiteral("选择对比文件"), toolbar);
+    auto *swap = Helpers::makeToolButton(QStringLiteral("交换两侧"), toolbar);
+    auto *copyLeft = Helpers::makeToolButton(QStringLiteral("复制源"), toolbar);
+    auto *copyRight = Helpers::makeToolButton(QStringLiteral("复制对比"), toolbar);
+    auto *aiAssistButton = Helpers::makeToolButton(QStringLiteral("AI 辅助"), toolbar);
+    auto *aiStopButton = Helpers::makeToolButton(QStringLiteral("停止"), toolbar);
     aiStopButton->setEnabled(false);
     toolbarLayout->addWidget(openLeft);
     toolbarLayout->addWidget(openRight);
@@ -168,10 +151,10 @@ DiffToolPage::DiffToolPage(QWidget *parent)
         right->setPlainText(leftText);
     });
     connect(copyLeft, &QPushButton::clicked, this, [left]() {
-        copyTextToClipboard(left->toPlainText());
+        Helpers::copyToClipboard(left->toPlainText());
     });
     connect(copyRight, &QPushButton::clicked, this, [right]() {
-        copyTextToClipboard(right->toPlainText());
+        Helpers::copyToClipboard(right->toPlainText());
     });
 
     if (commonTools != nullptr) {

@@ -3,8 +3,7 @@
 #include "tools/CommonTools.h"
 #include "ui/PageLayout.h"
 
-#include <QApplication>
-#include <QClipboard>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -14,16 +13,6 @@
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
 
-namespace {
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -71,7 +60,7 @@ HttpStatusToolPage::HttpStatusToolPage(QWidget *parent)
         const QTableWidgetItem *code = table->item(row, 0);
         const QTableWidgetItem *label = table->item(row, 1);
         if (code != nullptr && label != nullptr) {
-            copyTextToClipboard(QStringLiteral("%1 %2").arg(code->text(), label->text()));
+            Helpers::copyToClipboard(QStringLiteral("%1 %2").arg(code->text(), label->text()));
         }
     });
 }

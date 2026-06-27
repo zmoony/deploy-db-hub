@@ -4,34 +4,14 @@
 #include "ui/PageLayout.h"
 #include "ui/tools/ToolEditor.h"
 
-#include <QApplication>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QCheckBox>
-#include <QClipboard>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -55,8 +35,8 @@ UuidToolPage::UuidToolPage(QWidget *parent)
     PageLayout::configureFormInput(count);
     auto *uppercase = new QCheckBox(QStringLiteral("大写"), options);
     auto *noDash = new QCheckBox(QStringLiteral("去横线"), options);
-    auto *generate = makeActionButton(QStringLiteral("生成"), options);
-    auto *copy = makeActionButton(QStringLiteral("复制全部"), options);
+    auto *generate = Helpers::makeToolButton(QStringLiteral("生成"), options);
+    auto *copy = Helpers::makeToolButton(QStringLiteral("复制全部"), options);
     optionsLayout->addWidget(count);
     optionsLayout->addWidget(uppercase);
     optionsLayout->addWidget(noDash);
@@ -76,7 +56,7 @@ UuidToolPage::UuidToolPage(QWidget *parent)
         output->setText(ids.join(QLatin1Char('\n')));
     });
     connect(copy, &QPushButton::clicked, this, [output]() {
-        copyTextToClipboard(output->text());
+        Helpers::copyToClipboard(output->text());
     });
 }
 

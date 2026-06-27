@@ -4,6 +4,7 @@
 #include "ui/PageLayout.h"
 #include "ui/tools/ToolResultRow.h"
 
+#include "ui/tools/ToolUiHelpers.h"
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -11,18 +12,6 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -48,7 +37,7 @@ NumberBaseToolPage::NumberBaseToolPage(QWidget *parent)
     fromBase->addItem(QStringLiteral("八进制"), 8);
     fromBase->addItem(QStringLiteral("十六进制"), 16);
     PageLayout::configureFormInput(fromBase);
-    auto *convert = makeActionButton(QStringLiteral("转换"), inputRow);
+    auto *convert = Helpers::makeToolButton(QStringLiteral("转换"), inputRow);
     inputLayout->addWidget(input, 1);
     inputLayout->addWidget(fromBase);
     inputLayout->addWidget(convert);

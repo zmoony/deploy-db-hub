@@ -4,22 +4,11 @@
 #include "ui/PageLayout.h"
 #include "ui/tools/ToolResultRow.h"
 
+#include "ui/tools/ToolUiHelpers.h"
 #include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-} // namespace
 
 namespace Ui {
 namespace Tools {
@@ -37,7 +26,7 @@ CaseToolPage::CaseToolPage(QWidget *parent)
     PageLayout::configureFormInput(input);
     layout->addWidget(input);
 
-    auto *convert = makeActionButton(QStringLiteral("转换"), this);
+    auto *convert = Helpers::makeToolButton(QStringLiteral("转换"), this);
     layout->addWidget(convert, 0, Qt::AlignLeft);
 
     auto *camel = new ToolResultRow(QStringLiteral("camelCase"), this);

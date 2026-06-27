@@ -402,3 +402,12 @@
     - 新增 `cardStackPage` + `wrapScrollableCardStack`：透明滚动区，不再用外层 `contentPanel`/`contentScroll` 白底大框包裹整页。
     - 页面结构：标题 → API 配置卡片（含按钮）→ 快速开始卡片；两张卡片并列在灰色工作区背景上。
 - 2026-06-27：通用工具 refactor（第三批收尾）：将剩余 3 个基于 `buildTextToolPage` 的文本工具页（Hex 转字符串、契约 Mock 数据、数据采样脱敏）迁移为独立 `ToolPage` 子类，移除 `CommonToolsWidget` 中 `buildTextToolPage` 与 `setOutput` 通用构造器；`MockDataToolPage` 保留 `wireAiAssist` AI 辅助。Release 构建 `deploy-hub` 通过。
+- 2026-06-27：通用工具 refactor 后续修复与验证：
+  - 修复 `CommonToolsTest` 中 `htmlDecode` 多余 `error` 参数与 `QTimeZone::systemTimeId()` 不兼容问题；移除 `QTEST_MAIN` 避免与 `tests/unit/main.cpp` 重复定义 `main`。
+  - `PageLayoutTest::aiConfigPageUsesUnifiedTemplate` 改为从 `src/ui/tools/pages/AiConfigToolPage.cpp` 提取源码并校验，适配 AI 配置页迁移后的新文件位置。
+  - 全部 `deploy_hub_tests` 通过 `ctest --test-dir build-release --output-on-failure`。
+  - 当前各工具页已实现为独立 `ToolPage` 子类并接入 `CommonToolsWidget`，`ToolEditor`/`ToolResultRow` 已在部分页面使用。
+- 2026-06-27：通用工具页 UI 辅助函数统一：
+  - 新增 `src/ui/tools/ToolUiHelpers.h`，提供 `Helpers::makeToolButton` 和 `Helpers::copyToClipboard`。
+  - 18 个工具页（Base64/Case/Cron/DataMask/Diff/Hash/Hex/HtmlEntity/HttpStatus/ImageBase64/JSON/Jwt/MockData/NumberBase/Regex/Timestamp/URL/UUID）移除各自匿名命名空间中的重复实现，统一调用公共助手。
+  - Release 构建 `deploy-hub` 与 `deploy_hub_tests` 均通过 `ctest`。

@@ -3,8 +3,7 @@
 #include "tools/CommonTools.h"
 #include "ui/PageLayout.h"
 
-#include <QApplication>
-#include <QClipboard>
+#include "ui/tools/ToolUiHelpers.h"
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -16,15 +15,6 @@
 
 namespace {
 
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
 QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
 {
     auto *editor = new QPlainTextEdit(parent);
@@ -32,13 +22,6 @@ QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
     editor->setMinimumHeight(220);
     editor->setLineWrapMode(QPlainTextEdit::NoWrap);
     return editor;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
 }
 
 } // namespace
@@ -71,9 +54,9 @@ HtmlEntityToolPage::HtmlEntityToolPage(QWidget *parent)
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *encodeButton = makeActionButton(QStringLiteral("编码"), toolbar);
-    auto *decodeButton = makeActionButton(QStringLiteral("解码"), toolbar);
-    auto *copyButton = makeActionButton(QStringLiteral("复制结果"), toolbar);
+    auto *encodeButton = Helpers::makeToolButton(QStringLiteral("编码"), toolbar);
+    auto *decodeButton = Helpers::makeToolButton(QStringLiteral("解码"), toolbar);
+    auto *copyButton = Helpers::makeToolButton(QStringLiteral("复制结果"), toolbar);
     toolbarLayout->addWidget(encodeButton);
     toolbarLayout->addWidget(decodeButton);
     toolbarLayout->addWidget(copyButton);
@@ -93,7 +76,7 @@ HtmlEntityToolPage::HtmlEntityToolPage(QWidget *parent)
 
     connect(table, &QTableWidget::cellDoubleClicked, table, [table](int row, int) {
         if (QTableWidgetItem *item = table->item(row, 0)) {
-            copyTextToClipboard(item->text());
+            Helpers::copyToClipboard(item->text());
         }
     });
     connect(encodeButton, &QPushButton::clicked, this, [input, output]() {
@@ -103,7 +86,7 @@ HtmlEntityToolPage::HtmlEntityToolPage(QWidget *parent)
         output->setPlainText(CommonTools::htmlDecode(input->toPlainText()));
     });
     connect(copyButton, &QPushButton::clicked, this, [output]() {
-        copyTextToClipboard(output->toPlainText());
+        Helpers::copyToClipboard(output->toPlainText());
     });
 }
 

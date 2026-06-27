@@ -168,8 +168,8 @@
         }
         QFrame#contentPanel {
             background-color: #FFFFFF;
-            border: none;
-            border-radius: @C9@px;
+            border: 1px solid @C4@;
+            border-radius: @C21@px;
         }
         QWidget#topBar {
             background-color: transparent;
@@ -198,8 +198,6 @@
             min-height: 56px;
             max-height: 56px;
         }
-        QWidget#dashboardHero,
-        QWidget#serviceInstanceBanner,
         QWidget#dashboardSummary,
         QWidget#dashboardGrid,
         QWidget#dashboardTablePanel {
@@ -227,7 +225,8 @@
         }
         QWidget#serviceInstanceBanner {
             background-color: @C7@;
-            border-color: @C10@;
+            border: 1px solid @C10@;
+            border-radius: @C21@px;
         }
         QLabel#serviceInstanceTitle {
             color: @C2@;
@@ -1178,9 +1177,6 @@
             border: 1px solid @C6@;
             outline: none;
         }
-        QLineEdit:hover, QPlainTextEdit:hover, QTextEdit:hover {
-            border: 1px solid @C10@;
-        }
         QPlainTextEdit#terminalOutput:focus,
         QTextEdit#terminalOutput:focus {
             border: 1px solid @C12@;
@@ -1263,7 +1259,7 @@
             background-color: @C10@;
             color: #FFFFFF;
         }
-        QPushButton#secondaryButton {
+        QPushButton#secondaryButton, QPushButton#toolSecondaryButton {
             background-color: #FFFFFF;
             color: @C3@;
             border: 1px solid @C4@;
@@ -1272,7 +1268,7 @@
             min-height: 36px;
             font-size: 14px;
         }
-        QPushButton#secondaryButton:hover {
+        QPushButton#secondaryButton:hover, QPushButton#toolSecondaryButton:hover {
             background-color: @C8@;
             border: 1px solid @C10@;
             color: @C2@;
@@ -1750,24 +1746,11 @@
         }
         QPushButton#toolPrimaryButton:hover {
             background-color: @C10@;
+            color: #FFFFFF;
         }
         QPushButton#toolPrimaryButton:pressed {
             background-color: #0958D9;
             color: #FFFFFF;
-        }
-        QPushButton#toolSecondaryButton {
-            background-color: #FFFFFF;
-            color: @C3@;
-            border: 1px solid @C4@;
-            border-radius: @C5@px;
-            padding: 0 16px;
-            min-height: 36px;
-            font-size: 14px;
-        }
-        QPushButton#toolSecondaryButton:hover {
-            background-color: @C8@;
-            border: 1px solid @C10@;
-            color: @C2@;
         }
         QPushButton#toolAiAssistButton {
             background-color: @C7@;
@@ -1796,17 +1779,3 @@
             color: @C2@;
         }
 
-        QFrame#contentPanel,
-        QFrame#dashboardStatCard,
-        QFrame#dashboardQuickAction {
-            background-color: #FFFFFF;
-            border: 1px solid @C4@;
-            border-radius: @C21@px;
-        }
-
-        QWidget#dashboardHero,
-        QWidget#serviceInstanceBanner {
-            background-color: @C7@;
-            border: 1px solid @C10@;
-            border-radius: @C21@px;
-        }

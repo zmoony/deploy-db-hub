@@ -27,7 +27,6 @@ public:
     int toolPageCount() const;
 
 private:
-    QWidget *buildAiConfigPage();
     QWidget *buildTextToolPage(const QString &title,
                                const QString &subtitle,
                                const QString &primaryAction,

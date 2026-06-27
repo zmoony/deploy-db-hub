@@ -26,3 +26,6 @@ test-*.txt
 *.suo
 Thumbs.db
 Desktop.ini
+
+# Isolated worktrees
+.worktrees/

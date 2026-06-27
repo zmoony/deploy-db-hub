@@ -37,6 +37,8 @@ constexpr auto kAccentSoft = ThemeColors::PrimarySoft;
 constexpr auto kAccentHover = ThemeColors::InputHover;
 constexpr auto kBorder = ThemeColors::Border;
 constexpr auto kSoftBorder = ThemeColors::PrimarySoftHover;
+constexpr auto kInputBg = ThemeColors::InputBg;
+constexpr auto kBotBubble = ThemeColors::BotBubble;
 constexpr auto kSuccess = ThemeColors::Success;
 constexpr auto kWarning = ThemeColors::Warning;
 constexpr auto kDanger = ThemeColors::Danger;
@@ -49,6 +51,7 @@ constexpr auto kSidebarTextSelected = ThemeColors::SidebarTextSelected;
 constexpr int kRadiusSm = ThemeRadius::Small;
 constexpr int kRadiusMd = ThemeRadius::Medium;
 constexpr int kRadiusLg = ThemeRadius::Large;
+constexpr int kRadiusCard = ThemeRadius::Card;
 
 bool isPopupSurface(QObject *object)
 {
@@ -363,7 +366,11 @@ void apply(QApplication &app)
         {QStringLiteral("@C17@"), QString::fromLatin1(kSidebarText)},
         {QStringLiteral("@C18@"), QString::fromLatin1(kSidebarItemHover)},
         {QStringLiteral("@C19@"), QString::fromLatin1(kSidebarItemSelected)},
-        {QStringLiteral("@C20@"), QString::fromLatin1(kSidebarTextSelected)}
+        {QStringLiteral("@C20@"), QString::fromLatin1(kSidebarTextSelected)},
+        {QStringLiteral("@C21@"), QString::number(kRadiusCard)},
+        {QStringLiteral("@C22@"), QString::fromLatin1(kInputBg)},
+        {QStringLiteral("@C23@"), QStringLiteral("0px 2px 12px 0px rgba(30, 64, 175, 0.094118)")},
+        {QStringLiteral("@C24@"), QString::fromLatin1(kBotBubble)}
     };
     for (const auto &replacement : replacements) {
         styleTemplate.replace(replacement.first, replacement.second);

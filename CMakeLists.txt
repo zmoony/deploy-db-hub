@@ -111,6 +111,8 @@ qt_add_executable(deploy-hub WIN32
     src/ui/tools/AiAssistBar.h
     src/ui/tools/pages/AiConfigToolPage.cpp
     src/ui/tools/pages/AiConfigToolPage.h
+    src/ui/tools/pages/JsonToolPage.cpp
+    src/ui/tools/pages/JsonToolPage.h
     src/ui/AiAssistHelper.cpp
     src/ui/AiAssistHelper.h
     src/ui/AiChatWidget.cpp

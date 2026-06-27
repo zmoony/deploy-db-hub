@@ -115,12 +115,22 @@ qt_add_executable(deploy-hub WIN32
     src/ui/tools/pages/Base64TextToolPage.h
     src/ui/tools/pages/CaseToolPage.cpp
     src/ui/tools/pages/CaseToolPage.h
+    src/ui/tools/pages/CronToolPage.cpp
+    src/ui/tools/pages/CronToolPage.h
+    src/ui/tools/pages/DiffToolPage.cpp
+    src/ui/tools/pages/DiffToolPage.h
     src/ui/tools/pages/HashToolPage.cpp
     src/ui/tools/pages/HashToolPage.h
+    src/ui/tools/pages/HtmlEntityToolPage.cpp
+    src/ui/tools/pages/HtmlEntityToolPage.h
+    src/ui/tools/pages/HttpStatusToolPage.cpp
+    src/ui/tools/pages/HttpStatusToolPage.h
     src/ui/tools/pages/JsonToolPage.cpp
     src/ui/tools/pages/JsonToolPage.h
     src/ui/tools/pages/NumberBaseToolPage.cpp
     src/ui/tools/pages/NumberBaseToolPage.h
+    src/ui/tools/pages/RegexToolPage.cpp
+    src/ui/tools/pages/RegexToolPage.h
     src/ui/tools/pages/TimestampToolPage.cpp
     src/ui/tools/pages/TimestampToolPage.h
     src/ui/tools/pages/UrlCodecToolPage.cpp

@@ -44,11 +44,6 @@ private:
                                bool enableAiAssist = false,
                                const QString &aiSystemPrompt = QString());
     QWidget *buildHttpRequestPage();
-    QWidget *buildRegexPage();
-    QWidget *buildHtmlEntityPage();
-    QWidget *buildHttpStatusPage();
-    QWidget *buildDiffPage();
-    QWidget *buildCronPage();
     QWidget *buildImageBase64Page();
     QWidget *buildWebSocketPage();
     QWidget *buildJwtPage();

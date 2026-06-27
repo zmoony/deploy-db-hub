@@ -185,13 +185,6 @@
             font-size: 12px;
             padding: 0 2px;
         }
-        QWidget#dashboardTabBar {
-            background-color: transparent;
-            border: none;
-            border-bottom: 1px solid @C4@;
-            border-radius: 0;
-            padding: 0;
-        }
         QWidget#lineTabBar,
         QWidget#moduleTabBar {
             background-color: #FFFFFF;
@@ -201,31 +194,6 @@
             padding: 0 24px;
             min-height: 56px;
             max-height: 56px;
-        }
-        QWidget#dashboardSummary,
-        QWidget#dashboardGrid,
-        QWidget#dashboardTablePanel {
-            background-color: #FFFFFF;
-            border: 1px solid @C4@;
-            border-radius: @C5@px;
-        }
-        QWidget#dashboardHero {
-            background-color: @C7@;
-            border: 1px solid @C10@;
-            border-radius: @C9@px;
-            min-height: 88px;
-            max-height: 88px;
-        }
-        QLabel#dashboardHeroImage {
-            background-color: transparent;
-            border: none;
-        }
-        QWidget#dashboardHeroVisual {
-            background-color: @C8@;
-            border-radius: @C5@px;
-            min-width: 240px;
-            min-height: 64px;
-            max-height: 64px;
         }
         QWidget#serviceInstanceBanner {
             background-color: @C7@;
@@ -286,151 +254,6 @@
             color: @C3@;
             font-size: 12px;
             line-height: 1.5;
-        }
-        QLabel#dashboardKicker {
-            color: @C3@;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-        QLabel#dashboardTitle {
-            color: @C2@;
-            font-size: 18px;
-            font-weight: 700;
-        }
-        QLabel#dashboardMeta {
-            color: @C3@;
-            font-size: 12px;
-        }
-        QFrame#dashboardHeroMetric {
-            background-color: #FFFFFF;
-            border: 1px solid @C4@;
-            border-radius: @C11@px;
-            min-height: 24px;
-            max-height: 24px;
-        }
-        QLabel#dashboardHeroMetricValue {
-            color: @C6@;
-            font-size: 12px;
-            font-weight: 700;
-        }
-        QLabel#dashboardHeroMetricLabel {
-            color: @C3@;
-            font-size: 11px;
-            font-weight: 500;
-        }
-        QLabel#dashboardHeroCloud {
-            color: @C6@;
-            font-size: 24px;
-            font-weight: 700;
-        }
-        QLabel#dashboardHeroArrows {
-            color: @C10@;
-            font-size: 16px;
-            font-weight: 600;
-        }
-        QLabel#dashboardHeroServers {
-            color: @C3@;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        QFrame#dashboardStatCard {
-            background-color: #FFFFFF;
-            border: 1px solid @C4@;
-            border-radius: @C5@px;
-            min-height: 88px;
-            max-height: 88px;
-        }
-        QFrame#dashboardStatCard:hover {
-            background-color: #FFFFFF;
-            border-color: @C10@;
-        }
-        QLabel#dashboardStatIconBox {
-            background-color: @C7@;
-            color: @C6@;
-            border-radius: @C5@px;
-            font-size: 14px;
-            min-width: 32px;
-            max-width: 32px;
-            min-height: 32px;
-            max-height: 32px;
-        }
-        QLabel#dashboardStatValue {
-            color: @C2@;
-            font-size: 20px;
-            font-weight: 700;
-        }
-        QLabel#dashboardStatLabel {
-            color: @C3@;
-            font-size: 12px;
-            font-weight: 500;
-        }
-        QLabel#dashboardMiniLabel {
-            color: @C3@;
-            font-size: 12px;
-        }
-        QFrame#resourceStatusItem {
-            background-color: #FFFFFF;
-            border: none;
-            border-bottom: 1px solid @C8@;
-            border-radius: 0;
-            min-height: 40px;
-            max-height: 40px;
-        }
-        QFrame#resourceStatusItem:hover {
-            background-color: @C8@;
-        }
-        QLabel#resourceStatusIcon {
-            color: @C6@;
-            font-size: 16px;
-            min-width: 24px;
-            max-width: 24px;
-        }
-        QLabel#resourceStatusTitle {
-            color: @C2@;
-            font-size: 13px;
-            font-weight: 500;
-        }
-        QLabel#resourceStatusMeta {
-            color: @C3@;
-            font-size: 12px;
-        }
-        QFrame#dashboardQuickAction {
-            background-color: #FFFFFF;
-            border: 1px solid @C4@;
-            border-radius: @C5@px;
-            min-height: 56px;
-            max-height: 56px;
-        }
-        QFrame#dashboardQuickAction:hover {
-            background-color: @C7@;
-            border-color: @C10@;
-        }
-        QLabel#dashboardQuickIconBox {
-            background-color: @C7@;
-            color: @C6@;
-            border-radius: @C5@px;
-            font-size: 14px;
-            min-width: 32px;
-            max-width: 32px;
-            min-height: 32px;
-            max-height: 32px;
-        }
-        QLabel#dashboardQuickTitle {
-            color: @C2@;
-            font-size: 13px;
-            font-weight: 600;
-        }
-        QLabel#dashboardQuickMeta {
-            color: @C3@;
-            font-size: 12px;
-        }
-        QLabel#dashboardQuickArrow {
-            color: @C13@;
-            font-size: 18px;
-            font-weight: 500;
-            min-width: 12px;
-            max-width: 12px;
         }
         QGroupBox {
             background-color: transparent;

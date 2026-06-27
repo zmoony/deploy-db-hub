@@ -33,7 +33,6 @@
 #include <QButtonGroup>
 #include <QtConcurrent/QtConcurrent>
 #include <QComboBox>
-#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFormLayout>
@@ -47,7 +46,6 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPainter>
-#include <QPainterPath>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -57,8 +55,6 @@
 #include <QTableWidget>
 #include <QThread>
 #include <QVBoxLayout>
-
-#include <functional>
 
 namespace {
 
@@ -425,9 +421,8 @@ void MainWindow::refreshAiSettingsSummary()
     m_aiSummaryKeyStatus->setText(hasKey ? QStringLiteral("已保存（凭据存储）") : unset);
 }
 
-void MainWindow::navigateToPage(int moduleIndex, int pageRow, int dashboardTabIndex)
+void MainWindow::navigateToPage(int moduleIndex, int pageRow)
 {
-    Q_UNUSED(dashboardTabIndex);
     showModule(moduleIndex);
     if (pageRow >= 0 && moduleIndex >= 0 && moduleIndex < m_modulePages.size()) {
         m_modulePages.at(moduleIndex)->setCurrentIndex(pageRow);
@@ -435,21 +430,6 @@ void MainWindow::navigateToPage(int moduleIndex, int pageRow, int dashboardTabIn
         m_navigation->setCurrentRow(pageRow);
         m_navigation->blockSignals(false);
     }
-}
-
-QFrame *MainWindow::metricCard(const QString &title, QLabel **valueLabel) const
-{
-    auto *frame = new QFrame;
-    frame->setObjectName(QStringLiteral("metricCard"));
-    auto *layout = new QVBoxLayout(frame);
-    PageLayout::applyMetricCard(layout);
-    auto *titleWidget = new QLabel(title);
-    titleWidget->setObjectName(QStringLiteral("metricTitle"));
-    *valueLabel = new QLabel(QStringLiteral("0"));
-    (*valueLabel)->setObjectName(QStringLiteral("metricValue"));
-    layout->addWidget(titleWidget);
-    layout->addWidget(*valueLabel);
-    return frame;
 }
 
 QWidget *MainWindow::createDashboardPage()

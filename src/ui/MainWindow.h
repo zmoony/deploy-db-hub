@@ -14,8 +14,6 @@
 #include <QPair>
 #include <QVector>
 
-#include <functional>
-
 class QLabel;
 class QListWidget;
 class BigDataManagerWidget;
@@ -71,8 +69,7 @@ private:
     void addModuleFromPages(const QString &title, const QStringList &labels, const QList<QWidget *> &pages);
     void showModule(int index);
     void showMainModuleContent();
-    void navigateToPage(int moduleIndex, int pageRow, int dashboardTabIndex = -1);
-    QFrame *metricCard(const QString &title, QLabel **valueLabel) const;
+    void navigateToPage(int moduleIndex, int pageRow);
     QTableWidget *createTable(const QStringList &headers, const QList<QStringList> &rows);
     void appendLog(const QString &stage, const QString &message);
     void openDeploymentLog(const QString &relativePath);

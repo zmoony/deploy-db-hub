@@ -411,3 +411,9 @@
   - 新增 `src/ui/tools/ToolUiHelpers.h`，提供 `Helpers::makeToolButton` 和 `Helpers::copyToClipboard`。
   - 18 个工具页（Base64/Case/Cron/DataMask/Diff/Hash/Hex/HtmlEntity/HttpStatus/ImageBase64/JSON/Jwt/MockData/NumberBase/Regex/Timestamp/URL/UUID）移除各自匿名命名空间中的重复实现，统一调用公共助手。
   - Release 构建 `deploy-hub` 与 `deploy_hub_tests` 均通过 `ctest`。
+- 2026-06-27：完成 QML 主壳工具风格改造（Task 3）：
+  - `MainShell.qml` 根布局改为 `#F0F4F8` 背景 + 220px 白底侧栏 + 56px 顶部 Tab + `StackLayout` 内容区。
+  - `DhSidebar.qml` 导航项按 Pixso 选中/未选中态更新，高度 40px、圆角 8px，加入 16×16 占位图标，选中背景 `#EFF6FF`、文字 `#2563EB`。
+  - `DhModuleTabBar.qml` 改为白底下划线 + 36px 圆角胶囊 Tab，选中 `#2563EB` 白字、未选中 `#6B7280`。
+  - 保留原有 `AppShell` 模块/导航绑定与信号；未改动 `main.cpp` 与 `CMakeLists.txt`。
+  - 已通过 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure`。

@@ -45,20 +45,13 @@ private:
                                const QString &aiSystemPrompt = QString());
     QWidget *buildHttpRequestPage();
     QWidget *buildRegexPage();
-    QWidget *buildTimestampPage();
     QWidget *buildHtmlEntityPage();
     QWidget *buildHttpStatusPage();
     QWidget *buildDiffPage();
     QWidget *buildCronPage();
     QWidget *buildImageBase64Page();
     QWidget *buildWebSocketPage();
-    QWidget *buildUuidPage();
-    QWidget *buildHashPage();
-    QWidget *buildUrlCodecPage();
-    QWidget *buildBase64TextPage();
     QWidget *buildJwtPage();
-    QWidget *buildNumberBasePage();
-    QWidget *buildCasePage();
     void setOutput(QPlainTextEdit *output, QLabel *message, const QString &text, const QString &error);
     bool resolveAiCredentials(AiSettings *settings, QString *apiKey, QString *error) const;
 

@@ -4,7 +4,14 @@
 #include "adapters/ai/OpenAiChatClient.h"
 #include "ui/AiAssistHelper.h"
 #include "ui/tools/pages/AiConfigToolPage.h"
+#include "ui/tools/pages/Base64TextToolPage.h"
+#include "ui/tools/pages/CaseToolPage.h"
+#include "ui/tools/pages/HashToolPage.h"
 #include "ui/tools/pages/JsonToolPage.h"
+#include "ui/tools/pages/NumberBaseToolPage.h"
+#include "ui/tools/pages/TimestampToolPage.h"
+#include "ui/tools/pages/UrlCodecToolPage.h"
+#include "ui/tools/pages/UuidToolPage.h"
 #include "ui/AiStreamBuffer.h"
 #include "infra/AiSettingsStore.h"
 #include "infra/CredentialStore.h"
@@ -89,27 +96,6 @@ void copyTextToClipboard(const QString &text)
     }
 }
 
-QLineEdit *addResultRow(QFormLayout *form, const QString &label, QWidget *parent)
-{
-    auto *row = new QWidget(parent);
-    auto *rowLayout = new QHBoxLayout(row);
-    rowLayout->setContentsMargins(0, 0, 0, 0);
-    rowLayout->setSpacing(PageLayout::Space8);
-    auto *edit = new QLineEdit(row);
-    edit->setReadOnly(true);
-    PageLayout::configureFormInput(edit);
-    auto *copy = new QPushButton(QStringLiteral("复制"), row);
-    copy->setObjectName(QStringLiteral("formActionButton"));
-    copy->setFixedHeight(PageLayout::DialogFieldHeight);
-    QObject::connect(copy, &QPushButton::clicked, edit, [edit]() {
-        copyTextToClipboard(edit->text());
-    });
-    rowLayout->addWidget(edit, 1);
-    rowLayout->addWidget(copy);
-    form->addRow(label, row);
-    return edit;
-}
-
 }
 
 CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
@@ -131,7 +117,7 @@ CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
     m_stack->addWidget(buildImageBase64Page());
     m_stack->addWidget(buildRegexPage());
     m_stack->addWidget(buildCronPage());
-    m_stack->addWidget(buildTimestampPage());
+    m_stack->addWidget(new Ui::Tools::TimestampToolPage(this));
     m_stack->addWidget(buildHtmlEntityPage());
     m_stack->addWidget(buildHttpStatusPage());
     m_stack->addWidget(buildTextToolPage(
@@ -156,13 +142,13 @@ CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
         QStringLiteral("脱敏"),
         QString(),
         QStringLiteral("phone=13812345678 email=a@example.com")));
-    m_stack->addWidget(buildUuidPage());
-    m_stack->addWidget(buildHashPage());
-    m_stack->addWidget(buildUrlCodecPage());
-    m_stack->addWidget(buildBase64TextPage());
+    m_stack->addWidget(new Ui::Tools::UuidToolPage(this));
+    m_stack->addWidget(new Ui::Tools::HashToolPage(this));
+    m_stack->addWidget(new Ui::Tools::UrlCodecToolPage(this));
+    m_stack->addWidget(new Ui::Tools::Base64TextToolPage(this));
     m_stack->addWidget(buildJwtPage());
-    m_stack->addWidget(buildNumberBasePage());
-    m_stack->addWidget(buildCasePage());
+    m_stack->addWidget(new Ui::Tools::NumberBaseToolPage(this));
+    m_stack->addWidget(new Ui::Tools::CaseToolPage(this));
 
     layout->addWidget(m_stack, 1);
 }
@@ -392,113 +378,6 @@ auto *pattern = new QLineEdit(page);
         }
         result->expandAll();
         message->setText(QStringLiteral("匹配 %1 处").arg(matches.size()));
-    });
-
-    return page;
-}
-
-QWidget *CommonToolsWidget::buildTimestampPage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-auto *nowRow = new QWidget(page);
-    auto *nowLayout = new QHBoxLayout(nowRow);
-    nowLayout->setContentsMargins(0, 0, 0, 0);
-    nowLayout->setSpacing(PageLayout::Space8);
-    auto *nowLabel = new QLabel(nowRow);
-    nowLabel->setObjectName(QStringLiteral("sectionLabel"));
-    auto *copyNow = makeActionButton(QStringLiteral("复制当前毫秒"), nowRow);
-    nowLayout->addWidget(nowLabel, 1);
-    nowLayout->addWidget(copyNow);
-    layout->addWidget(nowRow);
-
-    auto *nowTimer = new QTimer(page);
-    nowTimer->setInterval(1000);
-    auto updateNow = [nowLabel]() {
-        const qint64 ms = CommonTools::currentTimestampMs();
-        nowLabel->setText(QStringLiteral("当前：%1 ms / %2 s / %3")
-            .arg(ms)
-            .arg(ms / 1000)
-            .arg(CommonTools::timestampToDateText(ms, true, QString())));
-    };
-    connect(nowTimer, &QTimer::timeout, page, updateNow);
-    nowTimer->start();
-    updateNow();
-    connect(copyNow, &QPushButton::clicked, page, []() {
-        copyTextToClipboard(QString::number(CommonTools::currentTimestampMs()));
-    });
-
-    auto *form = new QFormLayout;
-    PageLayout::applyInlineForm(form);
-
-    auto *unit = new QComboBox(page);
-    unit->addItems({QStringLiteral("毫秒"), QStringLiteral("秒")});
-    PageLayout::configureFormInput(unit);
-    form->addRow(QStringLiteral("时间戳单位"), unit);
-
-    auto *format = new QLineEdit(page);
-    format->setText(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-    PageLayout::configureFormInput(format);
-    form->addRow(QStringLiteral("时间格式"), format);
-
-    auto *tsInput = new QLineEdit(page);
-    tsInput->setText(QString::number(CommonTools::currentTimestampMs()));
-    PageLayout::configureFormInput(tsInput);
-    auto *toDate = makeActionButton(QStringLiteral("时间戳 → 时间"), page);
-    auto *tsRow = new QWidget(page);
-    auto *tsRowLayout = new QHBoxLayout(tsRow);
-    tsRowLayout->setContentsMargins(0, 0, 0, 0);
-    tsRowLayout->setSpacing(PageLayout::Space8);
-    tsRowLayout->addWidget(tsInput, 1);
-    tsRowLayout->addWidget(toDate);
-    form->addRow(QStringLiteral("时间戳"), tsRow);
-
-    auto *dateInput = new QLineEdit(page);
-    dateInput->setText(CommonTools::timestampToDateText(CommonTools::currentTimestampMs(), true, QString()));
-    PageLayout::configureFormInput(dateInput);
-    auto *toTs = makeActionButton(QStringLiteral("时间 → 时间戳"), page);
-    auto *dateRow = new QWidget(page);
-    auto *dateRowLayout = new QHBoxLayout(dateRow);
-    dateRowLayout->setContentsMargins(0, 0, 0, 0);
-    dateRowLayout->setSpacing(PageLayout::Space8);
-    dateRowLayout->addWidget(dateInput, 1);
-    dateRowLayout->addWidget(toTs);
-    form->addRow(QStringLiteral("时间"), dateRow);
-
-    layout->addLayout(form);
-
-    auto *message = new QLabel(page);
-    message->setObjectName(QStringLiteral("toolMessage"));
-    message->setWordWrap(true);
-    layout->addWidget(message);
-    layout->addStretch();
-
-    connect(toDate, &QPushButton::clicked, page, [tsInput, unit, format, dateInput, message]() {
-        bool ok = false;
-        const qint64 raw = tsInput->text().trimmed().toLongLong(&ok);
-        if (!ok) {
-            message->setText(QStringLiteral("时间戳必须为整数"));
-            return;
-        }
-        const bool ms = unit->currentIndex() == 0;
-        const QString text = CommonTools::timestampToDateText(raw, ms, format->text());
-        dateInput->setText(text);
-        message->setText(QStringLiteral("已转换为时间：%1").arg(text));
-    });
-
-    connect(toTs, &QPushButton::clicked, page, [dateInput, unit, format, tsInput, message]() {
-        QString error;
-        const qint64 ms = CommonTools::dateTextToTimestampMs(dateInput->text(), format->text(), &error);
-        if (!error.isEmpty()) {
-            message->setText(error);
-            return;
-        }
-        const bool useMs = unit->currentIndex() == 0;
-        const qint64 value = useMs ? ms : ms / 1000;
-        tsInput->setText(QString::number(value));
-        message->setText(QStringLiteral("已转换为时间戳：%1 %2").arg(value).arg(useMs ? QStringLiteral("ms") : QStringLiteral("s")));
     });
 
     return page;
@@ -1076,182 +955,6 @@ struct ImageState {
     return page;
 }
 
-QWidget *CommonToolsWidget::buildUuidPage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-auto *options = new QWidget(page);
-    auto *optionsLayout = new QHBoxLayout(options);
-    optionsLayout->setContentsMargins(0, 0, 0, 0);
-    optionsLayout->setSpacing(PageLayout::Space8);
-    optionsLayout->addWidget(new QLabel(QStringLiteral("数量"), options));
-    auto *count = new QSpinBox(options);
-    count->setRange(1, 1000);
-    count->setValue(5);
-    PageLayout::configureFormInput(count);
-    auto *uppercase = new QCheckBox(QStringLiteral("大写"), options);
-    auto *noDash = new QCheckBox(QStringLiteral("去横线"), options);
-    auto *generate = makeActionButton(QStringLiteral("生成"), options);
-    auto *copy = makeActionButton(QStringLiteral("复制全部"), options);
-    optionsLayout->addWidget(count);
-    optionsLayout->addWidget(uppercase);
-    optionsLayout->addWidget(noDash);
-    optionsLayout->addWidget(generate);
-    optionsLayout->addWidget(copy);
-    optionsLayout->addStretch();
-    layout->addWidget(options);
-
-    auto *output = makeEditor(QStringLiteral("输出"), page);
-    output->setReadOnly(true);
-    layout->addWidget(output, 1);
-
-    connect(generate, &QPushButton::clicked, page, [count, uppercase, noDash, output]() {
-        const QStringList ids = CommonTools::generateUuids(
-            count->value(), uppercase->isChecked(), noDash->isChecked());
-        output->setPlainText(ids.join(QLatin1Char('\n')));
-    });
-    connect(copy, &QPushButton::clicked, page, [output]() {
-        copyTextToClipboard(output->toPlainText());
-    });
-
-    return page;
-}
-
-QWidget *CommonToolsWidget::buildHashPage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-auto *input = makeEditor(QStringLiteral("待计算文本"), page);
-    layout->addWidget(input, 1);
-
-    auto *compute = makeActionButton(QStringLiteral("计算哈希"), page);
-    layout->addWidget(compute, 0, Qt::AlignLeft);
-
-    auto *form = new QFormLayout;
-    PageLayout::applyInlineForm(form);
-    QLineEdit *md5 = addResultRow(form, QStringLiteral("MD5"), page);
-    QLineEdit *sha1 = addResultRow(form, QStringLiteral("SHA1"), page);
-    QLineEdit *sha256 = addResultRow(form, QStringLiteral("SHA256"), page);
-    QLineEdit *sha512 = addResultRow(form, QStringLiteral("SHA512"), page);
-    layout->addLayout(form);
-    layout->addStretch();
-
-    connect(compute, &QPushButton::clicked, page, [input, md5, sha1, sha256, sha512]() {
-        const CommonTools::HashResult result =
-            CommonTools::computeHashes(input->toPlainText().toUtf8());
-        md5->setText(result.md5);
-        sha1->setText(result.sha1);
-        sha256->setText(result.sha256);
-        sha512->setText(result.sha512);
-    });
-
-    return page;
-}
-
-QWidget *CommonToolsWidget::buildUrlCodecPage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-auto *toolbar = new QWidget(page);
-    auto *toolbarLayout = new QHBoxLayout(toolbar);
-    toolbarLayout->setContentsMargins(0, 0, 0, 0);
-    toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *encode = makeActionButton(QStringLiteral("编码"), toolbar);
-    auto *decode = makeActionButton(QStringLiteral("解码"), toolbar);
-    auto *copy = makeActionButton(QStringLiteral("复制结果"), toolbar);
-    toolbarLayout->addWidget(encode);
-    toolbarLayout->addWidget(decode);
-    toolbarLayout->addWidget(copy);
-    toolbarLayout->addStretch();
-    layout->addWidget(toolbar);
-
-    auto *editors = new QWidget(page);
-    auto *editorsLayout = new QHBoxLayout(editors);
-    editorsLayout->setContentsMargins(0, 0, 0, 0);
-    editorsLayout->setSpacing(PageLayout::Space12);
-    auto *input = makeEditor(QStringLiteral("原文 / 编码后文本"), editors);
-    auto *output = makeEditor(QStringLiteral("输出"), editors);
-    output->setReadOnly(true);
-    editorsLayout->addWidget(input, 1);
-    editorsLayout->addWidget(output, 1);
-    layout->addWidget(editors, 1);
-
-    connect(encode, &QPushButton::clicked, page, [input, output]() {
-        output->setPlainText(CommonTools::urlEncode(input->toPlainText()));
-    });
-    connect(decode, &QPushButton::clicked, page, [input, output]() {
-        output->setPlainText(CommonTools::urlDecode(input->toPlainText()));
-    });
-    connect(copy, &QPushButton::clicked, page, [output]() {
-        copyTextToClipboard(output->toPlainText());
-    });
-
-    return page;
-}
-
-QWidget *CommonToolsWidget::buildBase64TextPage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-auto *toolbar = new QWidget(page);
-    auto *toolbarLayout = new QHBoxLayout(toolbar);
-    toolbarLayout->setContentsMargins(0, 0, 0, 0);
-    toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *encode = makeActionButton(QStringLiteral("文本 → Base64"), toolbar);
-    auto *decode = makeActionButton(QStringLiteral("Base64 → 文本"), toolbar);
-    auto *copy = makeActionButton(QStringLiteral("复制结果"), toolbar);
-    toolbarLayout->addWidget(encode);
-    toolbarLayout->addWidget(decode);
-    toolbarLayout->addWidget(copy);
-    toolbarLayout->addStretch();
-    layout->addWidget(toolbar);
-
-    auto *editors = new QWidget(page);
-    auto *editorsLayout = new QHBoxLayout(editors);
-    editorsLayout->setContentsMargins(0, 0, 0, 0);
-    editorsLayout->setSpacing(PageLayout::Space12);
-    auto *input = makeEditor(QStringLiteral("原文 / Base64"), editors);
-    input->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    auto *output = makeEditor(QStringLiteral("输出"), editors);
-    output->setReadOnly(true);
-    output->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    editorsLayout->addWidget(input, 1);
-    editorsLayout->addWidget(output, 1);
-    layout->addWidget(editors, 1);
-
-    auto *message = new QLabel(page);
-    message->setObjectName(QStringLiteral("toolMessage"));
-    layout->addWidget(message);
-
-    connect(encode, &QPushButton::clicked, page, [input, output, message]() {
-        output->setPlainText(CommonTools::textToBase64(input->toPlainText()));
-        message->setText(QStringLiteral("已编码"));
-    });
-    connect(decode, &QPushButton::clicked, page, [input, output, message]() {
-        QString error;
-        const QString text = CommonTools::base64ToText(input->toPlainText(), &error);
-        if (!error.isEmpty()) {
-            message->setText(error);
-            return;
-        }
-        output->setPlainText(text);
-        message->setText(QStringLiteral("已解码"));
-    });
-    connect(copy, &QPushButton::clicked, page, [output]() {
-        copyTextToClipboard(output->toPlainText());
-    });
-
-    return page;
-}
-
 QWidget *CommonToolsWidget::buildJwtPage()
 {
     auto *page = new QWidget(this);
@@ -1294,104 +997,6 @@ auto *toolbar = new QWidget(page);
     connect(copy, &QPushButton::clicked, page, [output]() {
         copyTextToClipboard(output->toPlainText());
     });
-
-    return page;
-}
-
-QWidget *CommonToolsWidget::buildNumberBasePage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-auto *inputRow = new QWidget(page);
-    auto *inputLayout = new QHBoxLayout(inputRow);
-    inputLayout->setContentsMargins(0, 0, 0, 0);
-    inputLayout->setSpacing(PageLayout::Space8);
-    auto *input = new QLineEdit(inputRow);
-    input->setPlaceholderText(QStringLiteral("输入数字"));
-    PageLayout::configureFormInput(input);
-    auto *fromBase = new QComboBox(inputRow);
-    fromBase->addItem(QStringLiteral("十进制"), 10);
-    fromBase->addItem(QStringLiteral("二进制"), 2);
-    fromBase->addItem(QStringLiteral("八进制"), 8);
-    fromBase->addItem(QStringLiteral("十六进制"), 16);
-    PageLayout::configureFormInput(fromBase);
-    auto *convert = makeActionButton(QStringLiteral("转换"), inputRow);
-    inputLayout->addWidget(input, 1);
-    inputLayout->addWidget(fromBase);
-    inputLayout->addWidget(convert);
-    layout->addWidget(inputRow);
-
-    auto *form = new QFormLayout;
-    PageLayout::applyInlineForm(form);
-    QLineEdit *binary = addResultRow(form, QStringLiteral("二进制"), page);
-    QLineEdit *octal = addResultRow(form, QStringLiteral("八进制"), page);
-    QLineEdit *decimal = addResultRow(form, QStringLiteral("十进制"), page);
-    QLineEdit *hex = addResultRow(form, QStringLiteral("十六进制"), page);
-    layout->addLayout(form);
-
-    auto *message = new QLabel(page);
-    message->setObjectName(QStringLiteral("toolMessage"));
-    layout->addWidget(message);
-    layout->addStretch();
-
-    connect(convert, &QPushButton::clicked, page,
-            [input, fromBase, binary, octal, decimal, hex, message]() {
-        QString error;
-        const int base = fromBase->currentData().toInt();
-        const CommonTools::NumberBases bases =
-            CommonTools::convertNumberBase(input->text(), base, &error);
-        if (!bases.valid) {
-            message->setText(error);
-            return;
-        }
-        binary->setText(bases.binary);
-        octal->setText(bases.octal);
-        decimal->setText(bases.decimal);
-        hex->setText(bases.hex);
-        message->setText(QStringLiteral("已转换"));
-    });
-
-    return page;
-}
-
-QWidget *CommonToolsWidget::buildCasePage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-auto *input = new QLineEdit(page);
-    input->setPlaceholderText(QStringLiteral("如 deploy hub service 或 deployHubService"));
-    PageLayout::configureFormInput(input);
-    layout->addWidget(input);
-
-    auto *convert = makeActionButton(QStringLiteral("转换"), page);
-    layout->addWidget(convert, 0, Qt::AlignLeft);
-
-    auto *form = new QFormLayout;
-    PageLayout::applyInlineForm(form);
-    QLineEdit *camel = addResultRow(form, QStringLiteral("camelCase"), page);
-    QLineEdit *pascal = addResultRow(form, QStringLiteral("PascalCase"), page);
-    QLineEdit *snake = addResultRow(form, QStringLiteral("snake_case"), page);
-    QLineEdit *kebab = addResultRow(form, QStringLiteral("kebab-case"), page);
-    QLineEdit *constantCase = addResultRow(form, QStringLiteral("CONSTANT_CASE"), page);
-    QLineEdit *title = addResultRow(form, QStringLiteral("Title Case"), page);
-    layout->addLayout(form);
-    layout->addStretch();
-
-    auto doConvert = [input, camel, pascal, snake, kebab, constantCase, title]() {
-        const CommonTools::CaseForms forms = CommonTools::convertCase(input->text());
-        camel->setText(forms.camel);
-        pascal->setText(forms.pascal);
-        snake->setText(forms.snake);
-        kebab->setText(forms.kebab);
-        constantCase->setText(forms.constantCase);
-        title->setText(forms.title);
-    };
-    connect(convert, &QPushButton::clicked, page, doConvert);
-    connect(input, &QLineEdit::returnPressed, page, doConvert);
 
     return page;
 }

@@ -28,8 +28,6 @@
 #include "ui/RemoteUiHelpers.h"
 #include "ui/ServerManagerWidget.h"
 #include "infra/AppBranding.h"
-#include "qml/LineTabBarController.h"
-
 #include <QFutureWatcher>
 #include <QAbstractButton>
 #include <QButtonGroup>
@@ -40,7 +38,6 @@
 #include <QDir>
 #include <QFormLayout>
 #include <QFrame>
-#include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QHBoxLayout>
@@ -49,7 +46,6 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
-#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
@@ -131,16 +127,6 @@ QIcon makeSidebarLineIcon(const QString &label)
     return QIcon(pixmap);
 }
 
-class DashboardHeroWidget final : public QWidget
-{
-public:
-    explicit DashboardHeroWidget(QWidget *parent = nullptr)
-        : QWidget(parent)
-    {
-        setObjectName(QStringLiteral("dashboardHero"));
-    }
-};
-
 QString formatByteSize(qint64 bytes)
 {
     if (bytes < 1024) {
@@ -167,32 +153,6 @@ QString formatStartedAt(const QJsonObject &record)
     return started.toString(QStringLiteral("yyyy-MM-dd HH:mm"));
 }
 
-QString formatDuration(const QJsonObject &record)
-{
-    const QJsonValue finishedValue = record.value(QStringLiteral("finishedAt"));
-    if (finishedValue.isNull()) {
-        return QStringLiteral("-");
-    }
-    const QDateTime started = QDateTime::fromString(record.value(QStringLiteral("startedAt")).toString(), Qt::ISODate);
-    const QDateTime finished = QDateTime::fromString(finishedValue.toString(), Qt::ISODate);
-    if (!started.isValid() || !finished.isValid()) {
-        return QStringLiteral("-");
-    }
-    return QStringLiteral("%1s").arg(started.secsTo(finished));
-}
-
-QString formatServerOsLabel(const QJsonObject &server)
-{
-    const QString os = server.value(QStringLiteral("os")).toString();
-    if (os == QStringLiteral("windows")) {
-        return QStringLiteral("Windows WinRM");
-    }
-    if (os == QStringLiteral("linux")) {
-        return QStringLiteral("Linux SSH");
-    }
-    return os.isEmpty() ? QStringLiteral("-") : os;
-}
-
 QString formatDeploymentStatusLabel(const QString &status)
 {
     if (status == QStringLiteral("success")) {
@@ -211,194 +171,6 @@ QString formatDeploymentStatusLabel(const QString &status)
         return QStringLiteral("已取消");
     }
     return status.isEmpty() ? QStringLiteral("-") : status;
-}
-
-bool isPendingFailureStatus(const QString &status)
-{
-    return status == QStringLiteral("failed") || status == QStringLiteral("rollback_failed");
-}
-
-QLabel *makeDashboardLabel(const QString &text, const QString &objectName)
-{
-    auto *label = new QLabel(text);
-    label->setObjectName(objectName);
-    return label;
-}
-
-QWidget *makeHeroMetric(const QString &label, QLabel **valueLabel)
-{
-    auto *widget = new QFrame;
-    widget->setObjectName(QStringLiteral("dashboardHeroMetric"));
-    widget->setFixedHeight(30);
-    auto *layout = new QHBoxLayout(widget);
-    layout->setContentsMargins(PageLayout::Space8, 0, PageLayout::Space8, 0);
-    layout->setSpacing(PageLayout::Space4);
-    *valueLabel = makeDashboardLabel(QStringLiteral("0"), QStringLiteral("dashboardHeroMetricValue"));
-    auto *labelWidget = makeDashboardLabel(label, QStringLiteral("dashboardHeroMetricLabel"));
-    layout->addWidget(*valueLabel);
-    layout->addWidget(labelWidget);
-    return widget;
-}
-
-QWidget *makeDashboardHero(QLabel **projectLabel,
-                           QLabel **serverLabel,
-                           QLabel **failureLabel,
-                           QLabel **onlineRateLabel)
-{
-    Q_UNUSED(projectLabel);
-    Q_UNUSED(serverLabel);
-    Q_UNUSED(failureLabel);
-    Q_UNUSED(onlineRateLabel);
-
-    auto *hero = new DashboardHeroWidget;
-    hero->setFixedHeight(96);
-    auto *layout = new QHBoxLayout(hero);
-    layout->setContentsMargins(PageLayout::Space16, PageLayout::Space12, PageLayout::Space16, PageLayout::Space12);
-    layout->setSpacing(PageLayout::Space16);
-
-    auto *textBlock = new QWidget(hero);
-    auto *textLayout = new QVBoxLayout(textBlock);
-    textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(PageLayout::Space6);
-    textLayout->addStretch();
-    textLayout->addWidget(makeDashboardLabel(QStringLiteral("DEPLOY CONTROL"), QStringLiteral("dashboardKicker")));
-    textLayout->addWidget(makeDashboardLabel(QStringLiteral("部署资源态势"), QStringLiteral("dashboardTitle")));
-    textLayout->addWidget(makeDashboardLabel(QStringLiteral("项目、服务器与最近部署聚合在一屏，适合快速判断当前部署面。"), QStringLiteral("dashboardMeta")));
-    textLayout->addStretch();
-
-    layout->addWidget(textBlock, 1);
-    return hero;
-}
-
-QFrame *makeDashboardStatCard(const QString &icon, const QString &title, const QString &subtitle, QLabel **valueLabel)
-{
-    auto *frame = new QFrame;
-    frame->setObjectName(QStringLiteral("dashboardStatCard"));
-    frame->setFixedHeight(88);
-    auto *layout = new QVBoxLayout(frame);
-    layout->setContentsMargins(PageLayout::Space12, PageLayout::Space10, PageLayout::Space12, PageLayout::Space10);
-    layout->setSpacing(PageLayout::Space6);
-
-    auto *topRow = new QHBoxLayout;
-    topRow->setContentsMargins(0, 0, 0, 0);
-    topRow->setSpacing(PageLayout::Space8);
-    auto *iconLabel = makeDashboardLabel(icon, QStringLiteral("dashboardStatIconBox"));
-    iconLabel->setAlignment(Qt::AlignCenter);
-    QFont iconFont = iconLabel->font();
-    iconFont.setPixelSize(14);
-    iconFont.setBold(true);
-    iconLabel->setFont(iconFont);
-    auto *textBlock = new QWidget(frame);
-    auto *textLayout = new QVBoxLayout(textBlock);
-    textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(0);
-    auto *label = makeDashboardLabel(title, QStringLiteral("dashboardStatLabel"));
-    *valueLabel = makeDashboardLabel(QStringLiteral("0"), QStringLiteral("dashboardStatValue"));
-    textLayout->addWidget(label);
-    textLayout->addWidget(*valueLabel);
-    topRow->addWidget(iconLabel);
-    topRow->addWidget(textBlock, 1);
-
-    auto *meta = makeDashboardLabel(subtitle, QStringLiteral("dashboardMiniLabel"));
-    meta->setWordWrap(true);
-
-    layout->addLayout(topRow);
-    layout->addWidget(meta);
-    layout->addStretch();
-    return frame;
-}
-
-QFrame *makeResourceStatusItem(const QString &icon, const QString &title, const QString &subtitle)
-{
-    auto *item = new QFrame;
-    item->setObjectName(QStringLiteral("resourceStatusItem"));
-    item->setFixedHeight(46);
-    auto *layout = new QHBoxLayout(item);
-    layout->setContentsMargins(PageLayout::Space10, PageLayout::Space8, PageLayout::Space10, PageLayout::Space8);
-    layout->setSpacing(PageLayout::Space12);
-
-    auto *iconLabel = makeDashboardLabel(icon, QStringLiteral("resourceStatusIcon"));
-    auto *textBlock = new QWidget(item);
-    auto *textLayout = new QVBoxLayout(textBlock);
-    textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(4);
-    textLayout->addWidget(makeDashboardLabel(title, QStringLiteral("resourceStatusTitle")));
-    auto *meta = makeDashboardLabel(subtitle, QStringLiteral("resourceStatusMeta"));
-    meta->setWordWrap(true);
-    textLayout->addWidget(meta);
-
-    layout->addWidget(iconLabel);
-    layout->addWidget(textBlock, 1);
-    return item;
-}
-
-QFrame *makeDashboardQuickAction(const QString &icon, const QString &label, const QString &subtitle)
-{
-    auto *widget = new QFrame;
-    widget->setObjectName(QStringLiteral("dashboardQuickAction"));
-    widget->setFixedHeight(56);
-    widget->setCursor(Qt::PointingHandCursor);
-    auto *layout = new QHBoxLayout(widget);
-    layout->setContentsMargins(PageLayout::Space10, PageLayout::Space8, PageLayout::Space10, PageLayout::Space8);
-    layout->setSpacing(PageLayout::Space8);
-
-    auto *iconLabel = makeDashboardLabel(icon, QStringLiteral("dashboardQuickIconBox"));
-    iconLabel->setAlignment(Qt::AlignCenter);
-    QFont iconFont = iconLabel->font();
-    iconFont.setPixelSize(14);
-    iconFont.setBold(true);
-    iconLabel->setFont(iconFont);
-    auto *textBlock = new QWidget(widget);
-    auto *textLayout = new QVBoxLayout(textBlock);
-    textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(2);
-    textLayout->addWidget(makeDashboardLabel(label, QStringLiteral("dashboardQuickTitle")));
-    auto *meta = makeDashboardLabel(subtitle, QStringLiteral("dashboardQuickMeta"));
-    meta->setWordWrap(true);
-    textLayout->addWidget(meta);
-
-    auto *arrow = makeDashboardLabel(QStringLiteral("›"), QStringLiteral("dashboardQuickArrow"));
-    arrow->setAlignment(Qt::AlignCenter);
-    layout->addWidget(iconLabel);
-    layout->addWidget(textBlock, 1);
-    layout->addWidget(arrow);
-    return widget;
-}
-
-class DashboardQuickActionFilter final : public QObject
-{
-public:
-    explicit DashboardQuickActionFilter(std::function<void()> handler, QObject *parent)
-        : QObject(parent)
-        , m_handler(std::move(handler))
-    {
-    }
-
-protected:
-    bool eventFilter(QObject *watched, QEvent *event) override
-    {
-        if (event->type() == QEvent::MouseButtonRelease) {
-            const auto *mouseEvent = static_cast<QMouseEvent *>(event);
-            if (mouseEvent->button() == Qt::LeftButton) {
-                if (m_handler) {
-                    m_handler();
-                }
-                return true;
-            }
-        }
-        return QObject::eventFilter(watched, event);
-    }
-
-private:
-    std::function<void()> m_handler;
-};
-
-void wireDashboardQuickAction(QFrame *action, std::function<void()> handler)
-{
-    if (action == nullptr || !handler) {
-        return;
-    }
-    action->installEventFilter(new DashboardQuickActionFilter(std::move(handler), action));
 }
 
 }
@@ -655,17 +427,13 @@ void MainWindow::refreshAiSettingsSummary()
 
 void MainWindow::navigateToPage(int moduleIndex, int pageRow, int dashboardTabIndex)
 {
+    Q_UNUSED(dashboardTabIndex);
     showModule(moduleIndex);
     if (pageRow >= 0 && moduleIndex >= 0 && moduleIndex < m_modulePages.size()) {
         m_modulePages.at(moduleIndex)->setCurrentIndex(pageRow);
         m_navigation->blockSignals(true);
         m_navigation->setCurrentRow(pageRow);
         m_navigation->blockSignals(false);
-    }
-
-    if (dashboardTabIndex >= 0 && m_dashboardLineTab != nullptr && m_dashboardStack != nullptr) {
-        m_dashboardLineTab->setCurrentIndex(dashboardTabIndex);
-        m_dashboardStack->setCurrentIndex(dashboardTabIndex);
     }
 }
 
@@ -688,201 +456,70 @@ QWidget *MainWindow::createDashboardPage()
 {
     auto *page = new QWidget;
     page->setProperty("fitFirstScreen", true);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(PageLayout::Space14, PageLayout::Space14, PageLayout::Space14, PageLayout::Space14);
-    layout->setSpacing(PageLayout::Space12);
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(0);
 
-    const QStringList tabLabels = {
-        QStringLiteral("总览"),
-        QStringLiteral("部署"),
-        QStringLiteral("服务器"),
-        QStringLiteral("日志")
-    };
+    auto *dashboardContent = new QFrame;
+    dashboardContent->setObjectName(QStringLiteral("dashboardContent"));
+    auto *dashboardLayout = new QVBoxLayout(dashboardContent);
+    dashboardLayout->setContentsMargins(0, 0, 0, 0);
+    dashboardLayout->setSpacing(0);
 
-    m_dashboardStack = new QStackedWidget(page);
-    LineTabBarController *tabController = nullptr;
-    layout->addWidget(PageLayout::makeLineTabBar(tabLabels, page, &tabController, m_dashboardStack));
-    m_dashboardLineTab = tabController;
-    layout->addWidget(m_dashboardStack, 1);
+    auto *tabBar = PageLayout::makeModuleTabBar(
+        {QStringLiteral("全部"), QStringLiteral("成功"), QStringLiteral("失败")},
+        dashboardContent,
+        &m_dashboardFilterGroup,
+        nullptr,
+        0);
+    dashboardLayout->addWidget(tabBar);
 
-    auto *overviewPage = new QWidget;
-    auto *overviewLayout = new QVBoxLayout(overviewPage);
-    overviewLayout->setContentsMargins(0, 0, 0, 0);
-    overviewLayout->setSpacing(PageLayout::Space12);
+    auto *contentPanel = new QFrame;
+    contentPanel->setObjectName(QStringLiteral("contentPanel"));
+    auto *panelLayout = new QVBoxLayout(contentPanel);
+    panelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
+    panelLayout->setSpacing(PageLayout::Space12);
 
-    overviewLayout->addWidget(makeDashboardHero(
-        &m_heroProjects,
-        &m_heroServers,
-        &m_heroFailures,
-        &m_heroOnlineRate));
-
-    auto *metrics = new QGridLayout;
-    metrics->setHorizontalSpacing(PageLayout::Space12);
-    metrics->setVerticalSpacing(PageLayout::Space12);
-    metrics->addWidget(makeDashboardStatCard(QStringLiteral("▦"), QStringLiteral("项目"), QStringLiteral("已登记部署单元"), &m_metricProjects), 0, 0);
-    metrics->addWidget(makeDashboardStatCard(QStringLiteral("▣"), QStringLiteral("服务器"), QStringLiteral("Linux / Windows"), &m_metricServers), 0, 1);
-    metrics->addWidget(makeDashboardStatCard(QStringLiteral("✓"), QStringLiteral("最近成功"), QStringLiteral("最近部署结果"), &m_metricRecentSuccess), 0, 2);
-    metrics->addWidget(makeDashboardStatCard(QStringLiteral("!"), QStringLiteral("待处理失败"), QStringLiteral("需要关注"), &m_metricPendingFailures), 0, 3);
-    m_metricRecentSuccess->setText(QStringLiteral("-"));
-    m_metricPendingFailures->setText(QStringLiteral("-"));
-    overviewLayout->addLayout(metrics);
-
-    auto *overviewRow = new QGridLayout;
-    overviewRow->setHorizontalSpacing(PageLayout::Space12);
-    overviewRow->setVerticalSpacing(PageLayout::Space12);
-
-    auto *summaryPanel = new QWidget(overviewPage);
-    summaryPanel->setObjectName(QStringLiteral("dashboardTablePanel"));
-    summaryPanel->setFixedHeight(258);
-    auto *summaryLayout = new QVBoxLayout(summaryPanel);
-    summaryLayout->setContentsMargins(PageLayout::Space14, PageLayout::Space14, PageLayout::Space14, PageLayout::Space14);
-    summaryLayout->setSpacing(PageLayout::Space10);
-    summaryLayout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("资源概览"), summaryPanel));
-    auto *summaryTable = createTable(
-        {QStringLiteral("模块"), QStringLiteral("当前状态")},
-        {
-            {QStringLiteral("项目配置"), QStringLiteral("读取本地 SQLite 配置")},
-            {QStringLiteral("远程通道"), QStringLiteral("Linux OpenSSH / Windows winrs")},
-            {QStringLiteral("凭据"), QStringLiteral("本地加密存储 + 会话缓存")},
-            {QStringLiteral("部署日志"), QStringLiteral("config/logs 可追溯")}
-        });
-    summaryTable->setObjectName(QStringLiteral("dashboardTable"));
-    summaryTable->setFixedHeight(198);
-    summaryTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    summaryTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    summaryLayout->addWidget(summaryTable, 1);
-
-    auto *healthPanel = new QWidget(overviewPage);
-    healthPanel->setObjectName(QStringLiteral("dashboardTablePanel"));
-    healthPanel->setFixedHeight(258);
-    auto *healthLayout = new QVBoxLayout(healthPanel);
-    healthLayout->setContentsMargins(PageLayout::Space14, PageLayout::Space14, PageLayout::Space14, PageLayout::Space14);
-    healthLayout->setSpacing(PageLayout::Space10);
-    healthLayout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("快速操作"), healthPanel));
-    auto *miniGrid = new QGridLayout;
-    miniGrid->setHorizontalSpacing(PageLayout::Space12);
-    miniGrid->setVerticalSpacing(PageLayout::Space12);
-    auto *deployQuickAction = makeDashboardQuickAction(
-        QStringLiteral("↻"),
-        QStringLiteral("一键发布"),
-        QStringLiteral("快速部署项目到服务器"));
-    auto *uploadQuickAction = makeDashboardQuickAction(
-        QStringLiteral("⇧"),
-        QStringLiteral("上传文件"),
-        QStringLiteral("上传本地文件到服务器"));
-    auto *logsQuickAction = makeDashboardQuickAction(
-        QStringLiteral("≡"),
-        QStringLiteral("查看日志"),
-        QStringLiteral("查看部署日志与运行记录"));
-    auto *monitorQuickAction = makeDashboardQuickAction(
-        QStringLiteral("◉"),
-        QStringLiteral("实时监控"),
-        QStringLiteral("跟踪服务器运行状态"));
-    miniGrid->addWidget(deployQuickAction, 0, 0);
-    miniGrid->addWidget(uploadQuickAction, 0, 1);
-    miniGrid->addWidget(logsQuickAction, 1, 0);
-    miniGrid->addWidget(monitorQuickAction, 1, 1);
-    constexpr int kDeployModuleIndex = 1;
-    wireDashboardQuickAction(deployQuickAction, [this]() { navigateToPage(kDeployModuleIndex, 3); });
-    wireDashboardQuickAction(uploadQuickAction, [this]() { navigateToPage(kDeployModuleIndex, 2); });
-    wireDashboardQuickAction(logsQuickAction, [this]() { navigateToPage(kDeployModuleIndex, 0, 3); });
-    wireDashboardQuickAction(monitorQuickAction, [this]() { navigateToPage(kDeployModuleIndex, 2); });
-    healthLayout->addLayout(miniGrid);
-    healthLayout->addStretch();
-
-    overviewRow->addWidget(summaryPanel, 0, 0);
-    overviewRow->addWidget(healthPanel, 0, 1);
-    overviewRow->setColumnStretch(0, 3);
-    overviewRow->setColumnStretch(1, 2);
-    overviewLayout->addLayout(overviewRow, 1);
-    m_dashboardStack->addWidget(overviewPage);
-
-    auto *deployTabPage = new QWidget;
-    auto *deployTabLayout = new QVBoxLayout(deployTabPage);
-    deployTabLayout->setContentsMargins(0, 0, 0, 0);
-    deployTabLayout->setSpacing(PageLayout::Space12);
     auto *recentTable = createTable(
-        {QStringLiteral("时间"), QStringLiteral("项目"), QStringLiteral("服务器"), QStringLiteral("状态"), QStringLiteral("耗时")},
+        {QStringLiteral("时间"), QStringLiteral("项目"), QStringLiteral("服务器"), QStringLiteral("状态"), QStringLiteral("操作")},
         {});
     recentTable->setObjectName(QStringLiteral("dashboardTable"));
     m_recentTable = recentTable;
-    auto *recentPanel = new QWidget(deployTabPage);
-    recentPanel->setObjectName(QStringLiteral("dashboardTablePanel"));
-    auto *recentLayout = new QVBoxLayout(recentPanel);
-    recentLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
-    recentLayout->setSpacing(PageLayout::Space12);
-    auto *recentHeader = new QHBoxLayout;
-    recentHeader->setContentsMargins(0, 0, 0, 0);
-    recentHeader->addWidget(PageLayout::makeSectionLabel(QStringLiteral("最近部署"), recentPanel));
-    recentHeader->addStretch();
-    auto *dashboardClearButton = new QPushButton(QStringLiteral("清空记录"));
-    connect(dashboardClearButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
-    recentHeader->addWidget(dashboardClearButton);
-    recentLayout->addLayout(recentHeader);
-    recentLayout->addWidget(PageLayout::wrapTableSection(
+    PageLayout::configureListingTableWithActionColumn(m_recentTable, 4, 1);
+
+    connect(m_recentTable, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
+        if (m_recentTable == nullptr || row < 0) {
+            return;
+        }
+        const QTableWidgetItem *item = m_recentTable->item(row, 0);
+        if (item != nullptr) {
+            openDeploymentLog(item->data(Qt::UserRole).toString());
+        }
+    });
+
+    auto *headerLayout = new QHBoxLayout;
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    auto *sectionLabel = PageLayout::makeSectionLabel(QStringLiteral("最近部署任务"), contentPanel);
+    sectionLabel->setWordWrap(false);
+    sectionLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    headerLayout->addWidget(sectionLabel);
+    headerLayout->addStretch();
+    auto *clearButton = new QPushButton(QStringLiteral("清空记录"));
+    connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
+    headerLayout->addWidget(clearButton);
+
+    panelLayout->addLayout(headerLayout);
+    panelLayout->addWidget(PageLayout::wrapTableSection(
         recentTable,
         &m_recentDeploymentsEmpty,
         QStringLiteral("暂无部署记录。完成一次部署后，最近动态会显示在这里。")), 1);
-    deployTabLayout->addWidget(recentPanel, 1);
-    m_dashboardStack->addWidget(deployTabPage);
 
-    auto *serverTabPage = new QWidget;
-    auto *serverTabLayout = new QVBoxLayout(serverTabPage);
-    serverTabLayout->setContentsMargins(0, 0, 0, 0);
-    serverTabLayout->setSpacing(PageLayout::Space12);
-    m_dashboardServerTable = createTable(
-        {QStringLiteral("名称"), QStringLiteral("主机"), QStringLiteral("平台"), QStringLiteral("用户名")},
-        {});
-    m_dashboardServerTable->setObjectName(QStringLiteral("dashboardTable"));
-    auto *serverPanel = new QWidget(serverTabPage);
-    serverPanel->setObjectName(QStringLiteral("dashboardTablePanel"));
-    auto *serverPanelLayout = new QVBoxLayout(serverPanel);
-    serverPanelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
-    serverPanelLayout->setSpacing(PageLayout::Space12);
-    serverPanelLayout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("已登记服务器"), serverPanel));
-    serverPanelLayout->addWidget(PageLayout::wrapTableSection(
-        m_dashboardServerTable,
-        &m_dashboardServersEmpty,
-        QStringLiteral("暂无服务器。请先在「部署工具 → 服务器管理」中登记目标机。")), 1);
-    serverTabLayout->addWidget(serverPanel, 1);
-    m_dashboardStack->addWidget(serverTabPage);
+    dashboardLayout->addWidget(contentPanel, 1);
+    pageLayout->addWidget(dashboardContent);
 
-    auto *logTabPage = new QWidget;
-    auto *logTabLayout = new QVBoxLayout(logTabPage);
-    logTabLayout->setContentsMargins(0, 0, 0, 0);
-    logTabLayout->setSpacing(PageLayout::Space12);
-    m_dashboardLogTable = createTable(
-        {QStringLiteral("时间"), QStringLiteral("项目"), QStringLiteral("状态"), QStringLiteral("日志路径")},
-        {});
-    m_dashboardLogTable->setObjectName(QStringLiteral("dashboardTable"));
-    connect(m_dashboardLogTable, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
-        if (m_dashboardLogTable == nullptr || row < 0) {
-            return;
-        }
-        const QTableWidgetItem *logItem = m_dashboardLogTable->item(row, 3);
-        if (logItem != nullptr) {
-            openDeploymentLog(logItem->text());
-        }
-    });
-    auto *logPanel = new QWidget(logTabPage);
-    logPanel->setObjectName(QStringLiteral("dashboardTablePanel"));
-    auto *logPanelLayout = new QVBoxLayout(logPanel);
-    logPanelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
-    logPanelLayout->setSpacing(PageLayout::Space12);
-    auto *logHeader = new QHBoxLayout;
-    logHeader->setContentsMargins(0, 0, 0, 0);
-    logHeader->addWidget(PageLayout::makeSectionLabel(QStringLiteral("部署日志索引"), logPanel));
-    logHeader->addStretch();
-    auto *dashboardLogClearButton = new QPushButton(QStringLiteral("清空记录"));
-    connect(dashboardLogClearButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
-    logHeader->addWidget(dashboardLogClearButton);
-    logPanelLayout->addLayout(logHeader);
-    logPanelLayout->addWidget(PageLayout::wrapTableSection(
-        m_dashboardLogTable,
-        &m_dashboardLogsEmpty,
-        QStringLiteral("暂无部署日志。完成一次部署后，日志索引会显示在这里。")), 1);
-    logTabLayout->addWidget(logPanel, 1);
-    m_dashboardStack->addWidget(logTabPage);
+    if (m_dashboardFilterGroup != nullptr) {
+        connect(m_dashboardFilterGroup, &QButtonGroup::idClicked, this, &MainWindow::refreshDashboard);
+    }
 
     return page;
 }
@@ -1319,51 +956,7 @@ QTableWidget *MainWindow::createTable(const QStringList &headers, const QList<QS
 
 void MainWindow::refreshDashboard()
 {
-    const int projectCount = m_projectManager != nullptr ? m_projectManager->projectCount() : 0;
-    const int serverCount = m_serverManager != nullptr ? m_serverManager->serverCount() : 0;
-
-    if (m_metricProjects) {
-        m_metricProjects->setText(QString::number(projectCount));
-    }
-    if (m_metricServers != nullptr) {
-        m_metricServers->setText(QString::number(serverCount));
-    }
-    if (m_heroProjects != nullptr) {
-        m_heroProjects->setText(QString::number(projectCount));
-    }
-    if (m_heroServers != nullptr) {
-        m_heroServers->setText(QString::number(serverCount));
-    }
-    if (m_heroOnlineRate != nullptr) {
-        m_heroOnlineRate->setText(QStringLiteral("100%"));
-    }
     refreshDashboardTabData();
-}
-
-void MainWindow::applyDeploymentMetrics(const QVector<StoredRecord> &deployments)
-{
-    if (m_metricRecentSuccess != nullptr) {
-        if (deployments.isEmpty()) {
-            m_metricRecentSuccess->setText(QStringLiteral("-"));
-        } else {
-            const QString status = deployments.first().config.value(QStringLiteral("status")).toString();
-            m_metricRecentSuccess->setText(formatDeploymentStatusLabel(status));
-        }
-    }
-
-    if (m_metricPendingFailures != nullptr) {
-        int pendingFailures = 0;
-        for (const StoredRecord &record : deployments) {
-            if (isPendingFailureStatus(record.config.value(QStringLiteral("status")).toString())) {
-                ++pendingFailures;
-            }
-        }
-        const QString failureText = pendingFailures == 0 ? QStringLiteral("-") : QString::number(pendingFailures);
-        m_metricPendingFailures->setText(failureText);
-        if (m_heroFailures != nullptr) {
-            m_heroFailures->setText(QString::number(pendingFailures));
-        }
-    }
 }
 
 void MainWindow::refreshDashboardTabData(const QVector<StoredRecord> *deployments)
@@ -1379,41 +972,54 @@ void MainWindow::refreshDashboardTabData(const QVector<StoredRecord> *deployment
         deploymentSource = &loadedDeployments;
     }
 
-    applyDeploymentMetrics(*deploymentSource);
-
-    if (m_dashboardLogTable != nullptr) {
-        const int logCount = qMin(20, deploymentSource->size());
-        m_dashboardLogTable->setRowCount(logCount);
-        for (int row = 0; row < logCount; ++row) {
-            const QJsonObject &record = deploymentSource->at(row).config;
-            m_dashboardLogTable->setItem(row, 0, new QTableWidgetItem(formatStartedAt(record)));
-            m_dashboardLogTable->setItem(row, 1, new QTableWidgetItem(record.value(QStringLiteral("projectId")).toString()));
-            m_dashboardLogTable->setItem(row, 2, new QTableWidgetItem(record.value(QStringLiteral("status")).toString()));
-            m_dashboardLogTable->setItem(row, 3, new QTableWidgetItem(record.value(QStringLiteral("logPath")).toString()));
-        }
-        PageLayout::refreshListingTableColumns(m_dashboardLogTable);
-        PageLayout::updateTableEmptyState(m_dashboardLogTable, m_dashboardLogsEmpty, logCount);
+    if (m_recentTable == nullptr) {
+        return;
     }
 
-    if (m_dashboardServerTable != nullptr) {
-        QVector<StoredRecord> servers;
-        QString error;
-        if (!m_store->listServers(&servers, &error)) {
-            statusBar()->showMessage(QStringLiteral("服务器数据加载失败：%1").arg(error));
-            return;
-        }
-
-        m_dashboardServerTable->setRowCount(servers.size());
-        for (int row = 0; row < servers.size(); ++row) {
-            const QJsonObject &server = servers.at(row).config;
-            m_dashboardServerTable->setItem(row, 0, new QTableWidgetItem(server.value(QStringLiteral("name")).toString()));
-            m_dashboardServerTable->setItem(row, 1, new QTableWidgetItem(server.value(QStringLiteral("host")).toString()));
-            m_dashboardServerTable->setItem(row, 2, new QTableWidgetItem(formatServerOsLabel(server)));
-            m_dashboardServerTable->setItem(row, 3, new QTableWidgetItem(server.value(QStringLiteral("username")).toString()));
-        }
-        PageLayout::refreshListingTableColumns(m_dashboardServerTable);
-        PageLayout::updateTableEmptyState(m_dashboardServerTable, m_dashboardServersEmpty, servers.size());
+    int filterId = 0;
+    if (m_dashboardFilterGroup != nullptr) {
+        filterId = m_dashboardFilterGroup->checkedId();
     }
+
+    QVector<StoredRecord> filtered;
+    filtered.reserve(deploymentSource->size());
+    for (const StoredRecord &record : *deploymentSource) {
+        const QString status = record.config.value(QStringLiteral("status")).toString();
+        if (filterId == 1 && status != QStringLiteral("success")) {
+            continue;
+        }
+        if (filterId == 2 && status != QStringLiteral("failed") && status != QStringLiteral("rollback_failed")) {
+            continue;
+        }
+        filtered.append(record);
+    }
+
+    const int rowCount = filtered.size();
+    m_recentTable->setRowCount(rowCount);
+    for (int row = 0; row < rowCount; ++row) {
+        const QJsonObject &record = filtered.at(row).config;
+        const QString startedAt = formatStartedAt(record);
+        const QString projectId = record.value(QStringLiteral("projectId")).toString();
+        const QString serverId = record.value(QStringLiteral("serverId")).toString();
+        const QString status = record.value(QStringLiteral("status")).toString();
+        const QString logPath = record.value(QStringLiteral("logPath")).toString();
+
+        auto *timeItem = new QTableWidgetItem(startedAt);
+        timeItem->setData(Qt::UserRole, logPath);
+        m_recentTable->setItem(row, 0, timeItem);
+        m_recentTable->setItem(row, 1, new QTableWidgetItem(projectId));
+        m_recentTable->setItem(row, 2, new QTableWidgetItem(serverId));
+        m_recentTable->setItem(row, 3, new QTableWidgetItem(formatDeploymentStatusLabel(status)));
+
+        auto *logButton = PageLayout::makeTableActionButton(QStringLiteral("日志"), QStringLiteral("tableActionView"), m_recentTable);
+        connect(logButton, &QPushButton::clicked, this, [this, logPath]() {
+            openDeploymentLog(logPath);
+        });
+        m_recentTable->setCellWidget(row, 4, logButton);
+    }
+
+    PageLayout::refreshListingTableColumns(m_recentTable, 1);
+    PageLayout::updateTableEmptyState(m_recentTable, m_recentDeploymentsEmpty, rowCount);
 }
 
 void MainWindow::refreshDeploySelectors()
@@ -1560,21 +1166,6 @@ void MainWindow::refreshDeploymentTables()
         }
         PageLayout::refreshListingTableColumns(m_historyTable);
         PageLayout::updateTableEmptyState(m_historyTable, m_historyEmpty, deployments.size());
-    }
-
-    if (m_recentTable != nullptr) {
-        const int recentCount = qMin(5, deployments.size());
-        m_recentTable->setRowCount(recentCount);
-        for (int row = 0; row < recentCount; ++row) {
-            const QJsonObject &record = deployments.at(row).config;
-            m_recentTable->setItem(row, 0, new QTableWidgetItem(formatStartedAt(record)));
-            m_recentTable->setItem(row, 1, new QTableWidgetItem(record.value(QStringLiteral("projectId")).toString()));
-            m_recentTable->setItem(row, 2, new QTableWidgetItem(record.value(QStringLiteral("serverId")).toString()));
-            m_recentTable->setItem(row, 3, new QTableWidgetItem(record.value(QStringLiteral("status")).toString()));
-            m_recentTable->setItem(row, 4, new QTableWidgetItem(formatDuration(record)));
-        }
-        PageLayout::refreshListingTableColumns(m_recentTable);
-        PageLayout::updateTableEmptyState(m_recentTable, m_recentDeploymentsEmpty, recentCount);
     }
 
     refreshDashboardTabData(&deployments);

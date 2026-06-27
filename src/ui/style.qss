@@ -107,6 +107,10 @@
         QWidget#mainWorkspace {
             background-color: @C1@;
         }
+        QFrame#dashboardContent {
+            background: transparent;
+            border: none;
+        }
         QScrollArea#contentScroll {
             background-color: #FFFFFF;
             border: 1px solid @C4@;

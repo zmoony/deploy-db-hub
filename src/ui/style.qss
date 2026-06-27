@@ -1713,3 +1713,72 @@
             border-color: @C6@;
             image: url(:/images/ui/check.svg);
         }
+        QFrame#toolCard {
+            background-color: #FFFFFF;
+            border: 1px solid @C4@;
+            border-radius: @C9@px;
+        }
+        QPlainTextEdit#toolEditorText {
+            background-color: #FFFFFF;
+            border: 1px solid @C4@;
+            border-radius: @C5@px;
+            padding: 8px;
+            font-family: "JetBrains Mono", "Consolas", "Microsoft YaHei Mono", monospace;
+            font-size: 13px;
+            color: @C2@;
+            selection-background-color: @C7@;
+        }
+        QPlainTextEdit#toolEditorText:focus {
+            border-color: @C6@;
+        }
+        QPushButton#toolPrimaryButton {
+            background-color: @C6@;
+            color: #FFFFFF;
+            border: none;
+            border-radius: @C5@px;
+            padding: 6px 16px;
+            font-weight: 500;
+        }
+        QPushButton#toolPrimaryButton:hover {
+            background-color: @C10@;
+        }
+        QPushButton#toolPrimaryButton:pressed {
+            background-color: #0958D9;
+        }
+        QPushButton#toolSecondaryButton {
+            background-color: transparent;
+            color: @C2@;
+            border: 1px solid @C4@;
+            border-radius: @C5@px;
+            padding: 6px 16px;
+        }
+        QPushButton#toolSecondaryButton:hover {
+            background-color: @C8@;
+            border-color: @C6@;
+        }
+        QPushButton#toolAiAssistButton {
+            background-color: @C7@;
+            color: @C6@;
+            border: none;
+            border-radius: @C11@px;
+            padding: 4px 12px;
+            font-weight: 500;
+        }
+        QPushButton#toolAiAssistButton:hover {
+            background-color: @C10@;
+        }
+        QPushButton#toolAiStopButton {
+            background-color: @C15@;
+            color: #FFFFFF;
+            border: none;
+            border-radius: @C11@px;
+            padding: 4px 12px;
+            font-weight: 500;
+        }
+        QLineEdit#toolResultRowEdit {
+            background-color: #FFFFFF;
+            border: 1px solid @C4@;
+            border-radius: @C5@px;
+            padding: 4px 8px;
+            color: @C2@;
+        }

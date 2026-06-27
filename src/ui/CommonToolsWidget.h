@@ -43,10 +43,6 @@ private:
                                const QString &placeholder,
                                bool enableAiAssist = false,
                                const QString &aiSystemPrompt = QString());
-    QWidget *buildHttpRequestPage();
-    QWidget *buildImageBase64Page();
-    QWidget *buildWebSocketPage();
-    QWidget *buildJwtPage();
     void setOutput(QPlainTextEdit *output, QLabel *message, const QString &text, const QString &error);
     bool resolveAiCredentials(AiSettings *settings, QString *apiKey, QString *error) const;
 

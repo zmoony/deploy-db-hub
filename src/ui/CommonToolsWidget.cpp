@@ -10,20 +10,22 @@
 #include "ui/tools/pages/DiffToolPage.h"
 #include "ui/tools/pages/HashToolPage.h"
 #include "ui/tools/pages/HtmlEntityToolPage.h"
+#include "ui/tools/pages/HttpRequestToolPage.h"
 #include "ui/tools/pages/HttpStatusToolPage.h"
+#include "ui/tools/pages/ImageBase64ToolPage.h"
 #include "ui/tools/pages/JsonToolPage.h"
+#include "ui/tools/pages/JwtToolPage.h"
 #include "ui/tools/pages/NumberBaseToolPage.h"
 #include "ui/tools/pages/RegexToolPage.h"
 #include "ui/tools/pages/TimestampToolPage.h"
 #include "ui/tools/pages/UrlCodecToolPage.h"
 #include "ui/tools/pages/UuidToolPage.h"
+#include "ui/tools/pages/WebSocketToolPage.h"
 #include "ui/AiStreamBuffer.h"
 #include "infra/AiSettingsStore.h"
 #include "infra/CredentialStore.h"
 #include "tools/CommonTools.h"
-#include "ui/HttpRequestWidget.h"
 #include "ui/PageLayout.h"
-#include "ui/WebSocketToolWidget.h"
 
 #include <QAction>
 #include <QApplication>
@@ -34,31 +36,21 @@
 #include <QColor>
 #include <QComboBox>
 #include <QDateTime>
-#include <QFile>
-#include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QIcon>
-#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
 #include <QPair>
 #include <QPainterPath>
-#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QScrollArea>
-#include <QScrollBar>
 #include <QShortcut>
-#include <QSharedPointer>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QSignalBlocker>
@@ -119,7 +111,7 @@ CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
     m_stack->addWidget(new AiChatWidget(m_aiSettings, m_credentials, this));
     m_stack->addWidget(new Ui::Tools::JsonToolPage(this));
     m_stack->addWidget(new Ui::Tools::DiffToolPage(this));
-    m_stack->addWidget(buildImageBase64Page());
+    m_stack->addWidget(new Ui::Tools::ImageBase64ToolPage(this));
     m_stack->addWidget(new Ui::Tools::RegexToolPage(this));
     m_stack->addWidget(new Ui::Tools::CronToolPage(this));
     m_stack->addWidget(new Ui::Tools::TimestampToolPage(this));
@@ -131,8 +123,8 @@ CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
         QStringLiteral("转换"),
         QString(),
         QStringLiteral("48656c6c6f205174")));
-    m_stack->addWidget(buildWebSocketPage());
-    m_stack->addWidget(buildHttpRequestPage());
+    m_stack->addWidget(new Ui::Tools::WebSocketToolPage(this));
+    m_stack->addWidget(new Ui::Tools::HttpRequestToolPage(this));
     m_stack->addWidget(buildTextToolPage(
         QStringLiteral("契约 Mock 数据"),
         QStringLiteral("粘贴 Swagger/Thrift 定义或 JSON 示例，生成多组 mock 数据。"),
@@ -151,7 +143,7 @@ CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
     m_stack->addWidget(new Ui::Tools::HashToolPage(this));
     m_stack->addWidget(new Ui::Tools::UrlCodecToolPage(this));
     m_stack->addWidget(new Ui::Tools::Base64TextToolPage(this));
-    m_stack->addWidget(buildJwtPage());
+    m_stack->addWidget(new Ui::Tools::JwtToolPage(this));
     m_stack->addWidget(new Ui::Tools::NumberBaseToolPage(this));
     m_stack->addWidget(new Ui::Tools::CaseToolPage(this));
 
@@ -307,258 +299,6 @@ QWidget *CommonToolsWidget::buildTextToolPage(const QString &title,
     }
 
     return page;
-}
-
-QWidget *CommonToolsWidget::buildImageBase64Page()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-struct ImageState {
-        QByteArray bytes;
-        QString mime;
-    };
-    auto state = QSharedPointer<ImageState>::create();
-
-    auto *urlRow = new QWidget(page);
-    auto *urlLayout = new QHBoxLayout(urlRow);
-    urlLayout->setContentsMargins(0, 0, 0, 0);
-    urlLayout->setSpacing(PageLayout::Space8);
-    auto *pickButton = makeActionButton(QStringLiteral("选择本地图片"), urlRow);
-    auto *urlEdit = new QLineEdit(urlRow);
-    urlEdit->setPlaceholderText(QStringLiteral("https://example.com/image.png"));
-    PageLayout::configureFormInput(urlEdit);
-    auto *urlButton = makeActionButton(QStringLiteral("从 URL 加载"), urlRow);
-    urlLayout->addWidget(pickButton);
-    urlLayout->addWidget(urlEdit, 1);
-    urlLayout->addWidget(urlButton);
-    layout->addWidget(urlRow);
-
-    auto *actions = new QWidget(page);
-    auto *actionsLayout = new QHBoxLayout(actions);
-    actionsLayout->setContentsMargins(0, 0, 0, 0);
-    actionsLayout->setSpacing(PageLayout::Space8);
-    auto *toBase64 = makeActionButton(QStringLiteral("图片 → Base64"), actions);
-    auto *toImage = makeActionButton(QStringLiteral("Base64 → 图片"), actions);
-    auto *copyButton = makeActionButton(QStringLiteral("复制 Base64"), actions);
-    auto *clearButton = makeActionButton(QStringLiteral("清空"), actions);
-    actionsLayout->addWidget(toBase64);
-    actionsLayout->addWidget(toImage);
-    actionsLayout->addWidget(copyButton);
-    actionsLayout->addWidget(clearButton);
-    actionsLayout->addStretch();
-    layout->addWidget(actions);
-
-    auto *body = new QWidget(page);
-    auto *bodyLayout = new QHBoxLayout(body);
-    bodyLayout->setContentsMargins(0, 0, 0, 0);
-    bodyLayout->setSpacing(PageLayout::Space12);
-
-    auto *base64Edit = new QPlainTextEdit(body);
-    base64Edit->setPlaceholderText(QStringLiteral("Base64 文本（可含 data:image/...;base64, 前缀）"));
-    base64Edit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    base64Edit->setMinimumHeight(260);
-
-    auto *previewArea = new QScrollArea(body);
-    previewArea->setWidgetResizable(true);
-    auto *preview = new QLabel(previewArea);
-    preview->setAlignment(Qt::AlignCenter);
-    preview->setText(QStringLiteral("图片预览"));
-    previewArea->setWidget(preview);
-
-    bodyLayout->addWidget(base64Edit, 1);
-    bodyLayout->addWidget(previewArea, 1);
-    layout->addWidget(body, 1);
-
-    auto *message = new QLabel(page);
-    message->setObjectName(QStringLiteral("toolMessage"));
-    layout->addWidget(message);
-
-    auto mimeForPath = [](const QString &path) -> QString {
-        const QString lower = path.toLower();
-        if (lower.endsWith(QStringLiteral(".jpg")) || lower.endsWith(QStringLiteral(".jpeg"))) {
-            return QStringLiteral("image/jpeg");
-        }
-        if (lower.endsWith(QStringLiteral(".gif"))) {
-            return QStringLiteral("image/gif");
-        }
-        if (lower.endsWith(QStringLiteral(".bmp"))) {
-            return QStringLiteral("image/bmp");
-        }
-        if (lower.endsWith(QStringLiteral(".webp"))) {
-            return QStringLiteral("image/webp");
-        }
-        return QStringLiteral("image/png");
-    };
-
-    auto showImage = [preview, message](const QByteArray &bytes) -> bool {
-        QImage image;
-        if (!image.loadFromData(bytes)) {
-            message->setText(QStringLiteral("无法识别图片数据"));
-            return false;
-        }
-        QPixmap pixmap = QPixmap::fromImage(image);
-        if (pixmap.width() > 520 || pixmap.height() > 360) {
-            pixmap = pixmap.scaled(520, 360, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        }
-        preview->setPixmap(pixmap);
-        return true;
-    };
-
-    connect(pickButton, &QPushButton::clicked, this,
-            [this, state, showImage, mimeForPath, message](){
-        const QString path = QFileDialog::getOpenFileName(
-            this, QStringLiteral("选择图片"), QString(),
-            QStringLiteral("图片 (*.png *.jpg *.jpeg *.gif *.bmp *.webp)"));
-        if (path.isEmpty()) {
-            return;
-        }
-        QFile file(path);
-        if (!file.open(QIODevice::ReadOnly)) {
-            message->setText(QStringLiteral("无法读取文件"));
-            return;
-        }
-        const QByteArray bytes = file.readAll();
-        if (showImage(bytes)) {
-            state->bytes = bytes;
-            state->mime = mimeForPath(path);
-            message->setText(QStringLiteral("已加载本地图片（%1 字节）").arg(bytes.size()));
-        }
-    });
-
-    connect(urlButton, &QPushButton::clicked, this,
-            [this, state, showImage, urlEdit, message](){
-        const QUrl url(urlEdit->text().trimmed());
-        if (!url.isValid() || url.scheme().isEmpty()) {
-            message->setText(QStringLiteral("URL 无效"));
-            return;
-        }
-        auto *manager = new QNetworkAccessManager(this);
-        QNetworkRequest request(url);
-        QNetworkReply *reply = manager->get(request);
-        message->setText(QStringLiteral("正在下载图片..."));
-        QObject::connect(reply, &QNetworkReply::finished, this,
-                         [reply, manager, state, showImage, message]() {
-            if (reply->error() != QNetworkReply::NoError) {
-                message->setText(QStringLiteral("下载失败：%1").arg(reply->errorString()));
-            } else {
-                const QByteArray bytes = reply->readAll();
-                const QString contentType =
-                    reply->header(QNetworkRequest::ContentTypeHeader).toString();
-                if (showImage(bytes)) {
-                    state->bytes = bytes;
-                    state->mime = contentType.isEmpty() ? QStringLiteral("image/png")
-                                                        : contentType.section(QLatin1Char(';'), 0, 0);
-                    message->setText(QStringLiteral("已加载网络图片（%1 字节）").arg(bytes.size()));
-                }
-            }
-            reply->deleteLater();
-            manager->deleteLater();
-        });
-    });
-
-    connect(toBase64, &QPushButton::clicked, page, [state, base64Edit, message]() {
-        if (state->bytes.isEmpty()) {
-            message->setText(QStringLiteral("请先加载图片"));
-            return;
-        }
-        const QString mime = state->mime.isEmpty() ? QStringLiteral("image/png") : state->mime;
-        const QString encoded = QStringLiteral("data:%1;base64,%2")
-            .arg(mime, QString::fromLatin1(state->bytes.toBase64()));
-        base64Edit->setPlainText(encoded);
-        message->setText(QStringLiteral("已转换为 Base64"));
-    });
-
-    connect(toImage, &QPushButton::clicked, page, [state, base64Edit, showImage, message]() {
-        QString text = base64Edit->toPlainText().trimmed();
-        const int comma = text.indexOf(QLatin1Char(','));
-        if (text.startsWith(QStringLiteral("data:")) && comma >= 0) {
-            text = text.mid(comma + 1);
-        }
-        text.remove(QLatin1Char('\n'));
-        text.remove(QLatin1Char('\r'));
-        text.remove(QLatin1Char(' '));
-        const QByteArray bytes = QByteArray::fromBase64(text.toLatin1());
-        if (bytes.isEmpty()) {
-            message->setText(QStringLiteral("Base64 内容为空或无效"));
-            return;
-        }
-        if (showImage(bytes)) {
-            state->bytes = bytes;
-            message->setText(QStringLiteral("已还原为图片"));
-        }
-    });
-
-    connect(copyButton, &QPushButton::clicked, page, [base64Edit]() {
-        copyTextToClipboard(base64Edit->toPlainText());
-    });
-    connect(clearButton, &QPushButton::clicked, page, [state, base64Edit, preview, message]() {
-        state->bytes.clear();
-        state->mime.clear();
-        base64Edit->clear();
-        preview->setText(QStringLiteral("图片预览"));
-        preview->setPixmap(QPixmap());
-        message->clear();
-    });
-
-    return page;
-}
-
-QWidget *CommonToolsWidget::buildJwtPage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-auto *toolbar = new QWidget(page);
-    auto *toolbarLayout = new QHBoxLayout(toolbar);
-    toolbarLayout->setContentsMargins(0, 0, 0, 0);
-    toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *parse = makeActionButton(QStringLiteral("解析"), toolbar);
-    auto *copy = makeActionButton(QStringLiteral("复制结果"), toolbar);
-    toolbarLayout->addWidget(parse);
-    toolbarLayout->addWidget(copy);
-    toolbarLayout->addStretch();
-    layout->addWidget(toolbar);
-
-    auto *input = makeEditor(QStringLiteral("粘贴 JWT (xxxxx.yyyyy.zzzzz)"), page);
-    input->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    auto *output = makeEditor(QStringLiteral("解析结果"), page);
-    output->setReadOnly(true);
-    layout->addWidget(input, 1);
-    layout->addWidget(output, 1);
-
-    auto *message = new QLabel(page);
-    message->setObjectName(QStringLiteral("toolMessage"));
-    layout->addWidget(message);
-
-    connect(parse, &QPushButton::clicked, page, [input, output, message]() {
-        QString error;
-        const QString result = CommonTools::decodeJwt(input->toPlainText(), &error);
-        if (!error.isEmpty()) {
-            output->clear();
-            message->setText(error);
-            return;
-        }
-        output->setPlainText(result);
-        message->setText(QStringLiteral("已解析"));
-    });
-    connect(copy, &QPushButton::clicked, page, [output]() {
-        copyTextToClipboard(output->toPlainText());
-    });
-
-    return page;
-}
-
-QWidget *CommonToolsWidget::buildHttpRequestPage()
-{
-    return new HttpRequestWidget(this);
-}
-
-QWidget *CommonToolsWidget::buildWebSocketPage()
-{
-    return new WebSocketToolWidget(this);
 }
 
 void CommonToolsWidget::setOutput(QPlainTextEdit *output, QLabel *message, const QString &text, const QString &error)

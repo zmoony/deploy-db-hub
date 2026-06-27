@@ -123,10 +123,16 @@ qt_add_executable(deploy-hub WIN32
     src/ui/tools/pages/HashToolPage.h
     src/ui/tools/pages/HtmlEntityToolPage.cpp
     src/ui/tools/pages/HtmlEntityToolPage.h
+    src/ui/tools/pages/HttpRequestToolPage.cpp
+    src/ui/tools/pages/HttpRequestToolPage.h
     src/ui/tools/pages/HttpStatusToolPage.cpp
     src/ui/tools/pages/HttpStatusToolPage.h
+    src/ui/tools/pages/ImageBase64ToolPage.cpp
+    src/ui/tools/pages/ImageBase64ToolPage.h
     src/ui/tools/pages/JsonToolPage.cpp
     src/ui/tools/pages/JsonToolPage.h
+    src/ui/tools/pages/JwtToolPage.cpp
+    src/ui/tools/pages/JwtToolPage.h
     src/ui/tools/pages/NumberBaseToolPage.cpp
     src/ui/tools/pages/NumberBaseToolPage.h
     src/ui/tools/pages/RegexToolPage.cpp
@@ -137,6 +143,8 @@ qt_add_executable(deploy-hub WIN32
     src/ui/tools/pages/UrlCodecToolPage.h
     src/ui/tools/pages/UuidToolPage.cpp
     src/ui/tools/pages/UuidToolPage.h
+    src/ui/tools/pages/WebSocketToolPage.cpp
+    src/ui/tools/pages/WebSocketToolPage.h
     src/ui/AiAssistHelper.cpp
     src/ui/AiAssistHelper.h
     src/ui/AiChatWidget.cpp

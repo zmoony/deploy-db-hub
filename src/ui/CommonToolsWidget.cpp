@@ -21,18 +21,17 @@
 #include "ui/tools/pages/UrlCodecToolPage.h"
 #include "ui/tools/pages/UuidToolPage.h"
 #include "ui/tools/pages/WebSocketToolPage.h"
+#include "ui/tools/pages/HexToStringToolPage.h"
+#include "ui/tools/pages/MockDataToolPage.h"
+#include "ui/tools/pages/DataMaskToolPage.h"
 #include "ui/AiStreamBuffer.h"
 #include "infra/AiSettingsStore.h"
 #include "infra/CredentialStore.h"
-#include "tools/CommonTools.h"
-#include "ui/PageLayout.h"
 
 #include <QAction>
-#include <QApplication>
 #include <QBrush>
 #include <QBuffer>
 #include <QCheckBox>
-#include <QClipboard>
 #include <QColor>
 #include <QComboBox>
 #include <QDateTime>
@@ -66,35 +65,6 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
-namespace {
-
-QPushButton *makeActionButton(const QString &text, QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setObjectName(QStringLiteral("toolBarButton"));
-    button->setMinimumHeight(28);
-    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return button;
-}
-
-QPlainTextEdit *makeEditor(const QString &placeholder, QWidget *parent)
-{
-    auto *editor = new QPlainTextEdit(parent);
-    editor->setPlaceholderText(placeholder);
-    editor->setMinimumHeight(220);
-    editor->setLineWrapMode(QPlainTextEdit::NoWrap);
-    return editor;
-}
-
-void copyTextToClipboard(const QString &text)
-{
-    if (QClipboard *clipboard = QApplication::clipboard()) {
-        clipboard->setText(text);
-    }
-}
-
-}
-
 CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
                                      CredentialStore *credentials,
                                      QWidget *parent)
@@ -117,28 +87,11 @@ CommonToolsWidget::CommonToolsWidget(AiSettingsStore *aiSettings,
     m_stack->addWidget(new Ui::Tools::TimestampToolPage(this));
     m_stack->addWidget(new Ui::Tools::HtmlEntityToolPage(this));
     m_stack->addWidget(new Ui::Tools::HttpStatusToolPage(this));
-    m_stack->addWidget(buildTextToolPage(
-        QStringLiteral("Hex 转字符串"),
-        QStringLiteral("将十六进制字节转为 UTF-8 字符串。"),
-        QStringLiteral("转换"),
-        QString(),
-        QStringLiteral("48656c6c6f205174")));
+    m_stack->addWidget(new Ui::Tools::HexToStringToolPage(this));
     m_stack->addWidget(new Ui::Tools::WebSocketToolPage(this));
     m_stack->addWidget(new Ui::Tools::HttpRequestToolPage(this));
-    m_stack->addWidget(buildTextToolPage(
-        QStringLiteral("契约 Mock 数据"),
-        QStringLiteral("粘贴 Swagger/Thrift 定义或 JSON 示例，生成多组 mock 数据。"),
-        QStringLiteral("生成 Mock"),
-        QString(),
-        QStringLiteral("{\"name\":\"demo\",\"count\":1,\"enabled\":true}"),
-        true,
-        QStringLiteral("You generate mock JSON data. Reply with a JSON array only, no markdown or explanation.")));
-    m_stack->addWidget(buildTextToolPage(
-        QStringLiteral("数据采样脱敏"),
-        QStringLiteral("从样本数据中抽样并按规则脱敏导出。"),
-        QStringLiteral("脱敏"),
-        QString(),
-        QStringLiteral("phone=13812345678 email=a@example.com")));
+    m_stack->addWidget(new Ui::Tools::MockDataToolPage(this));
+    m_stack->addWidget(new Ui::Tools::DataMaskToolPage(this));
     m_stack->addWidget(new Ui::Tools::UuidToolPage(this));
     m_stack->addWidget(new Ui::Tools::HashToolPage(this));
     m_stack->addWidget(new Ui::Tools::UrlCodecToolPage(this));
@@ -192,124 +145,6 @@ QWidget *CommonToolsWidget::takeToolPage(int index)
 int CommonToolsWidget::toolPageCount() const
 {
     return m_stack != nullptr ? m_stack->count() : 0;
-}
-
-QWidget *CommonToolsWidget::buildTextToolPage(const QString &title,
-                                              const QString &subtitle,
-                                              const QString &primaryAction,
-                                              const QString &secondaryAction,
-                                              const QString &placeholder,
-                                              bool enableAiAssist,
-                                              const QString &aiSystemPrompt)
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space12);
-
-    auto *toolbar = new QWidget(page);
-    auto *toolbarLayout = new QHBoxLayout(toolbar);
-    toolbarLayout->setContentsMargins(0, 0, 0, 0);
-    toolbarLayout->setSpacing(PageLayout::Space8);
-    auto *primaryButton = makeActionButton(primaryAction, toolbar);
-    toolbarLayout->addWidget(primaryButton);
-    QPushButton *secondaryButton = nullptr;
-    if (!secondaryAction.isEmpty()) {
-        secondaryButton = makeActionButton(secondaryAction, toolbar);
-        toolbarLayout->addWidget(secondaryButton);
-    }
-    QPushButton *aiAssistButton = nullptr;
-    QPushButton *aiStopButton = nullptr;
-    if (enableAiAssist) {
-        aiAssistButton = makeActionButton(QStringLiteral("AI 辅助"), toolbar);
-        aiStopButton = makeActionButton(QStringLiteral("停止"), toolbar);
-        aiStopButton->setEnabled(false);
-        toolbarLayout->addWidget(aiAssistButton);
-        toolbarLayout->addWidget(aiStopButton);
-    }
-    toolbarLayout->addStretch();
-    layout->addWidget(toolbar);
-
-    auto *editors = new QWidget(page);
-    auto *editorsLayout = new QHBoxLayout(editors);
-    editorsLayout->setContentsMargins(0, 0, 0, 0);
-    editorsLayout->setSpacing(PageLayout::Space12);
-    auto *input = makeEditor(placeholder, editors);
-    auto *output = makeEditor(QStringLiteral("输出"), editors);
-    output->setReadOnly(true);
-    editorsLayout->addWidget(input, 1);
-    editorsLayout->addWidget(output, 1);
-    layout->addWidget(editors, 1);
-
-    auto *message = new QLabel(page);
-    message->setObjectName(QStringLiteral("toolMessage"));
-    layout->addWidget(message);
-
-    connect(primaryButton, &QPushButton::clicked, this, [this, title, input, output, message]() {
-        QString error;
-        QString result;
-        if (title == QStringLiteral("JSON 格式化")) {
-            result = CommonTools::formatJson(input->toPlainText(), &error);
-        } else if (title == QStringLiteral("文件差异")) {
-            const QStringList parts = input->toPlainText().split(QStringLiteral("\n---\n"));
-            if (parts.size() != 2) {
-                error = QStringLiteral("请用单独一行 --- 分隔两段文本");
-            } else {
-                result = CommonTools::compareLines(parts.at(0), parts.at(1));
-            }
-        } else if (title == QStringLiteral("图片/Base64")) {
-            result = CommonTools::textToBase64(input->toPlainText());
-        } else if (title == QStringLiteral("正则表达式")) {
-            const QStringList parts = input->toPlainText().split(QStringLiteral("\n---\n"));
-            if (parts.size() != 2) {
-                error = QStringLiteral("请用单独一行 --- 分隔正则和样本文本");
-            } else {
-                result = CommonTools::matchRegularExpression(parts.at(0), parts.at(1), &error);
-            }
-        } else if (title == QStringLiteral("Cron 表达式")) {
-            result = CommonTools::describeCron(input->toPlainText(), &error);
-        } else if (title == QStringLiteral("时间戳")) {
-            result = CommonTools::timestampToLocalText(input->toPlainText(), &error);
-        } else if (title == QStringLiteral("Hex 转字符串")) {
-            result = CommonTools::hexToString(input->toPlainText(), &error);
-        } else if (title == QStringLiteral("契约 Mock 数据")) {
-            result = CommonTools::mockFromJsonExample(input->toPlainText(), &error);
-        } else if (title == QStringLiteral("数据采样脱敏")) {
-            result = CommonTools::maskSensitiveText(input->toPlainText());
-        }
-        setOutput(output, message, result, error);
-    });
-
-    if (secondaryButton != nullptr) {
-        connect(secondaryButton, &QPushButton::clicked, this, [this, input, output, message]() {
-            QString error;
-            const QString result = CommonTools::base64ToText(input->toPlainText(), &error);
-            setOutput(output, message, result, error);
-        });
-    }
-
-    if (enableAiAssist && aiAssistButton != nullptr && aiStopButton != nullptr) {
-        wireAiAssist(page,
-                     aiAssistButton,
-                     aiStopButton,
-                     output,
-                     message,
-                     [input]() { return input->toPlainText(); },
-                     aiSystemPrompt);
-    }
-
-    return page;
-}
-
-void CommonToolsWidget::setOutput(QPlainTextEdit *output, QLabel *message, const QString &text, const QString &error)
-{
-    if (!error.isEmpty()) {
-        output->clear();
-        message->setText(error);
-        return;
-    }
-    output->setPlainText(text);
-    message->setText(QStringLiteral("已完成"));
 }
 
 bool CommonToolsWidget::resolveAiCredentials(AiSettings *settings, QString *apiKey, QString *error) const

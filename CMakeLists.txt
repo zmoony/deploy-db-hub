@@ -145,6 +145,12 @@ qt_add_executable(deploy-hub WIN32
     src/ui/tools/pages/UuidToolPage.h
     src/ui/tools/pages/WebSocketToolPage.cpp
     src/ui/tools/pages/WebSocketToolPage.h
+    src/ui/tools/pages/HexToStringToolPage.cpp
+    src/ui/tools/pages/HexToStringToolPage.h
+    src/ui/tools/pages/MockDataToolPage.cpp
+    src/ui/tools/pages/MockDataToolPage.h
+    src/ui/tools/pages/DataMaskToolPage.cpp
+    src/ui/tools/pages/DataMaskToolPage.h
     src/ui/AiAssistHelper.cpp
     src/ui/AiAssistHelper.h
     src/ui/AiChatWidget.cpp

@@ -36,14 +36,6 @@ public:
                       const std::function<void()> &onStart = {});
 
 private:
-    QWidget *buildTextToolPage(const QString &title,
-                               const QString &subtitle,
-                               const QString &primaryAction,
-                               const QString &secondaryAction,
-                               const QString &placeholder,
-                               bool enableAiAssist = false,
-                               const QString &aiSystemPrompt = QString());
-    void setOutput(QPlainTextEdit *output, QLabel *message, const QString &text, const QString &error);
     bool resolveAiCredentials(AiSettings *settings, QString *apiKey, QString *error) const;
 
     AiSettingsStore *m_aiSettings = nullptr;

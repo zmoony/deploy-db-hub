@@ -511,7 +511,7 @@ QWidget *MainWindow::createDeployPage()
     auto *layout = new QVBoxLayout(page);
     PageLayout::applyPage(layout);
     layout->setSpacing(PageLayout::Space16);
-auto *body = new QHBoxLayout;
+    auto *body = new QHBoxLayout;
     body->setContentsMargins(0, 0, 0, 0);
     body->setSpacing(PageLayout::Space16);
     layout->addLayout(body, 1);
@@ -624,17 +624,17 @@ auto *body = new QHBoxLayout;
     refreshJdkProfiles();
 
     auto *execBox = new QFrame(page);
-    execBox->setObjectName(QStringLiteral("deployExecBox"));
+    execBox->setObjectName(QStringLiteral("contentPanel"));
     execBox->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *execLayout = new QVBoxLayout(execBox);
-    execLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
-    execLayout->setSpacing(PageLayout::Space16);
+    execLayout->setContentsMargins(PageLayout::Space20, PageLayout::Space20, PageLayout::Space20, PageLayout::Space20);
+    execLayout->setSpacing(PageLayout::Space12);
 
     auto *execHeader = new QHBoxLayout;
     execHeader->setContentsMargins(0, 0, 0, 0);
     execHeader->setSpacing(PageLayout::Space12);
-    auto *execTitle = new QLabel(QStringLiteral("部署执行"));
-    execTitle->setObjectName(QStringLiteral("deployOutputLabel"));
+    auto *execTitle = PageLayout::makeSectionLabel(QStringLiteral("部署执行"), execBox);
+    execTitle->setWordWrap(false);
     execHeader->addWidget(execTitle);
     execHeader->addStretch(1);
     m_deployButton = new QPushButton(QStringLiteral("开始部署"));
@@ -650,7 +650,7 @@ auto *body = new QHBoxLayout;
     execLayout->addWidget(m_progress);
 
     auto *outputLabel = new QLabel(QStringLiteral("部署输出"));
-    outputLabel->setObjectName(QStringLiteral("deployOutputLabel"));
+    outputLabel->setObjectName(QStringLiteral("formFieldLabel"));
     execLayout->addWidget(outputLabel);
 
     m_log = new QPlainTextEdit;

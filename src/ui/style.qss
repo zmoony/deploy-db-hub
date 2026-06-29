@@ -276,10 +276,15 @@
         QGroupBox#dialogFormBox {
             background-color: #FFFFFF;
             border: 1px solid @C4@;
-            border-radius: @C9@px;
+            border-radius: @C21@px;
             margin-top: 0;
             margin-bottom: 0;
-            padding: 24px;
+            padding: 20px;
+        }
+        QFrame#deployFormCard {
+            background-color: #FFFFFF;
+            border: 1px solid @C4@;
+            border-radius: @C21@px;
         }
         QGroupBox#deployConfigBox::title,
         QGroupBox#dialogFormBox::title {
@@ -333,13 +338,9 @@
             min-width: 60px;
             font-size: 13px;
         }
-        QFrame#deployExecBox {
-            background-color: #FFFFFF;
-            border: 1px solid @C4@;
-            border-radius: @C9@px;
-        }
         QPlainTextEdit#deployLog {
             min-height: 200px;
+            background-color: @C1@;
         }
         QFrame#sqlWorkbenchSidebar {
             background-color: #FFFFFF;

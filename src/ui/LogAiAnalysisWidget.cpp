@@ -192,11 +192,11 @@ void LogAiAnalysisWidget::appendBubble(BubbleRole role, const QString &text)
 
     if (role == BubbleRole::User) {
         rowLayout->addStretch();
-        auto *bubble = createBubbleLabel(row, QStringLiteral("userMessage"));
+        auto *bubble = createBubbleLabel(row, QStringLiteral("userBubble"));
         bubble->setText(text);
         rowLayout->addWidget(bubble, 0, Qt::AlignRight);
     } else {
-        auto *bubble = createBubbleLabel(row, QStringLiteral("botMessage"));
+        auto *bubble = createBubbleLabel(row, QStringLiteral("botBubble"));
         bubble->setText(text);
         m_currentBotBubble = bubble;
         rowLayout->addWidget(bubble, 0, Qt::AlignLeft);

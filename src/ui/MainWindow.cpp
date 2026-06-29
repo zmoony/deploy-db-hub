@@ -668,7 +668,8 @@ QWidget *MainWindow::createHistoryPage()
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
     PageLayout::applyPage(layout);
-auto *historyTable = createTable(
+
+    auto *historyTable = createTable(
         {QStringLiteral("部署 ID"), QStringLiteral("项目"), QStringLiteral("状态"), QStringLiteral("版本"), QStringLiteral("日志")},
         {});
     m_historyTable = historyTable;
@@ -683,22 +684,37 @@ auto *historyTable = createTable(
         openDeploymentLog(logItem->text());
     });
 
+    auto *contentPanel = new QFrame;
+    contentPanel->setObjectName(QStringLiteral("contentPanel"));
+    auto *panelLayout = new QVBoxLayout(contentPanel);
+    panelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
+    panelLayout->setSpacing(PageLayout::Space12);
+
+    auto *headerLayout = new QHBoxLayout;
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    auto *sectionLabel = PageLayout::makeSectionLabel(QStringLiteral("部署历史记录"), contentPanel);
+    sectionLabel->setWordWrap(false);
+    sectionLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    headerLayout->addWidget(sectionLabel);
+    headerLayout->addStretch();
+
+    m_clearHistoryButton = new QPushButton(QStringLiteral("清空记录"));
+    m_clearHistoryButton->setObjectName(QStringLiteral("secondaryButton"));
+    connect(m_clearHistoryButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
+    headerLayout->addWidget(m_clearHistoryButton);
+
     m_historyViewLogButton = new QPushButton(QStringLiteral("查看日志"));
     m_historyViewLogButton->setObjectName(QStringLiteral("primaryButton"));
     connect(m_historyViewLogButton, &QPushButton::clicked, this, &MainWindow::viewHistoryLog);
-    m_clearHistoryButton = new QPushButton(QStringLiteral("清空记录"));
-    connect(m_clearHistoryButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
-    auto *historyToolbar = new QHBoxLayout;
-    historyToolbar->setContentsMargins(0, 0, 0, PageLayout::Space8);
-    historyToolbar->addStretch();
-    historyToolbar->addWidget(m_clearHistoryButton);
-    historyToolbar->addWidget(m_historyViewLogButton);
+    headerLayout->addWidget(m_historyViewLogButton);
 
-    layout->addLayout(historyToolbar);
-    layout->addWidget(PageLayout::wrapTableSection(
+    panelLayout->addLayout(headerLayout);
+    panelLayout->addWidget(PageLayout::wrapTableSection(
         historyTable,
         &m_historyEmpty,
         QStringLiteral("暂无历史记录。执行部署后，记录会出现在此列表。")), 1);
+
+    layout->addWidget(contentPanel, 1);
     return page;
 }
 

@@ -1151,24 +1151,6 @@
             color: @C3@;
             font-size: 12px;
         }
-        QLabel#botMessage {
-            background-color: @C24@;
-            border: none;
-            border-radius: 0px 16px 16px 16px;
-            padding: 12px 16px;
-            color: @C2@;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-        QLabel#userMessage {
-            background-color: @C6@;
-            border: none;
-            border-radius: 16px 0px 16px 16px;
-            padding: 12px 16px;
-            color: #FFFFFF;
-            font-size: 13px;
-            line-height: 1.5;
-        }
         QFrame#aiChatContainer {
             background-color: #FFFFFF;
             border: 1px solid @C4@;

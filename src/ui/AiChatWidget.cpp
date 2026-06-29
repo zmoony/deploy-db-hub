@@ -4,7 +4,6 @@
 #include "infra/AiSettingsStore.h"
 #include "infra/CredentialStore.h"
 #include "ui/AiAssistHelper.h"
-#include "ui/AiStreamBuffer.h"
 #include "ui/PageLayout.h"
 
 #include <QFrame>
@@ -14,21 +13,25 @@
 #include <QJsonObject>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLayoutItem>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QShortcut>
 #include <QStyle>
 #include <QTextCursor>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
 
-constexpr int kHistoryMinHeight = 220;
 constexpr int kInputMaxHeight = 160;
 constexpr int kIconButtonSize = 36;
 constexpr int kChipIconSize = 16;
 constexpr int kAvatarSize = 28;
+constexpr int kStreamFlushIntervalMs = 30;
 
 QPushButton *makeIconButton(QWidget *parent,
                             const QString &objectName,
@@ -58,6 +61,16 @@ QPushButton *makeQuickChip(QWidget *parent, const QString &label, const QIcon &i
     return chip;
 }
 
+QLabel *createBubbleLabel(QWidget *parent, const QString &objectName)
+{
+    auto *label = new QLabel(parent);
+    label->setObjectName(objectName);
+    label->setWordWrap(true);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    label->setScaledContents(false);
+    return label;
+}
+
 }
 
 AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
@@ -67,7 +80,12 @@ AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
     , m_aiSettings(aiSettings)
     , m_credentials(credentials)
     , m_client(new OpenAiChatClient(this))
+    , m_streamFlushTimer(new QTimer(this))
 {
+    m_streamFlushTimer->setSingleShot(true);
+    m_streamFlushTimer->setInterval(kStreamFlushIntervalMs);
+    connect(m_streamFlushTimer, &QTimer::timeout, this, &AiChatWidget::flushBotBubble);
+
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(PageLayout::Space12);
@@ -79,37 +97,51 @@ AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
     headerLayout->addStretch();
 
     m_newChatButton = new QPushButton(header);
-    m_newChatButton->setObjectName(QStringLiteral("aiNewChatButton"));
+    m_newChatButton->setObjectName(QStringLiteral("secondaryButton"));
     m_newChatButton->setIcon(QIcon(QStringLiteral(":/images/ai/quick.svg")));
-    m_newChatButton->setIconSize(QSize(18, 18));
+    m_newChatButton->setIconSize(QSize(16, 16));
     m_newChatButton->setText(QStringLiteral("新对话"));
     m_newChatButton->setCursor(Qt::PointingHandCursor);
     m_newChatButton->setToolTip(QStringLiteral("清空当前对话，开始新一轮"));
+    m_newChatButton->setMinimumHeight(32);
     headerLayout->addWidget(m_newChatButton, 0, Qt::AlignTop);
 
     root->addWidget(header);
 
-    // Chat history (read-only)
-    m_history = new QPlainTextEdit(this);
-    m_history->setObjectName(QStringLiteral("aiChatHistory"));
-    m_history->setReadOnly(true);
-    m_history->setPlaceholderText(QStringLiteral("对话记录"));
-    m_history->setFrameShape(QFrame::NoFrame);
-    m_history->setMinimumHeight(kHistoryMinHeight);
-    m_history->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    root->addWidget(m_history, 1);
+    auto *historyCard = new QFrame(this);
+    historyCard->setObjectName(QStringLiteral("aiChatContainer"));
+    auto *cardLayout = new QVBoxLayout(historyCard);
+    cardLayout->setContentsMargins(0, 0, 0, 0);
+    cardLayout->setSpacing(0);
 
-    // Input card (rounded)
+    m_scrollArea = new QScrollArea(historyCard);
+    m_scrollArea->setObjectName(QStringLiteral("aiChatScrollArea"));
+    m_scrollArea->setWidgetResizable(true);
+    m_scrollArea->setFrameShape(QFrame::NoFrame);
+    m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    m_chatContainer = new QWidget(m_scrollArea);
+    m_chatContainer->setObjectName(QStringLiteral("aiChatBubbleContainer"));
+    m_chatLayout = new QVBoxLayout(m_chatContainer);
+    m_chatLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
+    m_chatLayout->setSpacing(PageLayout::Space12);
+    m_chatLayout->addStretch(1);
+
+    m_scrollArea->setWidget(m_chatContainer);
+    cardLayout->addWidget(m_scrollArea, 1);
+
+    root->addWidget(historyCard, 1);
+
     auto *inputCard = new QFrame(this);
     inputCard->setObjectName(QStringLiteral("aiInputCard"));
-    auto *cardLayout = new QVBoxLayout(inputCard);
-    cardLayout->setContentsMargins(PageLayout::Space12,
-                                   PageLayout::Space10,
-                                   PageLayout::Space12,
-                                   PageLayout::Space10);
-    cardLayout->setSpacing(PageLayout::Space8);
+    auto *cardInputLayout = new QVBoxLayout(inputCard);
+    cardInputLayout->setContentsMargins(PageLayout::Space12,
+                                        PageLayout::Space10,
+                                        PageLayout::Space12,
+                                        PageLayout::Space10);
+    cardInputLayout->setSpacing(PageLayout::Space8);
 
-    // Input row: AI avatar + multiline input
     auto *inputRow = new QWidget(inputCard);
     auto *inputRowLayout = new QHBoxLayout(inputRow);
     inputRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -129,21 +161,18 @@ AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
     m_input->setObjectName(QStringLiteral("aiChatInput"));
     m_input->setPlaceholderText(QStringLiteral("输入消息，Ctrl+Enter 发送"));
     m_input->setFrameShape(QFrame::NoFrame);
-    m_input->setMinimumHeight(56);
+    m_input->setMinimumHeight(40);
     m_input->setMaximumHeight(kInputMaxHeight);
     m_input->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     inputRowLayout->addWidget(m_input, 1);
 
-    // Ctrl+Enter / Ctrl+Return triggers send (without eating the Enter key,
-    // so the user can still insert newlines with a plain Return).
     auto *sendShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Return")),
                                        m_input);
     sendShortcut->setContext(Qt::WidgetShortcut);
     connect(sendShortcut, &QShortcut::activated, this, &AiChatWidget::sendMessage);
 
-    cardLayout->addWidget(inputRow);
+    cardInputLayout->addWidget(inputRow);
 
-    // Action bar: quick action chips on the left, send/stop on the right
     auto *actionBar = new QWidget(inputCard);
     auto *actionLayout = new QHBoxLayout(actionBar);
     actionLayout->setContentsMargins(0, 0, 0, 0);
@@ -201,7 +230,7 @@ AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
                                   QStringLiteral("发送 (Ctrl+Enter)"));
     actionLayout->addWidget(m_sendButton);
 
-    cardLayout->addWidget(actionBar);
+    cardInputLayout->addWidget(actionBar);
 
     root->addWidget(inputCard);
 
@@ -209,9 +238,6 @@ AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
     m_message->setObjectName(QStringLiteral("toolMessage"));
     root->addWidget(m_message);
 
-    m_historyBuffer = new AiStreamBuffer(m_history, this);
-
-    // Wire up signals
     connect(m_sendButton, &QPushButton::clicked, this, &AiChatWidget::sendMessage);
     connect(m_stopButton, &QPushButton::clicked, this, &AiChatWidget::stopGeneration);
     connect(m_newChatButton, &QPushButton::clicked, this, &AiChatWidget::clearConversation);
@@ -225,10 +251,10 @@ AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
 
     connect(m_client, &OpenAiChatClient::deltaReceived, this, [this](const QString &chunk) {
         m_pendingAssistantText += chunk;
-        m_historyBuffer->append(chunk);
+        appendToBotBubble(chunk);
     });
     connect(m_client, &OpenAiChatClient::finished, this, [this]() {
-        m_historyBuffer->flush();
+        flushBotBubble();
         if (!m_pendingAssistantText.isEmpty()) {
             m_messages.append(QJsonObject{
                 {QStringLiteral("role"), QStringLiteral("assistant")},
@@ -236,12 +262,14 @@ AiChatWidget::AiChatWidget(AiSettingsStore *aiSettings,
             });
             m_pendingAssistantText.clear();
         }
+        m_currentBotBubble = nullptr;
         m_message->setText(QStringLiteral("回复完成"));
         setBusy(false);
     });
     connect(m_client, &OpenAiChatClient::failed, this, [this](const QString &error) {
-        m_historyBuffer->flush();
+        flushBotBubble();
         m_pendingAssistantText.clear();
+        m_currentBotBubble = nullptr;
         m_message->setText(QStringLiteral("请求失败：%1").arg(error));
         setBusy(false);
     });
@@ -264,14 +292,18 @@ void AiChatWidget::sendMessage()
     }
 
     m_client->abort();
+    m_streamFlushTimer->stop();
+    m_streamingBuffer.clear();
     m_pendingAssistantText.clear();
-    appendHistoryLine(QStringLiteral("你"), userText);
+
+    appendBubble(BubbleRole::User, userText);
     m_messages.append(QJsonObject{
         {QStringLiteral("role"), QStringLiteral("user")},
         {QStringLiteral("content"), userText}
     });
     m_input->clear();
-    appendHistoryLine(QStringLiteral("AI"), QString());
+
+    appendBubble(BubbleRole::Bot, QString());
     setBusy(true);
     m_message->setText(QStringLiteral("生成中..."));
 
@@ -281,7 +313,8 @@ void AiChatWidget::sendMessage()
 void AiChatWidget::stopGeneration()
 {
     m_client->abort();
-    m_historyBuffer->flush();
+    m_streamFlushTimer->stop();
+    flushBotBubble();
     if (!m_pendingAssistantText.isEmpty()) {
         m_messages.append(QJsonObject{
             {QStringLiteral("role"), QStringLiteral("assistant")},
@@ -289,6 +322,7 @@ void AiChatWidget::stopGeneration()
         });
         m_pendingAssistantText.clear();
     }
+    m_currentBotBubble = nullptr;
     m_message->setText(QStringLiteral("已停止"));
     setBusy(false);
 }
@@ -296,25 +330,70 @@ void AiChatWidget::stopGeneration()
 void AiChatWidget::clearConversation()
 {
     m_client->abort();
+    m_streamFlushTimer->stop();
+    m_streamingBuffer.clear();
     m_messages = QJsonArray();
     m_pendingAssistantText.clear();
-    m_historyBuffer->reset();
-    m_history->clear();
+    m_currentBotBubble = nullptr;
+
+    QLayoutItem *item;
+    while ((item = m_chatLayout->takeAt(0)) != nullptr) {
+        if (item->widget()) {
+            item->widget()->deleteLater();
+        }
+        delete item;
+    }
+    m_chatLayout->addStretch(1);
+
     m_input->clear();
     m_message->setText(QStringLiteral("对话已清空"));
     setBusy(false);
 }
 
-void AiChatWidget::appendHistoryLine(const QString &roleLabel, const QString &text)
+void AiChatWidget::appendBubble(BubbleRole role, const QString &text)
 {
-    if (!m_history->toPlainText().isEmpty()) {
-        m_history->appendPlainText(QString());
-    }
-    if (text.isEmpty()) {
-        m_history->appendPlainText(QStringLiteral("%1：").arg(roleLabel));
+    auto *row = new QWidget(m_chatContainer);
+    auto *rowLayout = new QHBoxLayout(row);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
+    rowLayout->setSpacing(PageLayout::Space8);
+
+    if (role == BubbleRole::User) {
+        rowLayout->addStretch();
+        auto *bubble = createBubbleLabel(row, QStringLiteral("userBubble"));
+        bubble->setText(text);
+        rowLayout->addWidget(bubble, 0, Qt::AlignRight);
     } else {
-        m_history->appendPlainText(QStringLiteral("%1：%2").arg(roleLabel, text));
+        auto *bubble = createBubbleLabel(row, QStringLiteral("botBubble"));
+        bubble->setText(text);
+        m_currentBotBubble = bubble;
+        rowLayout->addWidget(bubble, 0, Qt::AlignLeft);
+        rowLayout->addStretch();
     }
+
+    m_chatLayout->insertWidget(m_chatLayout->count() - 1, row);
+    scrollToBottom();
+}
+
+void AiChatWidget::appendToBotBubble(const QString &chunk)
+{
+    m_streamingBuffer.append(chunk);
+    if (!m_streamFlushTimer->isActive()) {
+        m_streamFlushTimer->start();
+    }
+}
+
+void AiChatWidget::flushBotBubble()
+{
+    m_streamFlushTimer->stop();
+    if (m_streamingBuffer.isEmpty() || m_currentBotBubble == nullptr) {
+        return;
+    }
+    const QString text = m_streamingBuffer;
+    m_streamingBuffer.clear();
+
+    const QString current = m_currentBotBubble->text();
+    m_currentBotBubble->setText(current + text);
+    scrollToBottom();
 }
 
 void AiChatWidget::setBusy(bool busy)
@@ -322,4 +401,12 @@ void AiChatWidget::setBusy(bool busy)
     m_sendButton->setEnabled(!busy && !m_input->toPlainText().trimmed().isEmpty());
     m_stopButton->setEnabled(busy);
     m_input->setEnabled(!busy);
+}
+
+void AiChatWidget::scrollToBottom()
+{
+    if (m_scrollArea != nullptr && m_scrollArea->verticalScrollBar() != nullptr) {
+        m_scrollArea->verticalScrollBar()->setValue(
+            m_scrollArea->verticalScrollBar()->maximum());
+    }
 }

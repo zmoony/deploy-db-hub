@@ -12,7 +12,6 @@
 #include "infra/DataPaths.h"
 
 #include <QJsonObject>
-#include <QFrame>
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -24,17 +23,17 @@
 
 namespace {
 
-QLabel *createStatusLabel(const QString &text, const QString &objectName, QWidget *parent)
+QLabel *createStatusLabel(const QString &text, const QString &objectName)
 {
-    auto *label = new QLabel(text, parent);
+    auto *label = new QLabel(text);
     label->setObjectName(objectName);
     label->setAlignment(Qt::AlignCenter);
     return label;
 }
 
-QWidget *wrapStatusLabel(QLabel *label)
+QWidget *wrapStatusLabel(QLabel *label, QWidget *parent)
 {
-    auto *wrapper = new QWidget;
+    auto *wrapper = new QWidget(parent);
     auto *layout = new QHBoxLayout(wrapper);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addStretch();
@@ -195,11 +194,10 @@ void ServerManagerWidget::reload()
             + QString::number(record.config.value(QStringLiteral("port")).toInt());
 
         auto *statusLabel = createStatusLabel(QStringLiteral("未连接"),
-                                              QStringLiteral("serviceInstanceStatusBad"),
-                                              m_table);
+                                              QStringLiteral("serviceInstanceStatusBad"));
         m_table->setItem(row, 0, new QTableWidgetItem(record.id));
         m_table->setItem(row, 1, new QTableWidgetItem(record.config.value(QStringLiteral("name")).toString()));
-        m_table->setCellWidget(row, 2, wrapStatusLabel(statusLabel));
+        m_table->setCellWidget(row, 2, wrapStatusLabel(statusLabel, m_table));
         m_table->setItem(row, 3, new QTableWidgetItem(osLabel));
         m_table->setItem(row, 4, new QTableWidgetItem(endpoint));
         m_table->setItem(row, 5, new QTableWidgetItem(record.config.value(QStringLiteral("defaultRemoteBaseDir")).toString()));
@@ -264,6 +262,23 @@ void ServerManagerWidget::editServer()
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setCredentialStore(m_credentials);
     dialog->setServer(server, true, !ref.isEmpty() && m_credentials->has(ref));
+    connect(dialog, &ServerDialog::connectionTestSucceeded, this, [this, id]() {
+        for (int row = 0; row < m_table->rowCount(); ++row) {
+            if (m_table->item(row, 0)->text() == id) {
+                auto *wrapper = m_table->cellWidget(row, 2);
+                if (wrapper != nullptr) {
+                    auto *label = wrapper->findChild<QLabel *>();
+                    if (label != nullptr) {
+                        label->setText(QStringLiteral("已连接"));
+                        label->setObjectName(QStringLiteral("serviceInstanceStatusOk"));
+                        label->style()->unpolish(label);
+                        label->style()->polish(label);
+                    }
+                }
+                break;
+            }
+        }
+    });
     connect(dialog, &QDialog::accepted, this, [this, dialog, id]() {
         QString error;
         const QJsonObject updated = dialog->server();

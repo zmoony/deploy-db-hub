@@ -608,6 +608,7 @@ void ServerDialog::onTestConnection()
                 ? QStringLiteral("已成功连接到服务器。")
                 : QStringLiteral("已成功连接到服务器。\n\n%1").arg(detail);
             QMessageBox::information(this, QStringLiteral("连接成功"), message);
+            emit connectionTestSucceeded();
             return;
         }
 

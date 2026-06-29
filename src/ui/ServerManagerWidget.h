@@ -7,7 +7,6 @@
 #include <memory>
 
 class ConfigStore;
-class CredentialSessionCache;
 class CredentialStore;
 class QLabel;
 class QTableWidget;

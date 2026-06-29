@@ -417,3 +417,14 @@
   - `DhModuleTabBar.qml` 改为白底下划线 + 36px 圆角胶囊 Tab，选中 `#2563EB` 白字、未选中 `#6B7280`。
   - 保留原有 `AppShell` 模块/导航绑定与信号；未改动 `main.cpp` 与 `CMakeLists.txt`。
   - 已通过 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure`。
+- 2026-06-27：仪表盘工具风格重构后清理（Task 4 review）：
+  - 移除 `MainWindow` 中废弃的 `metricCard()` 实现、`dashboardTabIndex` 参数及未使用的 `<functional>`/`QCoreApplication`/`QPainterPath` include。
+  - 清理 `style.qss` 中旧的仪表盘 Hero、统计卡、资源状态、快捷操作等 dead styles；保留 `serviceInstanceBanner`（`ServiceProductPanel` 仍在使用）与 `metricCard` 系列（`ServerMonitorDialog` 仍在使用）。
+  - 已通过 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure`，并提交 `99befa4`。
+- 2026-06-29：项目管理页工具风格改造（Task 5）：
+  - `ProjectManagerWidget` 改为水平 `QSplitter`：左侧项目分组列表（最小宽 200px）+ 右侧 `contentPanel` 详情卡片。
+  - 详情卡片顶部放置「新建/编辑/复制/删除/查看日志」工具栏；「新建」使用 `#primaryButton`，其余使用 `#secondaryButton`。
+  - 项目名称标签设置 `wordWrap(false)`、`minimumWidth(120)`，并在刷新内容时同步 `setToolTip(text)`。
+  - `ProjectDialog` 保存/取消按钮分别设置 `primaryButton`/`secondaryButton` 对象名。
+  - `style.qss` 新增 `projectDetailName`、`projectDetailMetaLabel`、`projectDetailMetaValue` 样式。
+  - 已通过 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure`。

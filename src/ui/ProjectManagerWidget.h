@@ -5,10 +5,12 @@
 #include <QWidget>
 
 class QComboBox;
+class QFrame;
 class QJsonObject;
-class ConfigStore;
 class QLabel;
-class QTableWidget;
+class QListWidget;
+class QListWidgetItem;
+class ConfigStore;
 
 class ProjectManagerWidget final : public QWidget
 {
@@ -37,15 +39,30 @@ private slots:
 
 private:
     QString selectedProjectId() const;
-    void setupTable();
+    void setupList();
+    void buildDetailCard();
     void runServiceOperation(const QString &operation);
     void refreshGroupFilter(const QVector<StoredRecord> &records);
-    void populateTable(const QVector<StoredRecord> &records);
+    void populateList(const QVector<StoredRecord> &records);
+    void refreshDetailCard();
+    void setServiceStatusLabel(const QString &status, const QString &pid);
     static QString sourceSummary(const QJsonObject &project);
-    static bool isGroupHeaderRow(const QTableWidget *table, int row);
+    static bool isGroupHeaderItem(const QListWidgetItem *item);
 
     ConfigStore *m_store = nullptr;
     QComboBox *m_groupFilter = nullptr;
-    QTableWidget *m_table = nullptr;
+    QListWidget *m_projectList = nullptr;
     QLabel *m_emptyState = nullptr;
+
+    QFrame *m_detailCard = nullptr;
+    QWidget *m_detailContent = nullptr;
+    QLabel *m_detailEmptyState = nullptr;
+    QLabel *m_nameLabel = nullptr;
+    QLabel *m_typeValue = nullptr;
+    QLabel *m_sourceValue = nullptr;
+    QLabel *m_serverValue = nullptr;
+    QLabel *m_groupValue = nullptr;
+    QLabel *m_strategyValue = nullptr;
+    QLabel *m_statusValue = nullptr;
+    QLabel *m_pidValue = nullptr;
 };

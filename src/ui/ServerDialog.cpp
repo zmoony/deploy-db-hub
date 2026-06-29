@@ -201,6 +201,7 @@ void ServerDialog::buildUi()
     rememberLayout->addWidget(m_rememberPassword);
     rememberLayout->addStretch();
     m_testConnectionButton = new QPushButton(QStringLiteral("测试连接"));
+    m_testConnectionButton->setObjectName(QStringLiteral("primaryButton"));
     rememberLayout->addWidget(m_testConnectionButton);
     passwordForm->addRow(QString(), rememberRow);
     connect(m_testConnectionButton, &QPushButton::clicked, this, &ServerDialog::onTestConnection);
@@ -270,6 +271,7 @@ void ServerDialog::buildUi()
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, footer);
     buttons->setCenterButtons(false);
     buttons->button(QDialogButtonBox::Save)->setObjectName(QStringLiteral("primaryButton"));
+    buttons->button(QDialogButtonBox::Cancel)->setObjectName(QStringLiteral("secondaryButton"));
     connect(buttons, &QDialogButtonBox::accepted, this, &ServerDialog::onAccept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     footerLayout->addWidget(buttons);
@@ -606,6 +608,7 @@ void ServerDialog::onTestConnection()
                 ? QStringLiteral("已成功连接到服务器。")
                 : QStringLiteral("已成功连接到服务器。\n\n%1").arg(detail);
             QMessageBox::information(this, QStringLiteral("连接成功"), message);
+            emit connectionTestSucceeded();
             return;
         }
 

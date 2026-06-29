@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 Item {
     id: root
-    implicitHeight: 36
+    implicitHeight: 56
 
     property var model: []
     property int currentIndex: 0
@@ -12,20 +12,22 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: Theme.moduleTabRadius + 4
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Visual.moduleGradientStart }
-            GradientStop { position: 1.0; color: Visual.moduleGradientEnd }
-        }
-        border.color: Theme.border
-        border.width: 1
-        opacity: 0.95
+        color: "#FFFFFF"
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 1
+        color: "#E5E9F0"
     }
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: Theme.space4
-        spacing: Theme.moduleTabSpacing
+        anchors.leftMargin: 24
+        anchors.rightMargin: 24
+        spacing: 8
 
         Repeater {
             model: root.model
@@ -36,33 +38,26 @@ Item {
                 checkable: true
                 checked: index === root.currentIndex
                 flat: true
-                implicitHeight: 32
-                leftPadding: Theme.space8
-                rightPadding: Theme.space8
-                topPadding: Theme.space6
-                bottomPadding: Theme.space6
+                implicitHeight: 36
+                leftPadding: 16
+                rightPadding: 16
+                topPadding: 0
+                bottomPadding: 0
 
                 contentItem: Text {
                     text: tabButton.text
-                    font.pixelSize: Theme.fontBody
-                    font.family: Theme.fontFamily
-                    font.weight: tabButton.checked ? Font.DemiBold : Font.Medium
+                    font.pixelSize: 14
+                    font.weight: tabButton.checked ? Font.Medium : Font.Normal
+                    color: tabButton.checked ? "#FFFFFF" : "#6B7280"
                     renderType: Text.NativeRendering
-                    color: tabButton.checked ? "#FFFFFF"
-                           : (tabButton.hovered ? Theme.accent : Theme.textRegular)
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
 
                 background: Rectangle {
-                    radius: Theme.moduleTabRadius
-                    color: tabButton.checked
-                           ? (tabButton.hovered ? Theme.accentStrong : Theme.accent)
-                           : (tabButton.hovered ? Theme.accentHoverBg : "transparent")
-                    Behavior on color {
-                        enabled: Visual.effectsEnabled
-                        ColorAnimation { duration: 100 }
-                    }
+                    radius: 8
+                    color: tabButton.checked ? "#2563EB"
+                           : (tabButton.hovered ? "#F3F4F6" : "transparent")
                 }
 
                 onClicked: {

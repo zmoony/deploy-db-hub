@@ -3,25 +3,17 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import DeployHub
 
-Item {
+Rectangle {
     id: root
-    anchors.fill: parent
-
-    Rectangle {
-        anchors.fill: parent
-        color: Theme.pageBg
-    }
+    color: "#F0F4F8"
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: Theme.pagePadding
-        spacing: Theme.space8
+        spacing: 0
 
         DhSidebar {
             id: sidebar
-            Layout.preferredWidth: Theme.sidebarWidth
-            Layout.minimumWidth: Theme.sidebarWidth
-            Layout.maximumWidth: Theme.sidebarWidth
+            Layout.preferredWidth: 220
             Layout.fillHeight: true
             model: AppShell.navLabels
             currentIndex: AppShell.settingsVisible ? -1 : AppShell.navIndex
@@ -32,20 +24,23 @@ Item {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumWidth: 320
-            spacing: Theme.space8
+            spacing: 0
 
             DhModuleTabBar {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 56
                 model: AppShell.moduleTitles
                 currentIndex: AppShell.moduleIndex
                 onTabChanged: function(index) { AppShell.moduleIndex = index }
             }
 
-            WidgetHost {
+            StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                widget: AppShell.currentWidget
+
+                WidgetHost {
+                    widget: AppShell.currentWidget
+                }
             }
         }
     }

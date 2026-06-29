@@ -38,11 +38,11 @@ QString readSourceFile(const QString &relativePath)
 
 QString extractAiConfigPageSource(const QString &source)
 {
-    const int start = source.indexOf(QStringLiteral("CommonToolsWidget::buildAiConfigPage()"));
+    const int start = source.indexOf(QStringLiteral("AiConfigToolPage::AiConfigToolPage("));
     if (start < 0) {
         return QString();
     }
-    const int end = source.indexOf(QStringLiteral("auto *testClient = new OpenAiChatClient(page)"), start);
+    const int end = source.indexOf(QStringLiteral("auto *testClient = new OpenAiChatClient(this)"), start);
     if (end < 0) {
         return QString();
     }
@@ -116,12 +116,12 @@ void PageLayoutTest::sidebarNavigationUsesIcons()
 
 void PageLayoutTest::aiConfigPageUsesUnifiedTemplate()
 {
-    const QString source = readSourceFile(QStringLiteral("src/ui/CommonToolsWidget.cpp"));
+    const QString source = readSourceFile(QStringLiteral("src/ui/tools/pages/AiConfigToolPage.cpp"));
     const QString aiConfigSource = extractAiConfigPageSource(source);
     const QString pageLayoutSource = readSourceFile(QStringLiteral("src/ui/PageLayout.cpp"));
     const QString styleSource = readSourceFile(QStringLiteral("src/ui/style.qss"));
-    QVERIFY2(!source.isEmpty(), "Unable to read CommonToolsWidget.cpp");
-    QVERIFY2(!aiConfigSource.isEmpty(), "Unable to locate buildAiConfigPage()");
+    QVERIFY2(!source.isEmpty(), "Unable to read AiConfigToolPage.cpp");
+    QVERIFY2(!aiConfigSource.isEmpty(), "Unable to locate AiConfigToolPage constructor");
     QVERIFY2(!pageLayoutSource.isEmpty(), "Unable to read PageLayout.cpp");
     QVERIFY2(!styleSource.isEmpty(), "Unable to read style.qss");
     QVERIFY2(aiConfigSource.contains(QStringLiteral("aiConfigSection")),

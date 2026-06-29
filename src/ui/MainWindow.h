@@ -14,8 +14,6 @@
 #include <QPair>
 #include <QVector>
 
-#include <functional>
-
 class QLabel;
 class QListWidget;
 class BigDataManagerWidget;
@@ -28,7 +26,6 @@ class QPlainTextEdit;
 class QProgressBar;
 class QButtonGroup;
 class QPushButton;
-class LineTabBarController;
 class QStackedWidget;
 class QTableWidget;
 class ServerManagerWidget;
@@ -72,15 +69,13 @@ private:
     void addModuleFromPages(const QString &title, const QStringList &labels, const QList<QWidget *> &pages);
     void showModule(int index);
     void showMainModuleContent();
-    void navigateToPage(int moduleIndex, int pageRow, int dashboardTabIndex = -1);
-    QFrame *metricCard(const QString &title, QLabel **valueLabel) const;
+    void navigateToPage(int moduleIndex, int pageRow);
     QTableWidget *createTable(const QStringList &headers, const QList<QStringList> &rows);
     void appendLog(const QString &stage, const QString &message);
     void openDeploymentLog(const QString &relativePath);
     void openRemoteDeploymentLog(const QString &remotePath);
     void applyRemoteLogPathOptions(const QStringList &options, const QString &preferred);
     QString selectedHistoryLogPath() const;
-    void applyDeploymentMetrics(const QVector<StoredRecord> &deployments);
     void refreshDashboardTabData(const QVector<StoredRecord> *deployments = nullptr);
     void refreshJdkProfiles();
     void refreshLocalLogFiles(bool allowRemotePrompt);
@@ -98,7 +93,6 @@ private:
     QListWidget *m_navigation = nullptr;
     QPushButton *m_settingsButton = nullptr;
     QButtonGroup *m_moduleTabGroup = nullptr;
-    LineTabBarController *m_dashboardLineTab = nullptr;
     QVector<QStackedWidget *> m_modulePages;
     QStringList m_moduleTitles;
     QVector<QStringList> m_moduleNavigationLabels;
@@ -107,19 +101,7 @@ private:
     ServerManagerWidget *m_serverManager = nullptr;
     BigDataManagerWidget *m_bigDataManager = nullptr;
     DatabaseManagerWidget *m_databaseManager = nullptr;
-    QLabel *m_metricProjects = nullptr;
-    QLabel *m_metricServers = nullptr;
-    QLabel *m_metricRecentSuccess = nullptr;
-    QLabel *m_metricPendingFailures = nullptr;
-    QLabel *m_heroProjects = nullptr;
-    QLabel *m_heroServers = nullptr;
-    QLabel *m_heroFailures = nullptr;
-    QLabel *m_heroOnlineRate = nullptr;
-    QStackedWidget *m_dashboardStack = nullptr;
-    QTableWidget *m_dashboardServerTable = nullptr;
-    QTableWidget *m_dashboardLogTable = nullptr;
-    QLabel *m_dashboardServersEmpty = nullptr;
-    QLabel *m_dashboardLogsEmpty = nullptr;
+    QButtonGroup *m_dashboardFilterGroup = nullptr;
     QComboBox *m_deployProject = nullptr;
     QComboBox *m_deployServer = nullptr;
     QComboBox *m_jdkSelector = nullptr;

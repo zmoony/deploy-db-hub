@@ -21,6 +21,29 @@
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
 
+namespace {
+
+QLabel *createStatusLabel(const QString &text, const QString &objectName)
+{
+    auto *label = new QLabel(text);
+    label->setObjectName(objectName);
+    label->setAlignment(Qt::AlignCenter);
+    return label;
+}
+
+QWidget *wrapStatusLabel(QLabel *label, QWidget *parent)
+{
+    auto *wrapper = new QWidget(parent);
+    auto *layout = new QHBoxLayout(wrapper);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addStretch();
+    layout->addWidget(label);
+    layout->addStretch();
+    return wrapper;
+}
+
+}
+
 ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent, bool showPageHeader)
     : QWidget(parent)
     , m_store(store)
@@ -35,21 +58,22 @@ ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent, bo
         layout->setSpacing(PageLayout::Space12);
     }
 
-    if (showPageHeader) {
-}
-
     auto *toolbarWidget = new QWidget(this);
     auto *toolbar = new QHBoxLayout(toolbarWidget);
     toolbar->setContentsMargins(0, 0, 0, 0);
     toolbar->setSpacing(PageLayout::Space12);
     auto *addButton = new QPushButton(QStringLiteral("新建服务器"));
-    addButton->setObjectName(QStringLiteral("primaryButton"));
+    addButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *editButton = new QPushButton(QStringLiteral("编辑"));
+    editButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *monitorButton = new QPushButton(QStringLiteral("服务器监控"));
+    monitorButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *remoteFilesButton = new QPushButton(QStringLiteral("远程文件"));
+    remoteFilesButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *deleteButton = new QPushButton(QStringLiteral("删除"));
     deleteButton->setObjectName(QStringLiteral("dangerButton"));
     auto *refreshButton = new QPushButton(QStringLiteral("刷新"));
+    refreshButton->setObjectName(QStringLiteral("secondaryButton"));
     toolbar->addWidget(addButton);
     toolbar->addWidget(editButton);
     toolbar->addWidget(monitorButton);
@@ -59,12 +83,16 @@ ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent, bo
     toolbar->addStretch();
     layout->addWidget(toolbarWidget);
 
-    m_table = new QTableWidget(0, 5);
+    m_table = new QTableWidget(0, 6);
     setupTable();
-    layout->addWidget(PageLayout::wrapTableSection(
+
+    auto *tableSection = PageLayout::wrapTableSection(
         m_table,
         &m_emptyState,
-        QStringLiteral("暂无服务器。点击「新建服务器」添加第一台目标机器。")), 1);
+        QStringLiteral("暂无服务器。点击「新建服务器」添加第一台目标机器。"));
+    auto *contentPanel = PageLayout::wrapContentPanel(tableSection);
+    contentPanel->setAttribute(Qt::WA_StyledBackground, true);
+    layout->addWidget(contentPanel, 1);
 
     connect(addButton, &QPushButton::clicked, this, &ServerManagerWidget::addServer);
     connect(editButton, &QPushButton::clicked, this, &ServerManagerWidget::editServer);
@@ -82,6 +110,7 @@ void ServerManagerWidget::setupTable()
     m_table->setHorizontalHeaderLabels({
         QStringLiteral("ID"),
         QStringLiteral("名称"),
+        QStringLiteral("状态"),
         QStringLiteral("系统"),
         QStringLiteral("地址"),
         QStringLiteral("默认目录")
@@ -164,11 +193,14 @@ void ServerManagerWidget::reload()
             + QLatin1Char(':')
             + QString::number(record.config.value(QStringLiteral("port")).toInt());
 
+        auto *statusLabel = createStatusLabel(QStringLiteral("未连接"),
+                                              QStringLiteral("serviceInstanceStatusBad"));
         m_table->setItem(row, 0, new QTableWidgetItem(record.id));
         m_table->setItem(row, 1, new QTableWidgetItem(record.config.value(QStringLiteral("name")).toString()));
-        m_table->setItem(row, 2, new QTableWidgetItem(osLabel));
-        m_table->setItem(row, 3, new QTableWidgetItem(endpoint));
-        m_table->setItem(row, 4, new QTableWidgetItem(record.config.value(QStringLiteral("defaultRemoteBaseDir")).toString()));
+        m_table->setCellWidget(row, 2, wrapStatusLabel(statusLabel, m_table));
+        m_table->setItem(row, 3, new QTableWidgetItem(osLabel));
+        m_table->setItem(row, 4, new QTableWidgetItem(endpoint));
+        m_table->setItem(row, 5, new QTableWidgetItem(record.config.value(QStringLiteral("defaultRemoteBaseDir")).toString()));
     }
 
     PageLayout::updateTableEmptyState(m_table, m_emptyState, records.size());
@@ -230,6 +262,23 @@ void ServerManagerWidget::editServer()
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setCredentialStore(m_credentials);
     dialog->setServer(server, true, !ref.isEmpty() && m_credentials->has(ref));
+    connect(dialog, &ServerDialog::connectionTestSucceeded, this, [this, id]() {
+        for (int row = 0; row < m_table->rowCount(); ++row) {
+            if (m_table->item(row, 0)->text() == id) {
+                auto *wrapper = m_table->cellWidget(row, 2);
+                if (wrapper != nullptr) {
+                    auto *label = wrapper->findChild<QLabel *>();
+                    if (label != nullptr) {
+                        label->setText(QStringLiteral("已连接"));
+                        label->setObjectName(QStringLiteral("serviceInstanceStatusOk"));
+                        label->style()->unpolish(label);
+                        label->style()->polish(label);
+                    }
+                }
+                break;
+            }
+        }
+    });
     connect(dialog, &QDialog::accepted, this, [this, dialog, id]() {
         QString error;
         const QJsonObject updated = dialog->server();

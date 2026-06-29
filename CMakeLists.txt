@@ -99,6 +99,58 @@ qt_add_executable(deploy-hub WIN32
     src/ui/DeployWorker.h
     src/ui/CommonToolsWidget.cpp
     src/ui/CommonToolsWidget.h
+    src/ui/tools/ToolPage.cpp
+    src/ui/tools/ToolPage.h
+    src/ui/tools/ToolEditor.cpp
+    src/ui/tools/ToolEditor.h
+    src/ui/tools/ToolResultRow.cpp
+    src/ui/tools/ToolResultRow.h
+    src/ui/tools/ToolActionBar.cpp
+    src/ui/tools/ToolActionBar.h
+    src/ui/tools/AiAssistBar.cpp
+    src/ui/tools/AiAssistBar.h
+    src/ui/tools/pages/AiConfigToolPage.cpp
+    src/ui/tools/pages/AiConfigToolPage.h
+    src/ui/tools/pages/Base64TextToolPage.cpp
+    src/ui/tools/pages/Base64TextToolPage.h
+    src/ui/tools/pages/CaseToolPage.cpp
+    src/ui/tools/pages/CaseToolPage.h
+    src/ui/tools/pages/CronToolPage.cpp
+    src/ui/tools/pages/CronToolPage.h
+    src/ui/tools/pages/DiffToolPage.cpp
+    src/ui/tools/pages/DiffToolPage.h
+    src/ui/tools/pages/HashToolPage.cpp
+    src/ui/tools/pages/HashToolPage.h
+    src/ui/tools/pages/HtmlEntityToolPage.cpp
+    src/ui/tools/pages/HtmlEntityToolPage.h
+    src/ui/tools/pages/HttpRequestToolPage.cpp
+    src/ui/tools/pages/HttpRequestToolPage.h
+    src/ui/tools/pages/HttpStatusToolPage.cpp
+    src/ui/tools/pages/HttpStatusToolPage.h
+    src/ui/tools/pages/ImageBase64ToolPage.cpp
+    src/ui/tools/pages/ImageBase64ToolPage.h
+    src/ui/tools/pages/JsonToolPage.cpp
+    src/ui/tools/pages/JsonToolPage.h
+    src/ui/tools/pages/JwtToolPage.cpp
+    src/ui/tools/pages/JwtToolPage.h
+    src/ui/tools/pages/NumberBaseToolPage.cpp
+    src/ui/tools/pages/NumberBaseToolPage.h
+    src/ui/tools/pages/RegexToolPage.cpp
+    src/ui/tools/pages/RegexToolPage.h
+    src/ui/tools/pages/TimestampToolPage.cpp
+    src/ui/tools/pages/TimestampToolPage.h
+    src/ui/tools/pages/UrlCodecToolPage.cpp
+    src/ui/tools/pages/UrlCodecToolPage.h
+    src/ui/tools/pages/UuidToolPage.cpp
+    src/ui/tools/pages/UuidToolPage.h
+    src/ui/tools/pages/WebSocketToolPage.cpp
+    src/ui/tools/pages/WebSocketToolPage.h
+    src/ui/tools/pages/HexToStringToolPage.cpp
+    src/ui/tools/pages/HexToStringToolPage.h
+    src/ui/tools/pages/MockDataToolPage.cpp
+    src/ui/tools/pages/MockDataToolPage.h
+    src/ui/tools/pages/DataMaskToolPage.cpp
+    src/ui/tools/pages/DataMaskToolPage.h
     src/ui/AiAssistHelper.cpp
     src/ui/AiAssistHelper.h
     src/ui/AiChatWidget.cpp

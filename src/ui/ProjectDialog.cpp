@@ -287,6 +287,7 @@ void ProjectDialog::buildUi()
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, footer);
     buttons->setCenterButtons(false);
     buttons->button(QDialogButtonBox::Save)->setObjectName(QStringLiteral("primaryButton"));
+    buttons->button(QDialogButtonBox::Cancel)->setObjectName(QStringLiteral("secondaryButton"));
     connect(buttons, &QDialogButtonBox::accepted, this, &ProjectDialog::onAccept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     footerLayout->addWidget(buttons);

@@ -16,24 +16,25 @@
 
 #include <QComboBox>
 #include <QColor>
+#include <QFormLayout>
+#include <QFrame>
 #include <QFutureWatcher>
-#include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QListWidget>
+#include <QListWidgetItem>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QTableWidget>
-#include <QTableWidgetItem>
-#include <QToolBar>
-#include <QVBoxLayout>
 #include <QSignalBlocker>
+#include <QSizePolicy>
+#include <QSplitter>
+#include <QVBoxLayout>
 #include <QtConcurrent>
 
 #include <algorithm>
 
 namespace {
 
-constexpr int kColCount = 9;
 constexpr int kGroupHeaderRole = Qt::UserRole + 1;
 
 QString normalizedGroup(const QJsonObject &project)
@@ -53,6 +54,13 @@ QString groupSortKey(const QString &group)
 
 const QString kFilterAllGroups = QStringLiteral("__all__");
 const QString kFilterUngrouped = QStringLiteral("__ungrouped__");
+
+QLabel *makeMetaLabel(const QString &text, QWidget *parent)
+{
+    auto *label = new QLabel(text, parent);
+    label->setObjectName(QStringLiteral("projectDetailMetaLabel"));
+    return label;
+}
 
 }
 
@@ -77,28 +85,20 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
 {
     auto *layout = new QVBoxLayout(this);
     PageLayout::applyPage(layout);
-auto *toolbarWidget = new QWidget(this);
+
+    auto *toolbarWidget = new QWidget(this);
     auto *toolbar = new QHBoxLayout(toolbarWidget);
     toolbar->setContentsMargins(0, 0, 0, 0);
     toolbar->setSpacing(PageLayout::Space12);
-    auto *addButton = new QPushButton(QStringLiteral("新建项目"));
-    addButton->setObjectName(QStringLiteral("primaryButton"));
-    auto *quickAddButton = new QPushButton(QStringLiteral("快速添加"));
-    auto *editButton = new QPushButton(QStringLiteral("编辑"));
-    auto *deleteButton = new QPushButton(QStringLiteral("删除"));
-    deleteButton->setObjectName(QStringLiteral("dangerButton"));
     auto *refreshButton = new QPushButton(QStringLiteral("刷新"));
-    auto *viewLogButton = new QPushButton(QStringLiteral("查看日志"));
-    viewLogButton->setObjectName(QStringLiteral("primaryButton"));
+    refreshButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *statusButton = new QPushButton(QStringLiteral("查看状态"));
+    statusButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *startButton = new QPushButton(QStringLiteral("启动服务"));
+    startButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *stopButton = new QPushButton(QStringLiteral("关闭服务"));
-    toolbar->addWidget(addButton);
-    toolbar->addWidget(quickAddButton);
-    toolbar->addWidget(editButton);
-    toolbar->addWidget(deleteButton);
+    stopButton->setObjectName(QStringLiteral("secondaryButton"));
     toolbar->addWidget(refreshButton);
-    toolbar->addWidget(viewLogButton);
     toolbar->addWidget(statusButton);
     toolbar->addWidget(startButton);
     toolbar->addWidget(stopButton);
@@ -111,23 +111,50 @@ auto *toolbarWidget = new QWidget(this);
     toolbar->addWidget(m_groupFilter);
     layout->addWidget(toolbarWidget);
 
-    m_table = new QTableWidget(0, kColCount);
-    setupTable();
-    layout->addWidget(PageLayout::wrapTableSection(
-        m_table,
-        &m_emptyState,
-        QStringLiteral("暂无项目。点击「新建项目」添加第一个部署配置。")), 1);
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->setHandleWidth(6);
+    splitter->setChildrenCollapsible(false);
 
-    connect(addButton, &QPushButton::clicked, this, &ProjectManagerWidget::addProject);
-    connect(quickAddButton, &QPushButton::clicked, this, &ProjectManagerWidget::quickAddProject);
-    connect(editButton, &QPushButton::clicked, this, &ProjectManagerWidget::editProject);
-    connect(deleteButton, &QPushButton::clicked, this, &ProjectManagerWidget::deleteProject);
+    auto *leftPanel = new QWidget(this);
+    leftPanel->setMinimumWidth(200);
+    auto *leftLayout = new QVBoxLayout(leftPanel);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(PageLayout::Space8);
+
+    m_emptyState = new QLabel(QStringLiteral("暂无项目。点击右侧「新建」添加第一个部署配置。"), leftPanel);
+    m_emptyState->setObjectName(QStringLiteral("emptyState"));
+    m_emptyState->setAlignment(Qt::AlignCenter);
+    m_emptyState->setWordWrap(true);
+    m_emptyState->setVisible(false);
+    leftLayout->addWidget(m_emptyState, 1);
+
+    m_projectList = new QListWidget(leftPanel);
+    m_projectList->setObjectName(QStringLiteral("toolListNav"));
+    m_projectList->setMinimumWidth(200);
+    m_projectList->setFrameShape(QFrame::NoFrame);
+    m_projectList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setupList();
+    leftLayout->addWidget(m_projectList, 1);
+
+    splitter->addWidget(leftPanel);
+    splitter->setStretchFactor(0, 0);
+
+    m_detailCard = new QFrame(this);
+    m_detailCard->setObjectName(QStringLiteral("contentPanel"));
+    m_detailCard->setAttribute(Qt::WA_StyledBackground, true);
+    buildDetailCard();
+    splitter->addWidget(m_detailCard);
+    splitter->setStretchFactor(1, 1);
+    splitter->setSizes({220, 800});
+
+    layout->addWidget(splitter, 1);
+
     connect(refreshButton, &QPushButton::clicked, this, &ProjectManagerWidget::reload);
-    connect(viewLogButton, &QPushButton::clicked, this, &ProjectManagerWidget::viewSelectedProjectLog);
     connect(statusButton, &QPushButton::clicked, this, &ProjectManagerWidget::refreshSelectedServiceStatus);
     connect(startButton, &QPushButton::clicked, this, &ProjectManagerWidget::startSelectedService);
     connect(stopButton, &QPushButton::clicked, this, &ProjectManagerWidget::stopSelectedService);
-    connect(m_table, &QTableWidget::doubleClicked, this, &ProjectManagerWidget::editProject);
+    connect(m_projectList, &QListWidget::currentItemChanged, this, &ProjectManagerWidget::refreshDetailCard);
+    connect(m_projectList, &QListWidget::itemDoubleClicked, this, &ProjectManagerWidget::editProject);
     connect(m_groupFilter, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         reload();
     });
@@ -135,31 +162,118 @@ auto *toolbarWidget = new QWidget(this);
     reload();
 }
 
-void ProjectManagerWidget::setupTable()
+void ProjectManagerWidget::setupList()
 {
-    m_table->setHorizontalHeaderLabels({
-        QStringLiteral("ID"),
-        QStringLiteral("名称"),
-        QStringLiteral("分组"),
-        QStringLiteral("类型"),
-        QStringLiteral("来源"),
-        QStringLiteral("目标服务器"),
-        QStringLiteral("失败策略"),
-        QStringLiteral("状态"),
-        QStringLiteral("PID")
-    });
-    m_table->verticalHeader()->setVisible(false);
-    PageLayout::configureListingTable(m_table);
-    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_table->setAlternatingRowColors(true);
-    m_table->verticalHeader()->setDefaultSectionSize(40);
+    m_projectList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_projectList->setUniformItemSizes(true);
+    m_projectList->setSpacing(2);
+}
+
+void ProjectManagerWidget::buildDetailCard()
+{
+    auto *cardLayout = new QVBoxLayout(m_detailCard);
+    cardLayout->setContentsMargins(PageLayout::Space24, PageLayout::Space24, PageLayout::Space24, PageLayout::Space24);
+    cardLayout->setSpacing(PageLayout::Space16);
+
+    m_detailEmptyState = new QLabel(QStringLiteral("请在左侧选择项目"), m_detailCard);
+    m_detailEmptyState->setObjectName(QStringLiteral("emptyState"));
+    m_detailEmptyState->setAlignment(Qt::AlignCenter);
+    m_detailEmptyState->setWordWrap(true);
+    cardLayout->addWidget(m_detailEmptyState, 1);
+
+    m_detailContent = new QWidget(m_detailCard);
+    auto *contentLayout = new QVBoxLayout(m_detailContent);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(PageLayout::Space20);
+
+    auto *actions = new QHBoxLayout;
+    actions->setContentsMargins(0, 0, 0, 0);
+    actions->setSpacing(PageLayout::Space8);
+    auto *newButton = new QPushButton(QStringLiteral("新建"), m_detailContent);
+    newButton->setObjectName(QStringLiteral("primaryButton"));
+    auto *editButton = new QPushButton(QStringLiteral("编辑"), m_detailContent);
+    editButton->setObjectName(QStringLiteral("secondaryButton"));
+    auto *copyButton = new QPushButton(QStringLiteral("复制"), m_detailContent);
+    copyButton->setObjectName(QStringLiteral("secondaryButton"));
+    auto *deleteButton = new QPushButton(QStringLiteral("删除"), m_detailContent);
+    deleteButton->setObjectName(QStringLiteral("secondaryButton"));
+    auto *viewLogButton = new QPushButton(QStringLiteral("查看日志"), m_detailContent);
+    viewLogButton->setObjectName(QStringLiteral("secondaryButton"));
+    actions->addWidget(newButton);
+    actions->addWidget(editButton);
+    actions->addWidget(copyButton);
+    actions->addWidget(deleteButton);
+    actions->addWidget(viewLogButton);
+    actions->addStretch();
+    contentLayout->addLayout(actions);
+
+    connect(newButton, &QPushButton::clicked, this, &ProjectManagerWidget::addProject);
+    connect(editButton, &QPushButton::clicked, this, &ProjectManagerWidget::editProject);
+    connect(copyButton, &QPushButton::clicked, this, &ProjectManagerWidget::quickAddProject);
+    connect(deleteButton, &QPushButton::clicked, this, &ProjectManagerWidget::deleteProject);
+    connect(viewLogButton, &QPushButton::clicked, this, &ProjectManagerWidget::viewSelectedProjectLog);
+
+    m_nameLabel = new QLabel(m_detailContent);
+    m_nameLabel->setObjectName(QStringLiteral("projectDetailName"));
+    m_nameLabel->setWordWrap(false);
+    m_nameLabel->setMinimumWidth(120);
+    m_nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    contentLayout->addWidget(m_nameLabel);
+
+    auto *metaForm = new QFormLayout;
+    metaForm->setContentsMargins(0, 0, 0, 0);
+    metaForm->setSpacing(PageLayout::Space12);
+    metaForm->setHorizontalSpacing(PageLayout::Space16);
+    metaForm->setLabelAlignment(Qt::AlignLeft);
+    metaForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+
+    m_typeValue = new QLabel(m_detailContent);
+    m_typeValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_typeValue->setMinimumWidth(0);
+    m_typeValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_sourceValue = new QLabel(m_detailContent);
+    m_sourceValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_sourceValue->setMinimumWidth(0);
+    m_sourceValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_serverValue = new QLabel(m_detailContent);
+    m_serverValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_serverValue->setMinimumWidth(0);
+    m_serverValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_groupValue = new QLabel(m_detailContent);
+    m_groupValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_groupValue->setMinimumWidth(0);
+    m_groupValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_strategyValue = new QLabel(m_detailContent);
+    m_strategyValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_strategyValue->setMinimumWidth(0);
+    m_strategyValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_statusValue = new QLabel(m_detailContent);
+    m_statusValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_statusValue->setMinimumWidth(0);
+    m_statusValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_pidValue = new QLabel(m_detailContent);
+    m_pidValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_pidValue->setMinimumWidth(0);
+    m_pidValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    metaForm->addRow(makeMetaLabel(QStringLiteral("类型"), m_detailContent), m_typeValue);
+    metaForm->addRow(makeMetaLabel(QStringLiteral("来源"), m_detailContent), m_sourceValue);
+    metaForm->addRow(makeMetaLabel(QStringLiteral("目标服务器"), m_detailContent), m_serverValue);
+    metaForm->addRow(makeMetaLabel(QStringLiteral("分组"), m_detailContent), m_groupValue);
+    metaForm->addRow(makeMetaLabel(QStringLiteral("失败策略"), m_detailContent), m_strategyValue);
+    metaForm->addRow(makeMetaLabel(QStringLiteral("状态"), m_detailContent), m_statusValue);
+    metaForm->addRow(makeMetaLabel(QStringLiteral("PID"), m_detailContent), m_pidValue);
+    contentLayout->addLayout(metaForm);
+
+    contentLayout->addStretch();
+    cardLayout->addWidget(m_detailContent, 1);
 }
 
 int ProjectManagerWidget::projectCount() const
 {
     int count = 0;
-    for (int row = 0; row < m_table->rowCount(); ++row) {
-        if (!isGroupHeaderRow(m_table, row)) {
+    for (int row = 0; row < m_projectList->count(); ++row) {
+        if (!isGroupHeaderItem(m_projectList->item(row))) {
             ++count;
         }
     }
@@ -169,11 +283,12 @@ int ProjectManagerWidget::projectCount() const
 QStringList ProjectManagerWidget::projectIds() const
 {
     QStringList ids;
-    for (int row = 0; row < m_table->rowCount(); ++row) {
-        if (isGroupHeaderRow(m_table, row)) {
+    for (int row = 0; row < m_projectList->count(); ++row) {
+        QListWidgetItem *item = m_projectList->item(row);
+        if (isGroupHeaderItem(item)) {
             continue;
         }
-        ids.append(m_table->item(row, 0)->text());
+        ids.append(item->data(Qt::UserRole).toString());
     }
     return ids;
 }
@@ -188,26 +303,18 @@ QJsonObject ProjectManagerWidget::makeQuickAddDraft(const QJsonObject &sourcePro
     return draft;
 }
 
-bool ProjectManagerWidget::isGroupHeaderRow(const QTableWidget *table, int row)
+bool ProjectManagerWidget::isGroupHeaderItem(const QListWidgetItem *item)
 {
-    if (table == nullptr || row < 0) {
-        return false;
-    }
-    const QTableWidgetItem *item = table->item(row, 0);
     return item != nullptr && item->data(kGroupHeaderRole).toBool();
 }
 
 QString ProjectManagerWidget::selectedProjectId() const
 {
-    const auto rows = m_table->selectionModel()->selectedRows();
-    if (rows.isEmpty()) {
+    QListWidgetItem *item = m_projectList->currentItem();
+    if (item == nullptr || isGroupHeaderItem(item)) {
         return {};
     }
-    const int row = rows.first().row();
-    if (isGroupHeaderRow(m_table, row)) {
-        return {};
-    }
-    return m_table->item(row, 0)->text();
+    return item->data(Qt::UserRole).toString();
 }
 
 void ProjectManagerWidget::refreshGroupFilter(const QVector<StoredRecord> &records)
@@ -243,7 +350,7 @@ void ProjectManagerWidget::refreshGroupFilter(const QVector<StoredRecord> &recor
     m_groupFilter->setCurrentIndex(index >= 0 ? index : 0);
 }
 
-void ProjectManagerWidget::populateTable(const QVector<StoredRecord> &records)
+void ProjectManagerWidget::populateList(const QVector<StoredRecord> &records)
 {
     const QString filter = m_groupFilter != nullptr ? m_groupFilter->currentData().toString() : kFilterAllGroups;
     const bool showAllGroups = filter == kFilterAllGroups;
@@ -262,17 +369,17 @@ void ProjectManagerWidget::populateTable(const QVector<StoredRecord> &records)
             < 0;
     });
 
-    int row = 0;
-    m_table->setRowCount(0);
-    QString currentGroupLabel;
-    int projectCount = 0;
+    QSignalBlocker blocker(m_projectList);
+    m_projectList->clear();
 
-    const auto appendGroupHeader = [this, &row, &currentGroupLabel](const QString &groupLabel, int count) {
+    int projectCount = 0;
+    QListWidgetItem *firstProjectItem = nullptr;
+
+    const auto appendGroupHeader = [this](const QString &groupLabel, int count) {
         if (count <= 0) {
             return;
         }
-        m_table->insertRow(row);
-        auto *header = new QTableWidgetItem(QStringLiteral("%1 (%2)").arg(groupLabel, QString::number(count)));
+        auto *header = new QListWidgetItem(QStringLiteral("%1 (%2)").arg(groupLabel, QString::number(count)));
         header->setData(kGroupHeaderRole, true);
         header->setFlags(Qt::ItemIsEnabled);
         header->setBackground(QColor(QStringLiteral("#F8FAFC")));
@@ -280,30 +387,19 @@ void ProjectManagerWidget::populateTable(const QVector<StoredRecord> &records)
         QFont font = header->font();
         font.setBold(true);
         header->setFont(font);
-        m_table->setItem(row, 0, header);
-        m_table->setSpan(row, 0, 1, kColCount);
-        ++row;
+        m_projectList->addItem(header);
     };
 
-    const auto appendProjectRow = [this, &row](const StoredRecord &record) {
-        const QJsonObject &project = record.config;
-        const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
-        const QString strategy = deploy.value(QStringLiteral("failureStrategy")).toString() == QStringLiteral("keep")
-                                       ? QStringLiteral("保留现场")
-                                       : QStringLiteral("自动回滚");
-        const QString group = normalizedGroup(project);
-
-        m_table->insertRow(row);
-        m_table->setItem(row, 0, new QTableWidgetItem(record.id));
-        m_table->setItem(row, 1, new QTableWidgetItem(project.value(QStringLiteral("name")).toString()));
-        m_table->setItem(row, 2, new QTableWidgetItem(displayGroupLabel(group)));
-        m_table->setItem(row, 3, new QTableWidgetItem(project.value(QStringLiteral("type")).toString()));
-        m_table->setItem(row, 4, new QTableWidgetItem(sourceSummary(project)));
-        m_table->setItem(row, 5, new QTableWidgetItem(deploy.value(QStringLiteral("serverId")).toString()));
-        m_table->setItem(row, 6, new QTableWidgetItem(strategy));
-        m_table->setItem(row, 7, new QTableWidgetItem(QStringLiteral("未检测")));
-        m_table->setItem(row, 8, new QTableWidgetItem(QStringLiteral("-")));
-        ++row;
+    const auto appendProject = [this, &projectCount, &firstProjectItem](const StoredRecord &record) {
+        auto *item = new QListWidgetItem(record.config.value(QStringLiteral("name")).toString());
+        item->setData(Qt::UserRole, record.id);
+        item->setData(kGroupHeaderRole, false);
+        item->setToolTip(record.id);
+        m_projectList->addItem(item);
+        if (firstProjectItem == nullptr) {
+            firstProjectItem = item;
+        }
+        ++projectCount;
     };
 
     if (showAllGroups) {
@@ -316,9 +412,8 @@ void ProjectManagerWidget::populateTable(const QVector<StoredRecord> &records)
                 pendingGroup = groupLabel;
                 pendingCount = 0;
             }
-            appendProjectRow(record);
+            appendProject(record);
             ++pendingCount;
-            ++projectCount;
         }
         appendGroupHeader(pendingGroup, pendingCount);
     } else {
@@ -331,21 +426,73 @@ void ProjectManagerWidget::populateTable(const QVector<StoredRecord> &records)
             } else if (group != filter) {
                 continue;
             }
-            appendProjectRow(record);
-            ++projectCount;
+            appendProject(record);
         }
     }
 
-    PageLayout::refreshListingTableColumns(m_table);
-    PageLayout::updateTableEmptyState(m_table, m_emptyState, projectCount);
+    blocker.unblock();
 
-    if (projectCount > 0) {
-        for (int i = 0; i < m_table->rowCount(); ++i) {
-            if (!isGroupHeaderRow(m_table, i)) {
-                m_table->selectRow(i);
-                break;
-            }
-        }
+    const bool hasProjects = projectCount > 0;
+    m_emptyState->setVisible(!hasProjects);
+    m_projectList->setVisible(hasProjects);
+
+    if (firstProjectItem != nullptr) {
+        m_projectList->setCurrentItem(firstProjectItem);
+    } else {
+        m_projectList->setCurrentItem(nullptr);
+        refreshDetailCard();
+    }
+}
+
+void ProjectManagerWidget::refreshDetailCard()
+{
+    if (m_detailContent == nullptr || m_detailEmptyState == nullptr) {
+        return;
+    }
+
+    const QString id = selectedProjectId();
+    if (id.isEmpty()) {
+        m_detailContent->setVisible(false);
+        m_detailEmptyState->setVisible(true);
+        return;
+    }
+
+    QJsonObject project;
+    QString error;
+    if (!m_store->getProject(id, &project, &error)) {
+        m_detailContent->setVisible(false);
+        m_detailEmptyState->setText(error);
+        m_detailEmptyState->setVisible(true);
+        return;
+    }
+
+    const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
+    const QString strategy = deploy.value(QStringLiteral("failureStrategy")).toString() == QStringLiteral("keep")
+                                   ? QStringLiteral("保留现场")
+                                   : QStringLiteral("自动回滚");
+
+    const QString name = project.value(QStringLiteral("name")).toString();
+    m_nameLabel->setText(name.isEmpty() ? id : name);
+    m_nameLabel->setToolTip(m_nameLabel->text());
+    m_typeValue->setText(project.value(QStringLiteral("type")).toString());
+    m_sourceValue->setText(sourceSummary(project));
+    m_serverValue->setText(deploy.value(QStringLiteral("serverId")).toString());
+    m_groupValue->setText(displayGroupLabel(normalizedGroup(project)));
+    m_strategyValue->setText(strategy);
+    m_statusValue->setText(QStringLiteral("未检测"));
+    m_pidValue->setText(QStringLiteral("-"));
+
+    m_detailEmptyState->setVisible(false);
+    m_detailContent->setVisible(true);
+}
+
+void ProjectManagerWidget::setServiceStatusLabel(const QString &status, const QString &pid)
+{
+    if (m_statusValue != nullptr) {
+        m_statusValue->setText(status);
+    }
+    if (m_pidValue != nullptr) {
+        m_pidValue->setText(pid);
     }
 }
 
@@ -359,7 +506,8 @@ void ProjectManagerWidget::reload()
     }
 
     refreshGroupFilter(records);
-    populateTable(records);
+    populateList(records);
+    setServiceStatusLabel(QStringLiteral("未检测"), QStringLiteral("-"));
 }
 
 void ProjectManagerWidget::addProject()
@@ -541,8 +689,6 @@ void ProjectManagerWidget::runServiceOperation(const QString &operation)
         QMessageBox::information(this, QStringLiteral("未选择"), QStringLiteral("请先选择项目。"));
         return;
     }
-    const auto rows = m_table->selectionModel()->selectedRows();
-    const int row = rows.isEmpty() ? -1 : rows.first().row();
 
     QJsonObject project;
     QString error;
@@ -567,22 +713,18 @@ void ProjectManagerWidget::runServiceOperation(const QString &operation)
         return;
     }
 
-    if (row >= 0) {
-        m_table->setItem(row, 7, new QTableWidgetItem(QStringLiteral("执行中...")));
-        m_table->setItem(row, 8, new QTableWidgetItem(QStringLiteral("-")));
-    }
+    setServiceStatusLabel(QStringLiteral("执行中..."), QStringLiteral("-"));
 
     auto *watcher = new QFutureWatcher<ServiceOperationResult>(this);
-    connect(watcher, &QFutureWatcher<ServiceOperationResult>::finished, this, [this, watcher, row]() {
+    connect(watcher, &QFutureWatcher<ServiceOperationResult>::finished, this, [this, watcher]() {
         const ServiceOperationResult result = watcher->result();
-        if (row >= 0 && row < m_table->rowCount() && !isGroupHeaderRow(m_table, row)) {
-            m_table->setItem(row, 7, new QTableWidgetItem(result.ok ? result.statusText : result.error));
+        if (result.ok) {
             const QString pid = result.statusText.contains(QStringLiteral("PID "))
                 ? result.statusText.section(QStringLiteral("PID "), 1, 1).section(QLatin1Char(' '), 0, 0)
                 : QStringLiteral("-");
-            m_table->setItem(row, 8, new QTableWidgetItem(pid));
-        }
-        if (!result.ok) {
+            setServiceStatusLabel(result.statusText, pid);
+        } else {
+            setServiceStatusLabel(QStringLiteral("失败"), QStringLiteral("-"));
             QMessageBox::warning(this, QStringLiteral("服务操作失败"), result.error);
         }
         watcher->deleteLater();

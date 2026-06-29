@@ -6,6 +6,9 @@
 #include "ui/PageLayout.h"
 
 #include <QDialogButtonBox>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSplitter>
@@ -45,15 +48,43 @@ void DeploymentLogDialog::buildUi(const QString &relativePath, const QString &co
     PageLayout::applyDialog(layout);
 
     auto *splitter = new QSplitter(Qt::Vertical, this);
-    auto *editor = new QPlainTextEdit(splitter);
+
+    auto *logPanel = new QFrame(splitter);
+    logPanel->setObjectName(QStringLiteral("contentPanel"));
+    auto *logPanelLayout = new QVBoxLayout(logPanel);
+    logPanelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
+    logPanelLayout->setSpacing(PageLayout::Space8);
+
+    auto *logHeader = new QHBoxLayout;
+    logHeader->setContentsMargins(0, 0, 0, 0);
+    auto *logTitle = new QLabel(QStringLiteral("日志内容"), logPanel);
+    logTitle->setObjectName(QStringLiteral("sectionLabel"));
+    logHeader->addWidget(logTitle);
+    logHeader->addStretch();
+    logPanelLayout->addLayout(logHeader);
+
+    auto *editor = new QPlainTextEdit(logPanel);
     editor->setReadOnly(true);
     editor->setPlainText(content);
     editor->setMinimumHeight(220);
-    splitter->addWidget(editor);
+    editor->setFrameShape(QFrame::NoFrame);
+    logPanelLayout->addWidget(editor, 1);
+    splitter->addWidget(logPanel);
 
     if (m_aiSettings != nullptr && m_credentials != nullptr) {
-        auto *aiPanel = new LogAiAnalysisWidget(m_aiSettings, m_credentials, splitter);
-        aiPanel->setLogContent(content);
+        auto *aiPanel = new QFrame(splitter);
+        aiPanel->setObjectName(QStringLiteral("contentPanel"));
+        auto *aiPanelLayout = new QVBoxLayout(aiPanel);
+        aiPanelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
+        aiPanelLayout->setSpacing(PageLayout::Space8);
+
+        auto *aiTitle = new QLabel(QStringLiteral("AI 日志分析"), aiPanel);
+        aiTitle->setObjectName(QStringLiteral("sectionLabel"));
+        aiPanelLayout->addWidget(aiTitle);
+
+        auto *aiWidget = new LogAiAnalysisWidget(m_aiSettings, m_credentials, aiPanel);
+        aiWidget->setLogContent(content);
+        aiPanelLayout->addWidget(aiWidget, 1);
         splitter->addWidget(aiPanel);
         splitter->setStretchFactor(0, 3);
         splitter->setStretchFactor(1, 2);

@@ -26,34 +26,6 @@ public:
     QWidget *takeToolPage(int index);
     int toolPageCount() const;
 
-private:
-    QWidget *buildAiConfigPage();
-    QWidget *buildTextToolPage(const QString &title,
-                               const QString &subtitle,
-                               const QString &primaryAction,
-                               const QString &secondaryAction,
-                               const QString &placeholder,
-                               bool enableAiAssist = false,
-                               const QString &aiSystemPrompt = QString());
-    QWidget *buildHttpRequestPage();
-    QWidget *buildJsonViewerPage();
-    QWidget *buildRegexPage();
-    QWidget *buildTimestampPage();
-    QWidget *buildHtmlEntityPage();
-    QWidget *buildHttpStatusPage();
-    QWidget *buildDiffPage();
-    QWidget *buildCronPage();
-    QWidget *buildImageBase64Page();
-    QWidget *buildWebSocketPage();
-    QWidget *buildUuidPage();
-    QWidget *buildHashPage();
-    QWidget *buildUrlCodecPage();
-    QWidget *buildBase64TextPage();
-    QWidget *buildJwtPage();
-    QWidget *buildNumberBasePage();
-    QWidget *buildCasePage();
-    void setOutput(QPlainTextEdit *output, QLabel *message, const QString &text, const QString &error);
-    bool resolveAiCredentials(AiSettings *settings, QString *apiKey, QString *error) const;
     void wireAiAssist(QWidget *page,
                       QPushButton *assistButton,
                       QPushButton *stopButton,
@@ -62,6 +34,9 @@ private:
                       const std::function<QString()> &userContentProvider,
                       const QString &systemPrompt,
                       const std::function<void()> &onStart = {});
+
+private:
+    bool resolveAiCredentials(AiSettings *settings, QString *apiKey, QString *error) const;
 
     AiSettingsStore *m_aiSettings = nullptr;
     CredentialStore *m_credentials = nullptr;

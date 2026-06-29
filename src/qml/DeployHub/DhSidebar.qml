@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 Item {
     id: root
-    implicitWidth: Theme.sidebarWidth
+    implicitWidth: 220
     implicitHeight: column.implicitHeight
 
     property alias model: navList.model
@@ -13,69 +13,43 @@ Item {
     signal settingsClicked()
 
     Rectangle {
-        id: shell
         anchors.fill: parent
-        radius: Theme.sidebarRadius
-        border.color: Theme.sidebarBorder
-        border.width: 1
-        clip: false
-
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Visual.gradientTop }
-            GradientStop { position: 1.0; color: Visual.gradientBottom }
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.topMargin: Visual.effectsEnabled ? Visual.shadowOffsetY : 0
-            radius: parent.radius
-            visible: Visual.effectsEnabled
-            color: "#000000"
-            opacity: Visual.shadowOpacity
-            z: -1
-        }
+        color: "#FFFFFF"
     }
 
     ColumnLayout {
         id: column
         anchors.fill: parent
-        anchors.margins: Theme.space12
-        anchors.topMargin: Theme.space16
-        anchors.bottomMargin: Theme.space16
-        spacing: Theme.space12
+        anchors.margins: 16
+        spacing: 12
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: Theme.space8
+            spacing: 8
             Layout.preferredHeight: 48
 
             Rectangle {
-                width: Theme.brandMarkSize
-                height: Theme.brandMarkSize
-                radius: 10
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Theme.accent }
-                    GradientStop { position: 1.0; color: Theme.accentStrong }
-                }
+                width: 32
+                height: 32
+                radius: 8
+                color: "#2563EB"
 
                 Text {
                     anchors.centerIn: parent
                     text: "D"
                     color: "#FFFFFF"
-                    font.pixelSize: Theme.fontBrand
+                    font.pixelSize: 16
                     font.weight: Font.Bold
-                    font.family: Theme.fontFamilyLatin
                     renderType: Text.NativeRendering
                 }
             }
 
             Text {
                 text: "Deploy Hub"
-                font.pixelSize: Theme.fontBrand
-                font.weight: Font.DemiBold
-                font.family: Theme.fontFamilyLatin
+                font.pixelSize: 16
+                font.weight: Font.Medium
+                color: "#1A1A2E"
                 renderType: Text.NativeRendering
-                color: Theme.sidebarBrandText
                 Layout.fillWidth: true
             }
         }
@@ -84,47 +58,46 @@ Item {
             id: navList
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: Theme.space4
+            spacing: 2
             clip: true
-            cacheBuffer: 240
-            reuseItems: true
-            enabled: !AppShell.settingsVisible
-
-            onMovementStarted: Visual.effectsEnabled = false
-            onMovementEnded: Visual.effectsEnabled = true
-            onFlickStarted: Visual.effectsEnabled = false
-            onFlickEnded: Visual.effectsEnabled = true
 
             delegate: ItemDelegate {
                 id: navItem
                 width: navList.width
-                height: 44
+                height: 40
                 hoverEnabled: true
                 padding: 0
 
+                readonly property bool isSelected: index === root.currentIndex && !AppShell.settingsVisible
+
                 background: Rectangle {
-                    radius: Theme.navItemRadius
-                    color: AppShell.settingsVisible ? "transparent"
-                           : (index === root.currentIndex ? Theme.accentStrong
-                              : (navItem.hovered ? Theme.sidebarHover : "transparent"))
-                    Behavior on color {
-                        enabled: Visual.effectsEnabled
-                        ColorAnimation { duration: 120 }
-                    }
+                    radius: 8
+                    color: navItem.isSelected ? "#EFF6FF"
+                           : (navItem.hovered ? "#F3F4F6" : "transparent")
                 }
 
-                contentItem: Text {
-                    text: modelData
-                    leftPadding: Theme.space16
-                    rightPadding: Theme.space16
-                    font.pixelSize: Theme.fontBody
-                    font.family: Theme.fontFamily
-                    font.weight: (!AppShell.settingsVisible && index === root.currentIndex)
-                                  ? Font.DemiBold : Font.Normal
-                    renderType: Text.NativeRendering
-                    color: AppShell.settingsVisible ? Theme.sidebarText
-                           : (index === root.currentIndex ? "#FFFFFF" : Theme.sidebarText)
-                    verticalAlignment: Text.AlignVCenter
+                contentItem: RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 10
+
+                    Rectangle {
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        radius: 4
+                        color: navItem.isSelected ? "#2563EB" : "#D1D5DB"
+                    }
+
+                    Text {
+                        text: modelData
+                        font.pixelSize: 14
+                        font.weight: navItem.isSelected ? Font.Medium : Font.Normal
+                        color: navItem.isSelected ? "#2563EB" : "#6B7280"
+                        renderType: Text.NativeRendering
+                        verticalAlignment: Text.AlignVCenter
+                        Layout.fillWidth: true
+                    }
                 }
 
                 onClicked: root.itemClicked(index)
@@ -134,40 +107,52 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Theme.sidebarDivider
+            color: "#E5E9F0"
             opacity: 0.6
         }
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: Theme.space8
+            spacing: 8
 
             Button {
                 id: settingsButton
                 Layout.fillWidth: true
-                text: "\u2699  \u8BBE\u7F6E"
+                text: "设置"
                 flat: true
                 checkable: true
                 checked: AppShell.settingsVisible
                 padding: 0
                 implicitHeight: 40
 
-                contentItem: Text {
-                    text: settingsButton.text
-                    leftPadding: Theme.space12
-                    rightPadding: Theme.space12
-                    font.pixelSize: Theme.fontBody
-                    font.family: Theme.fontFamily
-                    font.weight: Font.Medium
-                    renderType: Text.NativeRendering
-                    color: settingsButton.checked ? "#FFFFFF" : Theme.sidebarText
-                    verticalAlignment: Text.AlignVCenter
+                contentItem: RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 10
+
+                    Rectangle {
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        radius: 4
+                        color: settingsButton.checked ? "#2563EB" : "#D1D5DB"
+                    }
+
+                    Text {
+                        text: settingsButton.text
+                        font.pixelSize: 14
+                        font.weight: settingsButton.checked ? Font.Medium : Font.Normal
+                        color: settingsButton.checked ? "#2563EB" : "#6B7280"
+                        renderType: Text.NativeRendering
+                        verticalAlignment: Text.AlignVCenter
+                        Layout.fillWidth: true
+                    }
                 }
 
                 background: Rectangle {
-                    radius: Theme.navItemRadius
-                    color: settingsButton.checked ? Theme.accentStrong
-                         : (settingsButton.hovered ? Theme.sidebarHover : "transparent")
+                    radius: 8
+                    color: settingsButton.checked ? "#EFF6FF"
+                         : (settingsButton.hovered ? "#F3F4F6" : "transparent")
                 }
 
                 onClicked: {
@@ -181,12 +166,11 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                leftPadding: Theme.space12
+                leftPadding: 12
                 text: "Admin"
-                font.pixelSize: Theme.fontCaption
-                font.family: Theme.fontFamilyLatin
+                font.pixelSize: 12
+                color: "#9CA3AF"
                 renderType: Text.NativeRendering
-                color: Theme.sidebarTextMuted
             }
         }
     }

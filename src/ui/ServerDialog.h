@@ -30,6 +30,9 @@ public:
     bool shouldRememberPassword() const;
     bool shouldClearStoredPassword() const;
 
+signals:
+    void connectionTestSucceeded();
+
 private slots:
     void onOsChanged(int index);
     void onAuthModeChanged(int index);

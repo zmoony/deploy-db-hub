@@ -674,11 +674,14 @@ QWidget *wrapContentPanel(QWidget *page)
 {
     auto *panel = new QFrame;
     panel->setObjectName(QStringLiteral("contentPanel"));
+    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    panel->setMinimumWidth(0);
     auto *panelLayout = new QVBoxLayout(panel);
     panelLayout->setContentsMargins(Space24, Space24, Space24, Space24);
     panelLayout->setSpacing(Space24);
     if (page != nullptr) {
         page->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        page->setMinimumWidth(0);
         panelLayout->addWidget(page, 1);
     }
     return panel;
@@ -809,6 +812,8 @@ QWidget *wrapSidebarNavigation(QListWidget *navigation, QPushButton **settingsBu
 QWidget *wrapTableSection(QTableWidget *table, QLabel **emptyStateOut, const QString &emptyMessage)
 {
     auto *section = new QWidget;
+    section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    section->setMinimumWidth(0);
     auto *layout = new QVBoxLayout(section);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
@@ -817,12 +822,15 @@ QWidget *wrapTableSection(QTableWidget *table, QLabel **emptyStateOut, const QSt
     emptyState->setObjectName(QStringLiteral("emptyState"));
     emptyState->setAlignment(Qt::AlignCenter);
     emptyState->setWordWrap(true);
+    emptyState->setMinimumWidth(0);
+    emptyState->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     configureStaticLabel(emptyState);
     layout->addWidget(emptyState, 1);
 
     configureDataTable(table);
     configureListingTable(table);
     table->setMinimumHeight(200);
+    table->setMinimumWidth(0);
     layout->addWidget(table, 1);
 
     if (emptyStateOut != nullptr) {

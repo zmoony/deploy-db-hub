@@ -91,9 +91,13 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     toolbar->setContentsMargins(0, 0, 0, 0);
     toolbar->setSpacing(PageLayout::Space12);
     auto *refreshButton = new QPushButton(QStringLiteral("刷新"));
+    refreshButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *statusButton = new QPushButton(QStringLiteral("查看状态"));
+    statusButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *startButton = new QPushButton(QStringLiteral("启动服务"));
+    startButton->setObjectName(QStringLiteral("secondaryButton"));
     auto *stopButton = new QPushButton(QStringLiteral("关闭服务"));
+    stopButton->setObjectName(QStringLiteral("secondaryButton"));
     toolbar->addWidget(refreshButton);
     toolbar->addWidget(statusButton);
     toolbar->addWidget(startButton);
@@ -117,7 +121,7 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(PageLayout::Space8);
 
-    m_emptyState = new QLabel(QStringLiteral("暂无项目。点击「新建项目」添加第一个部署配置。"), leftPanel);
+    m_emptyState = new QLabel(QStringLiteral("暂无项目。点击右侧「新建」添加第一个部署配置。"), leftPanel);
     m_emptyState->setObjectName(QStringLiteral("emptyState"));
     m_emptyState->setAlignment(Qt::AlignCenter);
     m_emptyState->setWordWrap(true);
@@ -386,14 +390,12 @@ void ProjectManagerWidget::populateList(const QVector<StoredRecord> &records)
     if (showAllGroups) {
         QString pendingGroup;
         int pendingCount = 0;
-        QVector<StoredRecord> pendingProjects;
         for (const StoredRecord &record : sorted) {
             const QString groupLabel = displayGroupLabel(normalizedGroup(record.config));
             if (groupLabel != pendingGroup) {
                 appendGroupHeader(pendingGroup, pendingCount);
                 pendingGroup = groupLabel;
                 pendingCount = 0;
-                pendingProjects.clear();
             }
             appendProject(record);
             ++pendingCount;
@@ -462,12 +464,8 @@ void ProjectManagerWidget::refreshDetailCard()
     m_serverValue->setText(deploy.value(QStringLiteral("serverId")).toString());
     m_groupValue->setText(displayGroupLabel(normalizedGroup(project)));
     m_strategyValue->setText(strategy);
-    if (m_statusValue->text().isEmpty()) {
-        m_statusValue->setText(QStringLiteral("未检测"));
-    }
-    if (m_pidValue->text().isEmpty()) {
-        m_pidValue->setText(QStringLiteral("-"));
-    }
+    m_statusValue->setText(QStringLiteral("未检测"));
+    m_pidValue->setText(QStringLiteral("-"));
 
     m_detailEmptyState->setVisible(false);
     m_detailContent->setVisible(true);

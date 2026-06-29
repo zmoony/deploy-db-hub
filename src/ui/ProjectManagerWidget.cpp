@@ -225,21 +225,36 @@ void ProjectManagerWidget::buildDetailCard()
     metaForm->setSpacing(PageLayout::Space12);
     metaForm->setHorizontalSpacing(PageLayout::Space16);
     metaForm->setLabelAlignment(Qt::AlignLeft);
+    metaForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     m_typeValue = new QLabel(m_detailContent);
     m_typeValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_typeValue->setMinimumWidth(0);
+    m_typeValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_sourceValue = new QLabel(m_detailContent);
     m_sourceValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_sourceValue->setMinimumWidth(0);
+    m_sourceValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_serverValue = new QLabel(m_detailContent);
     m_serverValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_serverValue->setMinimumWidth(0);
+    m_serverValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_groupValue = new QLabel(m_detailContent);
     m_groupValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_groupValue->setMinimumWidth(0);
+    m_groupValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_strategyValue = new QLabel(m_detailContent);
     m_strategyValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_strategyValue->setMinimumWidth(0);
+    m_strategyValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_statusValue = new QLabel(m_detailContent);
     m_statusValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_statusValue->setMinimumWidth(0);
+    m_statusValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_pidValue = new QLabel(m_detailContent);
     m_pidValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
+    m_pidValue->setMinimumWidth(0);
+    m_pidValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     metaForm->addRow(makeMetaLabel(QStringLiteral("类型"), m_detailContent), m_typeValue);
     metaForm->addRow(makeMetaLabel(QStringLiteral("来源"), m_detailContent), m_sourceValue);

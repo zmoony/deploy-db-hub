@@ -428,3 +428,9 @@
   - `ProjectDialog` 保存/取消按钮分别设置 `primaryButton`/`secondaryButton` 对象名。
   - `style.qss` 新增 `projectDetailName`、`projectDetailMetaLabel`、`projectDetailMetaValue` 样式。
   - 已通过 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure`。
+- 2026-06-29：修复 Task 5 代码审查问题：
+  - `ProjectManagerWidget::refreshDetailCard()` 切换项目时先重置状态/PID 标签为「未检测」/「-」，再由服务状态更新路径覆盖，避免旧项目信息残留。
+  - 删除 `populateList()` 中未使用的 `pendingProjects` 变量及 `clear()` 调用。
+  - 空状态提示改为「点击右侧「新建」添加第一个部署配置」。
+  - 服务操作工具栏按钮（刷新/查看状态/启动服务/关闭服务）统一设置 `secondaryButton` 对象名。
+  - 已通过 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure`，并提交 `b61df1d`。

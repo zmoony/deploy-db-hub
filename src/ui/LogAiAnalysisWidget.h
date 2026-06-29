@@ -1,14 +1,16 @@
 #pragma once
 
+#include <QString>
 #include <QWidget>
 
 class AiSettingsStore;
-class AiStreamBuffer;
 class CredentialStore;
 class QLabel;
 class OpenAiChatClient;
-class QPlainTextEdit;
 class QPushButton;
+class QScrollArea;
+class QTimer;
+class QVBoxLayout;
 
 class LogAiAnalysisWidget final : public QWidget
 {
@@ -24,13 +26,28 @@ public:
     void abortAnalysis();
 
 private:
+    enum class BubbleRole { User, Bot };
+
+    void appendBubble(BubbleRole role, const QString &text);
+    void appendToBotBubble(const QString &chunk);
+    void flushBotBubble();
+    void clearConversation();
+    void scrollToBottom();
+
     AiSettingsStore *m_aiSettings = nullptr;
     CredentialStore *m_credentials = nullptr;
     OpenAiChatClient *m_client = nullptr;
-    AiStreamBuffer *m_outputBuffer = nullptr;
     QString m_logContent;
+    QString m_streamingBuffer;
+
     QPushButton *m_analyzeButton = nullptr;
     QPushButton *m_stopButton = nullptr;
-    QPlainTextEdit *m_output = nullptr;
     QLabel *m_message = nullptr;
+
+    QScrollArea *m_scrollArea = nullptr;
+    QWidget *m_chatContainer = nullptr;
+    QVBoxLayout *m_chatLayout = nullptr;
+    QLabel *m_currentBotBubble = nullptr;
+
+    QTimer *m_streamFlushTimer = nullptr;
 };

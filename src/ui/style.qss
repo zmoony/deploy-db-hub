@@ -1151,17 +1151,66 @@
             color: @C3@;
             font-size: 12px;
         }
-        QPlainTextEdit#aiChatHistory {
+        QLabel#botMessage {
+            background-color: @C24@;
+            border: none;
+            border-radius: 0px 16px 16px 16px;
+            padding: 12px 16px;
+            color: @C2@;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        QLabel#userMessage {
+            background-color: @C6@;
+            border: none;
+            border-radius: 16px 0px 16px 16px;
+            padding: 12px 16px;
+            color: #FFFFFF;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        QFrame#aiChatContainer {
             background-color: #FFFFFF;
             border: 1px solid @C4@;
-            border-radius: @C5@px;
-            padding: 12px;
+            border-radius: @C21@px;
+        }
+        QScrollArea#aiChatScrollArea {
+            background-color: transparent;
+            border: none;
+            border-radius: @C21@px;
+        }
+        QScrollArea#aiChatScrollArea > QWidget > QWidget {
+            background-color: transparent;
+        }
+        QWidget#aiChatBubbleContainer {
+            background-color: transparent;
+        }
+        QLabel#userBubble {
+            background-color: @C6@;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 12px;
+            border-top-right-radius: 4px;
+            padding: 10px 14px;
+            max-width: 420px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        QLabel#botBubble {
+            background-color: @C24@;
             color: @C2@;
+            border: none;
+            border-radius: 12px;
+            border-top-left-radius: 4px;
+            padding: 10px 14px;
+            max-width: 480px;
+            font-size: 13px;
+            line-height: 1.5;
         }
         QFrame#aiInputCard {
             background-color: #FFFFFF;
             border: 1px solid @C4@;
-            border-radius: @C5@px;
+            border-radius: @C21@px;
         }
         QPlainTextEdit#aiChatInput {
             background-color: transparent;

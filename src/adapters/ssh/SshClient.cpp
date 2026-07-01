@@ -392,6 +392,13 @@ RemoteCommandResult SshClient::execute(const QString &command, int timeoutSec)
 
 UploadResult SshClient::uploadFile(const QString &localPath, const QString &remotePath)
 {
+    return uploadFile(localPath, remotePath, true);
+}
+
+UploadResult SshClient::uploadFile(const QString &localPath,
+                                   const QString &remotePath,
+                                   bool ensureRemoteDir)
+{
     std::lock_guard<std::recursive_mutex> lock(m_ioMutex);
     UploadResult result;
     QFileInfo localFile(localPath);
@@ -407,9 +414,11 @@ UploadResult SshClient::uploadFile(const QString &localPath, const QString &remo
     }
 
     const QString normalizedRemote = normalizeRemotePath(remotePath);
-    const int slashIndex = normalizedRemote.lastIndexOf(QLatin1Char('/'));
-    if (slashIndex > 0) {
-        createDirectory(normalizedRemote.left(slashIndex));
+    if (ensureRemoteDir) {
+        const int slashIndex = normalizedRemote.lastIndexOf(QLatin1Char('/'));
+        if (slashIndex > 0) {
+            createDirectory(normalizedRemote.left(slashIndex));
+        }
     }
 
     QStringList args = baseScpArgs();

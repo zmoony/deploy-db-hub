@@ -20,6 +20,7 @@ class BigDataManagerWidget;
 class CommonToolsWidget;
 class DatabaseManagerWidget;
 class ProjectManagerWidget;
+class DeployWorker;
 class QComboBox;
 class QLineEdit;
 class QPlainTextEdit;
@@ -28,6 +29,7 @@ class QButtonGroup;
 class QPushButton;
 class QStackedWidget;
 class QTableWidget;
+class QThread;
 class ServerManagerWidget;
 
 class MainWindow final : public QMainWindow
@@ -52,6 +54,8 @@ private slots:
     void viewHistoryLog();
     void clearDeploymentHistory();
     void manageJdkProfiles();
+    void openDeployServerManager();
+    void requestStopDeployment();
     void saveSettings();
     void saveGlobalJdbcSettings();
     void onModuleChanged(int index);
@@ -106,7 +110,9 @@ private:
     QComboBox *m_deployServer = nullptr;
     QComboBox *m_jdkSelector = nullptr;
     QPushButton *m_manageJdkButton = nullptr;
+    QPushButton *m_openServerManagerButton = nullptr;
     QComboBox *m_logPathInput = nullptr;
+    QLabel *m_logPathDisplayLabel = nullptr;
     QPushButton *m_refreshLogListButton = nullptr;
     QPushButton *m_viewLogButton = nullptr;
     QLabel *m_serviceStatusLabel = nullptr;
@@ -114,6 +120,11 @@ private:
     QPlainTextEdit *m_log = nullptr;
     QProgressBar *m_progress = nullptr;
     QPushButton *m_deployButton = nullptr;
+    QPushButton *m_stopDeployButton = nullptr;
+    DeployWorker *m_activeWorker = nullptr;
+    QThread *m_activeWorkerThread = nullptr;
+    QLabel *m_deployTaskLabel = nullptr;
+    QLabel *m_deployProgressLabel = nullptr;
     QLabel *m_recentDeploymentsEmpty = nullptr;
     QLabel *m_historyEmpty = nullptr;
     QTableWidget *m_recentTable = nullptr;

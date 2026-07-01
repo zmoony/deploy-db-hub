@@ -29,10 +29,14 @@ private slots:
 
 private:
     enum class BubbleRole { User, Bot };
+    void appendWelcomeMessage();
     void appendBubble(BubbleRole role, const QString &text);
     void appendToBotBubble(const QString &text);
     void flushBotBubble();
+    void showTypingIndicator();
+    void hideTypingIndicator();
     void setBusy(bool busy);
+    void setSelectedChip(int index);
     void scrollToBottom();
 
     AiSettingsStore *m_aiSettings = nullptr;
@@ -45,12 +49,16 @@ private:
     QScrollArea *m_scrollArea = nullptr;
     QWidget *m_chatContainer = nullptr;
     QVBoxLayout *m_chatLayout = nullptr;
+    QWidget *m_typingRow = nullptr;
     QLabel *m_currentBotBubble = nullptr;
 
     QPlainTextEdit *m_input = nullptr;
+    QWidget *m_inputTopRow = nullptr;
+    QLabel *m_inputHint = nullptr;
     QPushButton *m_sendButton = nullptr;
     QPushButton *m_stopButton = nullptr;
-    QPushButton *m_newChatButton = nullptr;
     QLabel *m_message = nullptr;
     QTimer *m_streamFlushTimer = nullptr;
+    QList<QPushButton *> m_actionChips;
+    int m_selectedChipIndex = -1;
 };

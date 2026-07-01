@@ -2,11 +2,14 @@
 
 #include "infra/ProcessOutputDecoder.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
+
+#include <functional>
 
 namespace {
 
@@ -82,7 +85,29 @@ BuildResult LocalBuilder::run(const BuildRequest &request) const
         return result;
     }
 
-    if (!process.waitForFinished(request.timeoutSec * 1000)) {
+    if (request.shouldCancel) {
+        const qint64 deadline = QDateTime::currentMSecsSinceEpoch() + qint64(request.timeoutSec) * 1000;
+        while (process.state() != QProcess::NotRunning) {
+            if (request.shouldCancel()) {
+                process.kill();
+                process.waitForFinished(2000);
+                result.error = QStringLiteral("构建已取消");
+                return result;
+            }
+            const qint64 remaining = deadline - QDateTime::currentMSecsSinceEpoch();
+            if (remaining <= 0) {
+                process.kill();
+                process.waitForFinished();
+                result.error = QStringLiteral("构建超时");
+                return result;
+            }
+            if (!process.waitForFinished(qMin<qint64>(500, remaining))) {
+                if (process.state() == QProcess::NotRunning) {
+                    break;
+                }
+            }
+        }
+    } else if (!process.waitForFinished(request.timeoutSec * 1000)) {
         process.kill();
         process.waitForFinished();
         result.error = QStringLiteral("构建超时");

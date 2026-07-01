@@ -20,6 +20,13 @@ RemoteCommandResult SshRemoteExecutor::execute(const QString &command, int timeo
 
 UploadResult SshRemoteExecutor::uploadFile(const QString &localPath, const QString &remotePath)
 {
+    return uploadFile(localPath, remotePath, true);
+}
+
+UploadResult SshRemoteExecutor::uploadFile(const QString &localPath,
+                                           const QString &remotePath,
+                                           bool ensureRemoteDir)
+{
     SshClient client(m_context);
-    return client.uploadFile(localPath, remotePath);
+    return client.uploadFile(localPath, remotePath, ensureRemoteDir);
 }

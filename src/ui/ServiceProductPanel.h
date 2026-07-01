@@ -93,6 +93,8 @@ private:
     void refreshSqlWorkbench();
     void executeSqlQuery(const QString &sql);
     void updateSqlConnectionSummary();
+    void showTableStructure(const QString &tableName);
+    void deleteTable(const QString &tableName);
 
     ServiceProductKind m_product;
     ConfigStore *m_store = nullptr;
@@ -123,6 +125,7 @@ private:
     QWidget *m_detailToolbar = nullptr;
     QHBoxLayout *m_detailToolbarLayout = nullptr;
     QComboBox *m_schemaCombo = nullptr;
+    QPushButton *m_schemaRefreshButton = nullptr;
     QString m_activeSchema;
     int m_currentDetailTab = 0;
     QHash<int, QVector<QJsonObject>> m_detailTabCache;

@@ -223,7 +223,9 @@ RestartExecutionPlan buildRestartExecutionPlan(const QJsonObject &project, const
         plan.requiresScriptUpload = true;
         const QString remoteScript = remoteRestartScriptPath(project, plan.localScriptPath);
         plan.remoteCommand = QStringLiteral("bash %1").arg(shellQuoteSingle(remoteScript));
+        return plan;
     }
+
     return plan;
 }
 
@@ -311,4 +313,164 @@ QString defaultWindowsServiceStatusCommand(const QJsonObject &project)
         "} | Select-Object -First 1; "
         "if ($null -eq $p) { 'STOPPED' } else { 'RUNNING:' + $p.ProcessId }\"")
         .arg(match);
+}
+
+QString defaultRestartCommandSuffix()
+{
+    return QStringLiteral("\ndisown\nsleep 2\necho \"started\"");
+}
+
+QString stopAndKillServiceCommand(const QJsonObject &project)
+{
+    const ProjectServiceConfig service = projectServiceConfig(project);
+    const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
+    const QString os = deploy.value(QStringLiteral("os")).toString();
+    const QString remoteBaseDir = normalizedRemotePath(deploy.value(QStringLiteral("remoteBaseDir")).toString());
+
+    QString matchPattern;
+    if (!service.targetJarPath.isEmpty()) {
+        matchPattern = QFileInfo(service.targetJarPath).fileName();
+    } else if (!service.serviceMatch.isEmpty()) {
+        matchPattern = service.serviceMatch;
+    } else if (!remoteBaseDir.isEmpty()) {
+        matchPattern = QStringLiteral("*.jar");
+    }
+    if (matchPattern.isEmpty()) {
+        return {};
+    }
+
+    if (os == QStringLiteral("windows")) {
+        const QString match = shellQuoteSingle(matchPattern);
+        return QStringLiteral(
+            "powershell -NoProfile -Command \""
+            "$match = %1; "
+            "$procs = Get-CimInstance Win32_Process | Where-Object { "
+            "  $_.CommandLine -like ('*' + $match + '*') "
+            "  -and $_.CommandLine -notlike '*powershell*' "
+            "  -and $_.CommandLine -notlike '*winrs*' "
+            "}; "
+            "if ($procs) { "
+            "  $procs | ForEach-Object { "
+            "    try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} "
+            "  }; "
+            "  Start-Sleep -Seconds 2; "
+            "  $procs2 = Get-CimInstance Win32_Process | Where-Object { "
+            "    $_.CommandLine -like ('*' + $match + '*') "
+            "    -and $_.CommandLine -notlike '*powershell*' "
+            "    -and $_.CommandLine -notlike '*winrs*' "
+            "  }; "
+            "  if ($procs2) { "
+            "    $procs2 | ForEach-Object { "
+            "      try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} "
+            "    } "
+            "  } "
+            "}; "
+            "echo 'STOPPED'\"")
+            .arg(match);
+    }
+
+    const QString pattern = shellQuoteSingle(pgrepSafePattern(matchPattern));
+    return QStringLiteral(
+        "pids=$(pgrep -f %1 2>/dev/null); "
+        "if [ -n \"$pids\" ]; then "
+        "  echo \"TERM:$pids\"; "
+        "  echo \"$pids\" | xargs -r kill -TERM 2>/dev/null || true; "
+        "  for i in 1 2 3 4 5; do "
+        "    alive=$(pgrep -f %1 2>/dev/null | xargs -r -I{} sh -c 'kill -0 {} 2>/dev/null && echo {}' 2>/dev/null); "
+        "    if [ -z \"$alive\" ]; then break; fi; "
+        "    sleep 1; "
+        "  done; "
+        "  alive=$(pgrep -f %1 2>/dev/null | xargs -r -I{} sh -c 'kill -0 {} 2>/dev/null && echo {}' 2>/dev/null); "
+        "  if [ -n \"$alive\" ]; then "
+        "    echo \"KILL:$alive\"; "
+        "    echo \"$alive\" | xargs -r kill -KILL 2>/dev/null || true; "
+        "  fi; "
+        "fi; "
+        "sleep 1; "
+        "remaining=$(pgrep -f %1 2>/dev/null || true); "
+        "if [ -z \"$remaining\" ]; then echo 'STOPPED'; else echo \"STILL_ALIVE:$remaining\"; fi")
+        .arg(pattern);
+}
+
+QString waitForPortOpenCommand(const QString &os, const QString &host, int port, int timeoutSec)
+{
+    if (port <= 0 || timeoutSec <= 0) {
+        return {};
+    }
+    const QString safeHost = shellQuoteSingle(host.isEmpty() ? QStringLiteral("127.0.0.1") : host);
+    const int clamped = qBound(5, timeoutSec, 180);
+
+    if (os == QStringLiteral("windows")) {
+        return QStringLiteral(
+            "powershell -NoProfile -Command \""
+            "$port = %1; $timeout = %2; "
+            "$deadline = (Get-Date).AddSeconds($timeout); "
+            "while ((Get-Date) -lt $deadline) { "
+            "  $conn = Test-NetConnection -ComputerName 127.0.0.1 -Port $port -WarningAction SilentlyContinue -InformationLevel Quiet; "
+            "  if ($conn) { Write-Host (\"LISTENING:\" + $port); exit 0 } "
+            "  Start-Sleep -Seconds 2 "
+            "}; "
+            "Write-Host 'TIMEOUT'\"")
+            .arg(port)
+            .arg(clamped);
+    }
+
+    return QStringLiteral(
+        "port=%1; deadline=$((SECONDS+%2)); "
+        "while [ $SECONDS -lt $deadline ]; do "
+        "  if (echo > /dev/tcp/127.0.0.1/$port) 2>/dev/null; then "
+        "    echo \"LISTENING:$port\"; exit 0; "
+        "  fi; "
+        "  sleep 2; "
+        "done; "
+        "echo 'TIMEOUT'")
+        .arg(port)
+        .arg(clamped);
+}
+
+QString waitForPidAliveCommand(const QString &os, int pid, int timeoutSec)
+{
+    if (pid <= 0) {
+        return {};
+    }
+    const int clamped = qBound(3, timeoutSec, 60);
+    if (os == QStringLiteral("windows")) {
+        return QStringLiteral(
+            "powershell -NoProfile -Command \""
+            "$pid = %1; $t = 0; "
+            "while ($t -lt %2) { "
+            "  $p = Get-Process -Id $pid -ErrorAction SilentlyContinue; "
+            "  if ($p) { Write-Host 'ALIVE'; exit 0 }; "
+            "  Start-Sleep -Seconds 1; $t++ "
+            "}; "
+            "Write-Host 'DEAD'\"")
+            .arg(pid)
+            .arg(clamped);
+    }
+    return QStringLiteral(
+        "pid=%1; deadline=$((SECONDS+%2)); "
+        "while [ $SECONDS -lt $deadline ]; do "
+        "  if kill -0 $pid 2>/dev/null; then echo ALIVE; exit 0; fi; "
+        "  sleep 1; "
+        "done; "
+        "echo DEAD")
+        .arg(pid)
+        .arg(clamped);
+}
+
+int resolveHealthCheckPort(const QJsonObject &project)
+{
+    const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
+    const int explicitPort = deploy.value(QStringLiteral("healthCheckPort")).toInt(0);
+    if (explicitPort > 0 && explicitPort < 65536) {
+        return explicitPort;
+    }
+    const ProjectServiceConfig service = projectServiceConfig(project);
+    if (!service.targetJarPath.isEmpty()) {
+        const QString jarName = QFileInfo(service.targetJarPath).fileName().toLower();
+        if (jarName.contains(QStringLiteral("9201")) || jarName.contains(QStringLiteral("gateway"))) {
+            return 9201;
+        }
+    }
+    return 0;
 }

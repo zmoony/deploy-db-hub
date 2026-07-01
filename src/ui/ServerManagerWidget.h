@@ -26,8 +26,9 @@ signals:
     void serversChanged();
 
 private slots:
-    void reload();
-    void addServer();
+   void reload();
+    void pingServers();
+   void addServer();
     void editServer();
     void deleteServer();
     void browseRemoteFiles();

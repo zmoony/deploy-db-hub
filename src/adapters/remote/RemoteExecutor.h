@@ -28,6 +28,9 @@ public:
     virtual RemoteCommandResult testConnection() = 0;
     virtual RemoteCommandResult execute(const QString &command, int timeoutSec) = 0;
     virtual UploadResult uploadFile(const QString &localPath, const QString &remotePath) = 0;
+    virtual UploadResult uploadFile(const QString &localPath,
+                                   const QString &remotePath,
+                                   bool ensureRemoteDir) = 0;
 };
 
 std::unique_ptr<RemoteExecutor> createRemoteExecutor(const RemoteConnectionContext &context);

@@ -219,8 +219,12 @@ qt_add_executable(deploy-hub WIN32
     src/ui/ServiceDatabaseConnectionDialog.h
     src/ui/ServiceRedisConnectionDialog.cpp
     src/ui/ServiceRedisConnectionDialog.h
+    src/ui/ServiceRedisSearchDialog.cpp
+    src/ui/ServiceRedisSearchDialog.h
     src/ui/ServiceElasticsearchQueryDialog.cpp
     src/ui/ServiceElasticsearchQueryDialog.h
+    src/ui/ServiceElasticsearchIndexStructureDialog.cpp
+    src/ui/ServiceElasticsearchIndexStructureDialog.h
     src/ui/ServerMonitorDialog.cpp
     src/ui/ServerMonitorDialog.h
     src/ui/PathPickerWidget.cpp

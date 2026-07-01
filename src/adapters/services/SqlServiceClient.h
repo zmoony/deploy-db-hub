@@ -13,6 +13,15 @@ public:
     static ServiceResult listSchemas(const ServiceEndpoint &endpoint, const QString &productKey);
     static ServiceResult listTables(const ServiceEndpoint &endpoint, const QString &productKey, const QString &schema);
     static ServiceResult executeQuery(const ServiceEndpoint &endpoint, const QString &productKey, const QString &sql);
+    static ServiceResult describeTable(const ServiceEndpoint &endpoint,
+                                       const QString &productKey,
+                                       const QString &schema,
+                                       const QString &table);
+    static ServiceResult dropTable(const ServiceEndpoint &endpoint,
+                                   const QString &productKey,
+                                   const QString &schema,
+                                   const QString &table);
+    static QString withSchemaContext(const QString &productKey, const QString &schema, const QString &sql);
     static ServiceResult sampleRows(const ServiceEndpoint &endpoint,
                                     const QString &productKey,
                                     const QString &schema,

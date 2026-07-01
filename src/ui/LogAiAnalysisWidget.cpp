@@ -14,13 +14,13 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSizePolicy>
 #include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
 
 constexpr int kStreamFlushIntervalMs = 30;
-constexpr int kMaxBubblePreviewChars = 400;
 
 QPushButton *makeActionButton(const QString &text, const QString &objectName, QWidget *parent)
 {
@@ -30,13 +30,15 @@ QPushButton *makeActionButton(const QString &text, const QString &objectName, QW
     return button;
 }
 
-QLabel *createBubbleLabel(QWidget *parent, const QString &objectName)
+QLabel *createResultLabel(QWidget *parent)
 {
     auto *label = new QLabel(parent);
-    label->setObjectName(objectName);
+    label->setObjectName(QStringLiteral("logAiAnalysisText"));
     label->setWordWrap(true);
     label->setTextInteractionFlags(Qt::TextSelectableByMouse);
     label->setScaledContents(false);
+    label->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
     return label;
 }
 
@@ -53,42 +55,51 @@ LogAiAnalysisWidget::LogAiAnalysisWidget(AiSettingsStore *aiSettings,
 {
     m_streamFlushTimer->setSingleShot(true);
     m_streamFlushTimer->setInterval(kStreamFlushIntervalMs);
-    connect(m_streamFlushTimer, &QTimer::timeout, this, &LogAiAnalysisWidget::flushBotBubble);
+    connect(m_streamFlushTimer, &QTimer::timeout, this, &LogAiAnalysisWidget::flushResult);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(PageLayout::Space8);
+    layout->setSpacing(PageLayout::Space10);
 
-    auto *toolbar = new QWidget(this);
+    auto *toolbar = new QFrame(this);
+    toolbar->setObjectName(QStringLiteral("logAiAnalysisToolbar"));
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(PageLayout::Space8);
+
+    auto *title = new QLabel(QStringLiteral("AI 日志分析"), toolbar);
+    title->setObjectName(QStringLiteral("sectionLabel"));
+    toolbarLayout->addWidget(title);
+    toolbarLayout->addStretch();
+
     m_analyzeButton = makeActionButton(QStringLiteral("AI 分析日志"), QStringLiteral("primaryButton"), toolbar);
     m_stopButton = makeActionButton(QStringLiteral("停止"), QStringLiteral("secondaryButton"), toolbar);
     m_stopButton->setEnabled(false);
     toolbarLayout->addWidget(m_analyzeButton);
     toolbarLayout->addWidget(m_stopButton);
-    toolbarLayout->addStretch();
     layout->addWidget(toolbar);
 
     m_scrollArea = new QScrollArea(this);
-    m_scrollArea->setObjectName(QStringLiteral("aiChatScrollArea"));
+    m_scrollArea->setObjectName(QStringLiteral("logAiAnalysisScrollArea"));
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setFrameShape(QFrame::NoFrame);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-    m_chatContainer = new QWidget(m_scrollArea);
-    m_chatContainer->setObjectName(QStringLiteral("aiChatBubbleContainer"));
-    m_chatLayout = new QVBoxLayout(m_chatContainer);
-    m_chatLayout->setContentsMargins(PageLayout::Space12,
-                                     PageLayout::Space12,
-                                     PageLayout::Space12,
-                                     PageLayout::Space12);
-    m_chatLayout->setSpacing(PageLayout::Space10);
-    m_chatLayout->addStretch(1);
+    auto *resultFrame = new QFrame(m_scrollArea);
+    resultFrame->setObjectName(QStringLiteral("logAiAnalysisResult"));
+    resultFrame->setMinimumHeight(220);
+    auto *resultLayout = new QVBoxLayout(resultFrame);
+    resultLayout->setContentsMargins(PageLayout::Space16,
+                                     PageLayout::Space16,
+                                     PageLayout::Space16,
+                                     PageLayout::Space16);
+    resultLayout->setSpacing(0);
+    m_resultLabel = createResultLabel(resultFrame);
+    m_resultLabel->setText(QStringLiteral("点击“AI 分析日志”后，这里会直接展示分析结果。"));
+    resultLayout->addWidget(m_resultLabel, 1);
 
-    m_scrollArea->setWidget(m_chatContainer);
+    m_scrollArea->setWidget(resultFrame);
     layout->addWidget(m_scrollArea, 1);
 
     m_message = new QLabel(this);
@@ -101,17 +112,15 @@ LogAiAnalysisWidget::LogAiAnalysisWidget(AiSettingsStore *aiSettings,
     };
 
     connect(m_client, &OpenAiChatClient::deltaReceived, this, [this](const QString &chunk) {
-        appendToBotBubble(chunk);
+        appendToResult(chunk);
     });
     connect(m_client, &OpenAiChatClient::finished, this, [this, setBusy]() {
-        flushBotBubble();
-        m_currentBotBubble = nullptr;
+        flushResult();
         m_message->setText(QStringLiteral("AI 分析完成"));
         setBusy(false);
     });
     connect(m_client, &OpenAiChatClient::failed, this, [this, setBusy](const QString &error) {
-        flushBotBubble();
-        m_currentBotBubble = nullptr;
+        flushResult();
         m_message->setText(QStringLiteral("AI 分析失败：%1").arg(error));
         setBusy(false);
     });
@@ -140,14 +149,8 @@ void LogAiAnalysisWidget::analyzeLog()
         return;
     }
 
-    clearConversation();
-
-    const QString preview = m_logContent.size() > kMaxBubblePreviewChars
-                                ? m_logContent.left(kMaxBubblePreviewChars)
-                                      + QStringLiteral("\n…(已截断)")
-                                : m_logContent;
-    appendBubble(BubbleRole::User, QStringLiteral("请分析以下部署日志：\n\n%1").arg(preview));
-    appendBubble(BubbleRole::Bot, QString());
+    clearResult();
+    m_resultLabel->setText(QStringLiteral("正在生成分析结果..."));
 
     m_client->abort();
     m_streamFlushTimer->stop();
@@ -176,38 +179,13 @@ void LogAiAnalysisWidget::abortAnalysis()
 {
     m_client->abort();
     m_streamFlushTimer->stop();
-    flushBotBubble();
-    m_currentBotBubble = nullptr;
+    flushResult();
     m_message->setText(QStringLiteral("已停止"));
     m_analyzeButton->setEnabled(true);
     m_stopButton->setEnabled(false);
 }
 
-void LogAiAnalysisWidget::appendBubble(BubbleRole role, const QString &text)
-{
-    auto *row = new QWidget(m_chatContainer);
-    auto *rowLayout = new QHBoxLayout(row);
-    rowLayout->setContentsMargins(0, 0, 0, 0);
-    rowLayout->setSpacing(PageLayout::Space8);
-
-    if (role == BubbleRole::User) {
-        rowLayout->addStretch();
-        auto *bubble = createBubbleLabel(row, QStringLiteral("userBubble"));
-        bubble->setText(text);
-        rowLayout->addWidget(bubble, 0, Qt::AlignRight);
-    } else {
-        auto *bubble = createBubbleLabel(row, QStringLiteral("botBubble"));
-        bubble->setText(text);
-        m_currentBotBubble = bubble;
-        rowLayout->addWidget(bubble, 0, Qt::AlignLeft);
-        rowLayout->addStretch();
-    }
-
-    m_chatLayout->insertWidget(m_chatLayout->count() - 1, row);
-    scrollToBottom();
-}
-
-void LogAiAnalysisWidget::appendToBotBubble(const QString &chunk)
+void LogAiAnalysisWidget::appendToResult(const QString &chunk)
 {
     m_streamingBuffer.append(chunk);
     if (!m_streamFlushTimer->isActive()) {
@@ -215,34 +193,30 @@ void LogAiAnalysisWidget::appendToBotBubble(const QString &chunk)
     }
 }
 
-void LogAiAnalysisWidget::flushBotBubble()
+void LogAiAnalysisWidget::flushResult()
 {
     m_streamFlushTimer->stop();
-    if (m_streamingBuffer.isEmpty() || m_currentBotBubble == nullptr) {
+    if (m_streamingBuffer.isEmpty() || m_resultLabel == nullptr) {
         return;
     }
     const QString text = m_streamingBuffer;
     m_streamingBuffer.clear();
 
-    const QString current = m_currentBotBubble->text();
-    m_currentBotBubble->setText(current + text);
+    QString current = m_resultLabel->text();
+    if (current == QStringLiteral("正在生成分析结果...")) {
+        current.clear();
+    }
+    m_resultLabel->setText(current + text);
     scrollToBottom();
 }
 
-void LogAiAnalysisWidget::clearConversation()
+void LogAiAnalysisWidget::clearResult()
 {
     m_streamFlushTimer->stop();
     m_streamingBuffer.clear();
-    m_currentBotBubble = nullptr;
-
-    QLayoutItem *item;
-    while ((item = m_chatLayout->takeAt(0)) != nullptr) {
-        if (item->widget()) {
-            item->widget()->deleteLater();
-        }
-        delete item;
+    if (m_resultLabel != nullptr) {
+        m_resultLabel->clear();
     }
-    m_chatLayout->addStretch(1);
 }
 
 void LogAiAnalysisWidget::scrollToBottom()

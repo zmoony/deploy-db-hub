@@ -14,6 +14,8 @@
 #include "ui/ServiceContentDialog.h"
 #include "ui/ServiceDatabaseConnectionDialog.h"
 #include "ui/ServiceElasticsearchQueryDialog.h"
+#include "ui/ServiceElasticsearchIndexStructureDialog.h"
+#include "ui/ServiceRedisSearchDialog.h"
 #include "ui/ServiceSqlDialog.h"
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -23,6 +25,8 @@
 #include "ui/ServiceSqlWorkbenchWidget.h"
 
 #include <QComboBox>
+#include <QDialog>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
 #include <QFutureWatcher>
@@ -53,6 +57,22 @@
 
 namespace {
 
+constexpr int kServiceToolbarButtonWidth = 96;
+constexpr int kServiceToolbarButtonHeight = 32;
+
+void configureServiceToolbarButton(QPushButton *button)
+{
+    if (button == nullptr) {
+        return;
+    }
+    button->setProperty("serviceToolbar", true);
+    button->setFixedSize(kServiceToolbarButtonWidth, kServiceToolbarButtonHeight);
+    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    button->setStyle(button->style());
+    button->style()->unpolish(button);
+    button->style()->polish(button);
+}
+
 QVector<ServiceProductPanel::DetailTabSpec> detailTabsFor(ServiceProductKind product)
 {
     switch (product) {
@@ -73,12 +93,12 @@ QVector<ServiceProductPanel::DetailTabSpec> detailTabsFor(ServiceProductKind pro
              {QStringLiteral("添加节点"), QStringLiteral("编辑"), QStringLiteral("删除"), QStringLiteral("刷新")}}
         };
     case ServiceProductKind::Redis:
-        return {
-            {QStringLiteral("Key 管理"),
-             {QStringLiteral("Key"), QStringLiteral("类型"), QStringLiteral("TTL"),
-              QStringLiteral("大小"), QStringLiteral("操作")},
-             {QStringLiteral("Key 搜索"), QStringLiteral("Key 写入"), QStringLiteral("Key 删除"), QStringLiteral("刷新")}}
-        };
+            return {
+                {QStringLiteral("Key 管理"),
+                 {QStringLiteral("Key"), QStringLiteral("类型"), QStringLiteral("TTL"),
+                  QStringLiteral("大小"), QStringLiteral("操作")},
+                 {QStringLiteral("Key 搜索"), QStringLiteral("Key 写入"), QStringLiteral("刷新")}}
+            };
     case ServiceProductKind::Elasticsearch:
         return {
             {QStringLiteral("索引管理(Index)"),
@@ -93,10 +113,6 @@ QVector<ServiceProductPanel::DetailTabSpec> detailTabsFor(ServiceProductKind pro
     case ServiceProductKind::Oracle:
     case ServiceProductKind::PostgreSQL:
         return {
-            {QStringLiteral("表管理(Table)"),
-             {QStringLiteral("表名"), QStringLiteral("描述"), QStringLiteral("字段数量"),
-              QStringLiteral("是否分区"), QStringLiteral("预估行数"), QStringLiteral("操作")},
-             {QStringLiteral("表导出"), QStringLiteral("刷新")}},
             {QStringLiteral("SQL"), {}, {}}
         };
     }
@@ -424,6 +440,10 @@ QWidget *ServiceProductPanel::buildListPage()
     auto *deleteButton = new QPushButton(QStringLiteral("删除"));
     deleteButton->setObjectName(QStringLiteral("dangerButton"));
     auto *refreshButton = new QPushButton(QStringLiteral("刷新"));
+    configureServiceToolbarButton(addButton);
+    configureServiceToolbarButton(editButton);
+    configureServiceToolbarButton(deleteButton);
+    configureServiceToolbarButton(refreshButton);
     toolbarLayout->addWidget(addButton);
     toolbarLayout->addWidget(editButton);
     toolbarLayout->addWidget(deleteButton);
@@ -537,9 +557,39 @@ QWidget *ServiceProductPanel::buildDetailPage()
     for (const DetailTabSpec &spec : m_detailTabs) {
         tabLabels.append(spec.title);
     }
-    layout->addWidget(PageLayout::makeLineTabBar(tabLabels, m_detailPage, &tabController, m_detailTabStack));
+
+    auto *tabRow = new QWidget(m_detailPage);
+    auto *tabRowLayout = new QHBoxLayout(tabRow);
+    tabRowLayout->setContentsMargins(0, 0, 0, 0);
+    tabRowLayout->setSpacing(PageLayout::Space8);
+    tabRowLayout->addWidget(PageLayout::makeLineTabBar(tabLabels, m_detailPage, &tabController, m_detailTabStack));
     m_detailTabController = tabController;
     connect(m_detailTabController, &LineTabBarController::tabActivated, this, &ServiceProductPanel::onDetailTabChanged);
+
+    if (isDatabaseConnectionProduct(m_product)) {
+        tabRowLayout->addStretch();
+        tabRowLayout->addWidget(new QLabel(QStringLiteral("模式"), tabRow));
+        m_schemaCombo = new QComboBox(tabRow);
+        PageLayout::configureFormInput(m_schemaCombo);
+        m_schemaCombo->setMinimumWidth(140);
+        tabRowLayout->addWidget(m_schemaCombo);
+        m_schemaRefreshButton = new QPushButton(QStringLiteral("刷新"), tabRow);
+        m_schemaRefreshButton->setObjectName(QStringLiteral("secondaryButton"));
+        m_schemaRefreshButton->setMinimumHeight(32);
+        tabRowLayout->addWidget(m_schemaRefreshButton);
+        connect(m_schemaCombo, &QComboBox::currentTextChanged, this, [this](const QString &schema) {
+            m_activeSchema = schema.trimmed();
+            if (m_sqlWorkbench != nullptr) {
+                m_sqlWorkbench->setCurrentSchema(m_activeSchema);
+            }
+            refreshSqlWorkbench();
+        });
+        connect(m_schemaRefreshButton, &QPushButton::clicked, this, [this]() {
+            updateSchemaCombo();
+            refreshSqlWorkbench();
+        });
+    }
+    layout->addWidget(tabRow);
 
     m_detailToolbar = new QWidget(m_detailPage);
     m_detailToolbarLayout = new QHBoxLayout(m_detailToolbar);
@@ -570,6 +620,13 @@ QWidget *ServiceProductPanel::buildDetailPage()
         m_sqlWorkbench = new ServiceSqlWorkbenchWidget(m_detailContentStack);
         m_detailContentStack->addWidget(m_sqlWorkbench);
         connect(m_sqlWorkbench, &ServiceSqlWorkbenchWidget::executeRequested, this, &ServiceProductPanel::executeSqlQuery);
+        connect(m_sqlWorkbench, &ServiceSqlWorkbenchWidget::refreshTablesRequested, this, [this]() {
+            refreshSqlWorkbench();
+        });
+        connect(m_sqlWorkbench, &ServiceSqlWorkbenchWidget::showTableStructureRequested, this,
+                &ServiceProductPanel::showTableStructure);
+        connect(m_sqlWorkbench, &ServiceSqlWorkbenchWidget::deleteTableRequested, this,
+                &ServiceProductPanel::deleteTable);
         connect(m_sqlWorkbench, &ServiceSqlWorkbenchWidget::tableSelected, this, [this](const QString &tableName) {
             if (tableName.isEmpty()) {
                 return;
@@ -638,7 +695,6 @@ void ServiceProductPanel::onDetailTabChanged(int index)
         }
         delete item;
     }
-    m_schemaCombo = nullptr;
 
     const DetailTabSpec &spec = m_detailTabs.at(index);
     for (const QString &action : spec.toolbarActions) {
@@ -647,30 +703,12 @@ void ServiceProductPanel::onDetailTabChanged(int index)
             || action.contains(QStringLiteral("主题添加"))) {
             button->setObjectName(QStringLiteral("primaryButton"));
         }
+        configureServiceToolbarButton(button);
         m_detailToolbarLayout->addWidget(button);
         connect(button, &QPushButton::clicked, this, &ServiceProductPanel::onDetailAction);
     }
 
-    if (currentTabKind() == ServiceBroker::TabKind::Table) {
-        m_schemaCombo = new QComboBox(m_detailToolbar);
-        PageLayout::configureFormInput(m_schemaCombo);
-        m_schemaCombo->setMinimumWidth(120);
-        m_detailToolbarLayout->addWidget(new QLabel(QStringLiteral("模式")));
-        m_detailToolbarLayout->addWidget(m_schemaCombo);
-        connect(m_schemaCombo, &QComboBox::currentTextChanged, this, [this](const QString &schema) {
-            m_activeSchema = schema.trimmed();
-            refreshDetailTable();
-        });
-        updateSchemaCombo();
-        if (!m_activeSchema.isEmpty()) {
-            const int index = m_schemaCombo->findText(m_activeSchema);
-            if (index >= 0) {
-                m_schemaCombo->setCurrentIndex(index);
-            }
-        } else if (m_schemaCombo->count() > 0) {
-            m_activeSchema = m_schemaCombo->currentText().trimmed();
-        }
-    } else if (m_product == ServiceProductKind::Redis && currentTabKind() == ServiceBroker::TabKind::Key) {
+    if (m_product == ServiceProductKind::Redis && currentTabKind() == ServiceBroker::TabKind::Key) {
         m_schemaCombo = new QComboBox(m_detailToolbar);
         PageLayout::configureFormInput(m_schemaCombo);
         m_schemaCombo->setMinimumWidth(88);
@@ -703,6 +741,9 @@ void ServiceProductPanel::onDetailTabChanged(int index)
     }
 
     if (sqlTab) {
+        if (isDatabaseConnectionProduct(m_product) && m_sqlWorkbench != nullptr) {
+            m_sqlWorkbench->setCurrentSchema(currentSchema());
+        }
         return;
     }
 
@@ -1064,10 +1105,10 @@ void ServiceProductPanel::setOperationCell(int row, const QJsonObject &rowData)
         auto *layout = new QHBoxLayout(panel);
         layout->setContentsMargins(PageLayout::Space4, 2, PageLayout::Space4, 2);
         layout->setSpacing(PageLayout::Space8);
-        QPushButton *button = PageLayout::makeTableActionButton(QStringLiteral("查询"),
-                                                                QStringLiteral("tableActionView"),
-                                                                panel);
-        connect(button, &QPushButton::clicked, this, [this, panel, column]() {
+        QPushButton *queryButton = PageLayout::makeTableActionButton(QStringLiteral("查询"),
+                                                                     QStringLiteral("tableActionView"),
+                                                                     panel);
+        connect(queryButton, &QPushButton::clicked, this, [this, panel, column]() {
             for (int tableRow = 0; tableRow < m_detailTable->rowCount(); ++tableRow) {
                 if (m_detailTable->cellWidget(tableRow, column) == panel) {
                     runDetailRowAction(tableRow, QStringLiteral("查询"));
@@ -1075,7 +1116,19 @@ void ServiceProductPanel::setOperationCell(int row, const QJsonObject &rowData)
                 }
             }
         });
-        layout->addWidget(button);
+        QPushButton *structureButton = PageLayout::makeTableActionButton(QStringLiteral("表结构"),
+                                                                         QStringLiteral("tableActionView"),
+                                                                         panel);
+        connect(structureButton, &QPushButton::clicked, this, [this, panel, column]() {
+            for (int tableRow = 0; tableRow < m_detailTable->rowCount(); ++tableRow) {
+                if (m_detailTable->cellWidget(tableRow, column) == panel) {
+                    runDetailRowAction(tableRow, QStringLiteral("查看表结构"));
+                    return;
+                }
+            }
+        });
+        layout->addWidget(queryButton);
+        layout->addWidget(structureButton);
         layout->addStretch();
         m_detailTable->setCellWidget(row, column, panel);
         Q_UNUSED(rowData);
@@ -1087,17 +1140,20 @@ void ServiceProductPanel::setOperationCell(int row, const QJsonObject &rowData)
         auto *layout = new QHBoxLayout(panel);
         layout->setContentsMargins(PageLayout::Space4, 2, PageLayout::Space4, 2);
         layout->setSpacing(PageLayout::Space8);
-        QPushButton *button =
-            PageLayout::makeTableActionButton(QStringLiteral("查看"), QStringLiteral("tableActionView"), panel);
-        connect(button, &QPushButton::clicked, this, [this, panel, column]() {
-            for (int tableRow = 0; tableRow < m_detailTable->rowCount(); ++tableRow) {
-                if (m_detailTable->cellWidget(tableRow, column) == panel) {
-                    runDetailRowAction(tableRow, QStringLiteral("查看"));
-                    return;
+        const auto addAction = [this, panel, layout, column](const QString &label, const QString &objectName) {
+            QPushButton *button = PageLayout::makeTableActionButton(label, objectName, panel);
+            connect(button, &QPushButton::clicked, this, [this, panel, column, label]() {
+                for (int tableRow = 0; tableRow < m_detailTable->rowCount(); ++tableRow) {
+                    if (m_detailTable->cellWidget(tableRow, column) == panel) {
+                        runDetailRowAction(tableRow, label);
+                        return;
+                    }
                 }
-            }
-        });
-        layout->addWidget(button);
+            });
+            layout->addWidget(button);
+        };
+        addAction(QStringLiteral("查看"), QStringLiteral("tableActionView"));
+        addAction(QStringLiteral("删除"), QStringLiteral("tableActionDelete"));
         layout->addStretch();
         m_detailTable->setCellWidget(row, column, panel);
         Q_UNUSED(rowData);
@@ -1190,7 +1246,11 @@ void ServiceProductPanel::onDetailAction()
                                       QLineEdit::Normal,
                                       QStringLiteral("demo-topic,1,1"));
     } else if (action.contains(QStringLiteral("Key 搜索"))) {
-        input = QInputDialog::getText(this, QStringLiteral("Key 搜索"), QStringLiteral("匹配模式"), QLineEdit::Normal, QStringLiteral("*"));
+        ServiceRedisSearchDialog dialog(this);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        input = dialog.pattern() + QLatin1Char('\t') + dialog.typeFilter();
     } else if (action.contains(QStringLiteral("Key 写入"))) {
         input = QInputDialog::getText(this,
                                       QStringLiteral("Key 写入"),
@@ -1332,6 +1392,32 @@ void ServiceProductPanel::runDetailRowAction(int row, const QString &action)
         return;
     }
 
+    if (action == QStringLiteral("查看表结构")
+        && m_product == ServiceProductKind::Elasticsearch
+        && currentTabKind() == ServiceBroker::TabKind::Index) {
+        const QString rowKind = selection.value(QStringLiteral("rowKind")).toString();
+        if (rowKind == QStringLiteral("alias")) {
+            QMessageBox::information(this,
+                                     QStringLiteral("无法查看表结构"),
+                                     QStringLiteral("别名（alias）没有独立的表结构，请展开所属的模板组或直接打开具体索引。"));
+            return;
+        }
+        ServiceEndpoint endpoint;
+        QString error;
+        if (!ServiceNodeConnection::resolvePrimaryNode(instance, server, serviceProductKindKey(m_product), &endpoint, &error)) {
+            QMessageBox::warning(this, QStringLiteral("无法查看"), error);
+            return;
+        }
+        const QString indexName = selection.value(QStringLiteral("queryIndex")).toString().isEmpty()
+            ? selection.value(QStringLiteral("name")).toString()
+            : selection.value(QStringLiteral("queryIndex")).toString();
+        ServiceElasticsearchIndexStructureDialog dialog(this);
+        dialog.setEndpoint(endpoint);
+        dialog.setIndexName(indexName);
+        dialog.exec();
+        return;
+    }
+
     if (action == QStringLiteral("查看")
         && m_product == ServiceProductKind::Kafka
         && currentTabKind() == ServiceBroker::TabKind::ConsumerGroup) {
@@ -1375,13 +1461,21 @@ void ServiceProductPanel::runDetailRowAction(int row, const QString &action)
     }
 
     if (action == QStringLiteral("删除")) {
-        const QString target = selection.value(QStringLiteral("name")).toString();
+        QString target = selection.value(QStringLiteral("name")).toString();
+        if (target.isEmpty()) {
+            target = selection.value(QStringLiteral("key")).toString();
+        }
         if (target.isEmpty()) {
             return;
         }
+        QString confirmMessage = QStringLiteral("确定删除 %1 吗？").arg(target);
+        const QString type = selection.value(QStringLiteral("type")).toString();
+        if (!type.isEmpty()) {
+            confirmMessage = QStringLiteral("确定删除 %1（类型：%2）吗？").arg(target, type);
+        }
         const auto answer = QMessageBox::question(this,
                                                   QStringLiteral("确认删除"),
-                                                  QStringLiteral("确定删除 %1 吗？").arg(target));
+                                                  confirmMessage);
         if (answer != QMessageBox::Yes) {
             return;
         }
@@ -1746,9 +1840,17 @@ void ServiceProductPanel::openSelectedInstance()
     m_stack->setCurrentIndex(1);
     m_detailTabCache.clear();
     onDetailTabChanged(targetTab);
+    refreshBanner();
+    if (isDatabaseConnectionProduct(m_product)) {
+        updateSchemaCombo();
+        if (m_sqlWorkbench != nullptr) {
+            m_sqlWorkbench->setCurrentSchema(currentSchema());
+        }
+        refreshSqlWorkbench();
+        return;
+    }
     showDetailLoading();
     refreshDetailTable();
-    refreshBanner();
 }
 
 void ServiceProductPanel::backToList()
@@ -2070,25 +2172,126 @@ void ServiceProductPanel::executeSqlQuery(const QString &sql)
     const QString schema = currentSchema();
     const QJsonObject instanceCopy = instance;
     const QJsonObject serverCopy = server;
-    const QString sqlCopy = sql;
+    const QString sqlCopy = SqlServiceClient::withSchemaContext(productKey, schema, sql);
 
-    auto *watcher = new QFutureWatcher<ServiceResult>(this);
-    connect(watcher, &QFutureWatcher<ServiceResult>::finished, this, [this, watcher]() {
+    auto *watcher = new QFutureWatcher<QPair<ServiceResult, qint64>>(this);
+    connect(watcher, &QFutureWatcher<QPair<ServiceResult, qint64>>::finished, this, [this, watcher]() {
         if (m_sqlWorkbench != nullptr) {
             m_sqlWorkbench->setExecuting(false);
-            m_sqlWorkbench->showResult(watcher->result());
+            const QPair<ServiceResult, qint64> payload = watcher->result();
+            m_sqlWorkbench->showResult(payload.first, payload.second);
         }
         watcher->deleteLater();
     });
-    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, schema, sqlCopy]() {
-        return ServiceBroker::runAction(instanceCopy,
-                                        serverCopy,
-                                        productKey,
-                                        ServiceBroker::TabKind::Sql,
-                                        QStringLiteral("SQL"),
-                                        {},
-                                        {},
-                                        schema,
-                                        sqlCopy);
+    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, sqlCopy]() {
+        QElapsedTimer timer;
+        timer.start();
+        ServiceResult result = ServiceBroker::runAction(instanceCopy,
+                                                        serverCopy,
+                                                        productKey,
+                                                        ServiceBroker::TabKind::Sql,
+                                                        QStringLiteral("SQL"),
+                                                        {},
+                                                        {},
+                                                        {},
+                                                        sqlCopy);
+        return qMakePair(result, timer.elapsed());
     }));
+}
+
+void ServiceProductPanel::showTableStructure(const QString &tableName)
+{
+    if (tableName.isEmpty()) {
+        return;
+    }
+
+    QJsonObject instance;
+    QJsonObject server;
+    if (!currentInstanceContext(&instance, &server)) {
+        return;
+    }
+
+    ServiceEndpoint endpoint;
+    QString error;
+    if (!ServiceBroker::resolveContext(instance, server, serviceProductKindKey(m_product), &endpoint, &error)) {
+        QMessageBox::warning(this, QStringLiteral("无法查看表结构"), error);
+        return;
+    }
+
+    const ServiceResult result =
+        SqlServiceClient::describeTable(endpoint, serviceProductKindKey(m_product), currentSchema(), tableName);
+    if (!result.ok) {
+        QMessageBox::warning(this, QStringLiteral("无法查看表结构"), result.message);
+        return;
+    }
+
+    auto *dialog = new QDialog(this);
+    dialog->setWindowTitle(QStringLiteral("表结构 - %1").arg(tableName));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    auto *layout = new QVBoxLayout(dialog);
+    PageLayout::applyDialog(layout);
+
+    auto *table = new QTableWidget(dialog);
+    table->setColumnCount(5);
+    table->setHorizontalHeaderLabels({QStringLiteral("序号"),
+                                      QStringLiteral("字段"),
+                                      QStringLiteral("类型"),
+                                      QStringLiteral("可空"),
+                                      QStringLiteral("默认值")});
+    table->setRowCount(result.rows.size());
+    for (int row = 0; row < result.rows.size(); ++row) {
+        const QJsonObject item = result.rows.at(row);
+        table->setItem(row, 0, new QTableWidgetItem(item.value(QStringLiteral("ordinal")).toString()));
+        table->setItem(row, 1, new QTableWidgetItem(item.value(QStringLiteral("column_name")).toString()));
+        table->setItem(row, 2, new QTableWidgetItem(item.value(QStringLiteral("data_type")).toString()));
+        table->setItem(row, 3, new QTableWidgetItem(item.value(QStringLiteral("nullable")).toString()));
+        table->setItem(row, 4, new QTableWidgetItem(item.value(QStringLiteral("data_default")).toString()));
+    }
+    PageLayout::configureListingTable(table);
+    PageLayout::refreshListingTableColumns(table);
+    layout->addWidget(table, 1);
+
+    auto *closeButton = new QPushButton(QStringLiteral("关闭"), dialog);
+    connect(closeButton, &QPushButton::clicked, dialog, &QDialog::accept);
+    layout->addWidget(closeButton, 0, Qt::AlignRight);
+
+    PageLayout::applyModalDialog(dialog);
+    dialog->resize(760, 480);
+    dialog->open();
+}
+
+void ServiceProductPanel::deleteTable(const QString &tableName)
+{
+    if (tableName.isEmpty()) {
+        return;
+    }
+    if (QMessageBox::question(this,
+                              QStringLiteral("确认删除"),
+                              QStringLiteral("确定删除表 %1？此操作不可恢复。").arg(tableName))
+        != QMessageBox::Yes) {
+        return;
+    }
+
+    QJsonObject instance;
+    QJsonObject server;
+    if (!currentInstanceContext(&instance, &server)) {
+        return;
+    }
+
+    ServiceEndpoint endpoint;
+    QString error;
+    if (!ServiceBroker::resolveContext(instance, server, serviceProductKindKey(m_product), &endpoint, &error)) {
+        QMessageBox::warning(this, QStringLiteral("删除失败"), error);
+        return;
+    }
+
+    const ServiceResult result =
+        SqlServiceClient::dropTable(endpoint, serviceProductKindKey(m_product), currentSchema(), tableName);
+    if (!result.ok) {
+        QMessageBox::warning(this, QStringLiteral("删除失败"), result.message);
+        return;
+    }
+
+    QMessageBox::information(this, QStringLiteral("删除成功"), result.message.isEmpty() ? QStringLiteral("表已删除") : result.message);
+    refreshSqlWorkbench();
 }

@@ -107,6 +107,14 @@ RemoteCommandResult WinRmClient::execute(const QString &command, int timeoutSec)
 
 UploadResult WinRmClient::uploadFile(const QString &localPath, const QString &remotePath)
 {
+    return uploadFile(localPath, remotePath, true);
+}
+
+UploadResult WinRmClient::uploadFile(const QString &localPath,
+                                     const QString &remotePath,
+                                     bool ensureRemoteDir)
+{
+    Q_UNUSED(ensureRemoteDir);
     UploadResult result;
     QFile input(localPath);
     if (!input.open(QIODevice::ReadOnly)) {

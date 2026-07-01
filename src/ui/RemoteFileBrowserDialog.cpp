@@ -343,6 +343,18 @@ void RemoteFileBrowserDialog::buildTerminalToolbar()
         toolbarLayout->addWidget(widget, 0, Qt::AlignVCenter);
     }
 
+    auto *syncPathButton = new QPushButton(QStringLiteral("同步路径"));
+    syncPathButton->setObjectName(QStringLiteral("terminalToolbarButton"));
+    syncPathButton->setToolTip(QStringLiteral("获取终端当前工作目录并填充到路径栏"));
+    connect(syncPathButton, &QPushButton::clicked, this, &RemoteFileBrowserDialog::syncPathFromTerminal);
+    toolbarLayout->addWidget(syncPathButton, 0, Qt::AlignVCenter);
+
+    connect(m_terminal, &RemoteTerminalWidget::currentDirectoryReceived,
+            this, [this](const QString &path) {
+                setCurrentPath(path);
+                refreshListing();
+            });
+
     m_tabs->setCornerWidget(m_terminalToolbar, Qt::TopRightCorner);
     syncTerminalToolbar();
 }
@@ -352,6 +364,14 @@ void RemoteFileBrowserDialog::syncTerminalToolbar()
     if (m_terminalToolbar != nullptr && m_tabs != nullptr) {
         m_terminalToolbar->setVisible(m_tabs->currentWidget() == m_terminal);
     }
+}
+
+void RemoteFileBrowserDialog::syncPathFromTerminal()
+{
+    if (m_terminal == nullptr) {
+        return;
+    }
+    m_terminal->requestCurrentWorkingDirectory();
 }
 
 QString RemoteFileBrowserDialog::formatSize(qint64 sizeBytes) const

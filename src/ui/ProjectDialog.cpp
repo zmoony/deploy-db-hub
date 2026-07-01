@@ -9,7 +9,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
-#include <QGroupBox>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -26,9 +26,17 @@ void tuneField(QWidget *widget)
     PageLayout::configureFormInput(widget);
 }
 
-void tuneFormBox(QGroupBox *box, QFormLayout *form)
+QFrame *makeFormCard(QWidget *parent, const QString &title, QFormLayout **formOut)
 {
-    PageLayout::tuneDialogFormBox(box, form);
+    QVBoxLayout *body = nullptr;
+    auto *card = PageLayout::makeDeploySectionCard(parent, title, &body);
+    auto *form = new QFormLayout;
+    PageLayout::applyDialogForm(form);
+    body->addLayout(form);
+    if (formOut != nullptr) {
+        *formOut = form;
+    }
+    return card;
 }
 
 QLabel *addFormRow(QFormLayout *form, const QString &labelText, QWidget *field)
@@ -78,9 +86,8 @@ void ProjectDialog::buildUi()
     auto *rightColumn = new QVBoxLayout;
     rightColumn->setSpacing(PageLayout::Space16);
 
-    auto *basicBox = new QGroupBox(QStringLiteral("基本信息"));
-    auto *basicForm = new QFormLayout(basicBox);
-    tuneFormBox(basicBox, basicForm);
+    QFormLayout *basicForm = nullptr;
+    auto *basicBox = makeFormCard(this, QStringLiteral("基本信息"), &basicForm);
     m_id = new QLineEdit;
     m_id->setPlaceholderText(QStringLiteral("例如 app-demo"));
     m_name = new QLineEdit;
@@ -101,9 +108,8 @@ void ProjectDialog::buildUi()
     basicForm->addRow(QStringLiteral("类型"), m_type);
     leftColumn->addWidget(basicBox);
 
-    auto *sourceBox = new QGroupBox(QStringLiteral("源码来源"));
-    auto *sourceForm = new QFormLayout(sourceBox);
-    tuneFormBox(sourceBox, sourceForm);
+    QFormLayout *sourceForm = nullptr;
+    auto *sourceBox = makeFormCard(this, QStringLiteral("源码来源"), &sourceForm);
     m_sourceKind = new QComboBox;
     m_sourceKind->addItem(QStringLiteral("Local 本地目录"), QStringLiteral("local"));
     m_sourceKind->addItem(QStringLiteral("GitHub"), QStringLiteral("github"));
@@ -112,9 +118,8 @@ void ProjectDialog::buildUi()
     connect(m_sourceKind, qOverload<int>(&QComboBox::currentIndexChanged), this, &ProjectDialog::onSourceKindChanged);
     leftColumn->addWidget(sourceBox);
 
-    auto *buildBox = new QGroupBox(QStringLiteral("构建"));
-    auto *buildForm = new QFormLayout(buildBox);
-    tuneFormBox(buildBox, buildForm);
+    QFormLayout *buildForm = nullptr;
+    auto *buildBox = makeFormCard(this, QStringLiteral("构建"), &buildForm);
     m_buildMode = new QComboBox;
     m_buildMode->addItem(QStringLiteral("本地构建"), QStringLiteral("build"));
     m_buildMode->addItem(QStringLiteral("上传已有 JAR"), QStringLiteral("prebuilt-jar"));
@@ -128,9 +133,8 @@ void ProjectDialog::buildUi()
     connect(m_type, qOverload<int>(&QComboBox::currentIndexChanged), this, &ProjectDialog::onProjectTypeChanged);
     rightColumn->addWidget(buildBox);
 
-    auto *deployBox = new QGroupBox(QStringLiteral("部署"));
-    auto *deployForm = new QFormLayout(deployBox);
-    tuneFormBox(deployBox, deployForm);
+    QFormLayout *deployForm = nullptr;
+    auto *deployBox = makeFormCard(this, QStringLiteral("部署"), &deployForm);
     m_serverId = new QComboBox;
     for (const StoredRecord &server : m_servers) {
         const QString label = server.config.value(QStringLiteral("name")).toString() + QStringLiteral(" (") + server.id + QLatin1Char(')');
@@ -149,9 +153,8 @@ void ProjectDialog::buildUi()
     columns->addLayout(rightColumn, 1);
     bodyLayout->addLayout(columns);
 
-    auto *pathsBox = new QGroupBox(QStringLiteral("路径与目录"));
-    auto *pathsForm = new QFormLayout(pathsBox);
-    tuneFormBox(pathsBox, pathsForm);
+    QFormLayout *pathsForm = nullptr;
+    auto *pathsBox = makeFormCard(this, QStringLiteral("路径与目录"), &pathsForm);
 
     m_sourceStack = new QStackedWidget;
     m_sourceStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -219,14 +222,12 @@ void ProjectDialog::buildUi()
 
     connect(m_backupPolicy, qOverload<int>(&QComboBox::currentIndexChanged), this, &ProjectDialog::syncBuildModeFields);
 
-    m_restartModeBox = new QGroupBox(QStringLiteral("启动方式"));
-    auto *restartModeLayout = new QVBoxLayout(m_restartModeBox);
-    restartModeLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
-    restartModeLayout->setSpacing(PageLayout::Space12);
+    QVBoxLayout *restartModeLayout = nullptr;
+    m_restartModeBox = PageLayout::makeDeploySectionCard(this, QStringLiteral("部署后重启方式"), &restartModeLayout);
 
     m_restartMode = new QComboBox(m_restartModeBox);
-    m_restartMode->addItem(QStringLiteral("重启脚本"), QStringLiteral("restart-script"));
-    m_restartMode->addItem(QStringLiteral("自定义命令"), QStringLiteral("service-command"));
+    m_restartMode->addItem(QStringLiteral("本地脚本（部署时上传执行）"), QStringLiteral("restart-script"));
+    m_restartMode->addItem(QStringLiteral("远程服务命令（项目管理可用）"), QStringLiteral("service-command"));
     tuneField(m_restartMode);
     auto *modeForm = new QFormLayout;
     PageLayout::applyInlineForm(modeForm);
@@ -242,7 +243,7 @@ void ProjectDialog::buildUi()
     scriptForm->setContentsMargins(0, 0, 0, 0);
     m_restartScript = new PathPickerWidget(PathPickerWidget::Mode::File);
     m_restartScript->setPath(QStringLiteral("restart.sh"));
-    scriptForm->addRow(QStringLiteral("脚本路径"), m_restartScript);
+    scriptForm->addRow(QStringLiteral("本地脚本路径"), m_restartScript);
     m_restartModeStack->addWidget(scriptPage);
 
     auto *servicePage = new QWidget;
@@ -252,7 +253,7 @@ void ProjectDialog::buildUi()
     m_serviceMatch = new QLineEdit;
     m_serviceMatch->setPlaceholderText(QStringLiteral("用于匹配进程命令行，例如 yz-wwa-gateway"));
     m_startCommand = new QLineEdit;
-    m_startCommand->setPlaceholderText(QStringLiteral("nohup java -jar {targetJarPath} > {logDir}/app.log 2>&1 &"));
+    m_startCommand->setPlaceholderText(QStringLiteral("远程启动命令，例如 nohup java -jar {targetJarPath} > {logDir}/app.log 2>&1 &"));
     m_stopCommand = new QLineEdit;
     m_stopCommand->setPlaceholderText(QStringLiteral("可为空，默认结束匹配到的 PID"));
     m_restartCommand = new QLineEdit;

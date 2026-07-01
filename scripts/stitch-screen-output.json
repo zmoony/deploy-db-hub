@@ -1,0 +1,28 @@
+﻿{
+    "id":  1,
+    "jsonrpc":  "2.0",
+    "result":  {
+                   "content":  [
+                                   {
+                                       "text":  "{\"name\":\"projects/12185237422534899983/screens/608e9da4d3054134a381b10fbada2254\",\"title\":\"部署助手 - 桌面端设计\",\"screenshot\":{\"name\":\"projects/12185237422534899983/files/4e3ea544392040ebb28449ea797fc78d\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/AP1WRLtqFZD62VItTwSpJP7ZgwWwKdYRTsey4iNWdx8K2yFKuz32abd5o8dbBdGIngQzSd8Eq3nYULSbSMcYzFb5BzSTIbGjq08yn6E7uk9ErOB76tkFcnivcjz5AMoQx0dQfxs3WCQu9jmcKZ0aki5fiv1bA4RR3j-U-JTdkw4WdHTGnOvrJH_clK0EsQF43z1CPzM-vXD8VHHuKCDkIrmg_KcqPED9o7ZDUbA_w8CnS4Ni-6eIPVZYBt-1ZvU\"},\"htmlCode\":{\"name\":\"projects/12185237422534899983/files/b65da35aea0049b2a95a5d3e0cd75a5e\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sX2QyMDQ2ZmRhNzRjNTRjODNiYWQxN2QwMjgyMzVlNGNmEgsSBxDnz_ja2xMYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjE4NTIzNzQyMjUzNDg5OTk4Mw\u0026filename=\u0026opi=89354086\",\"mimeType\":\"text/html\"},\"width\":\"2560\",\"height\":\"2048\",\"deviceType\":\"DESKTOP\"}",
+                                       "type":  "text"
+                                   }
+                               ],
+                   "structuredContent":  {
+                                             "deviceType":  "DESKTOP",
+                                             "height":  "2048",
+                                             "htmlCode":  {
+                                                              "downloadUrl":  "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sX2QyMDQ2ZmRhNzRjNTRjODNiYWQxN2QwMjgyMzVlNGNmEgsSBxDnz_ja2xMYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjE4NTIzNzQyMjUzNDg5OTk4Mw\u0026filename=\u0026opi=89354086",
+                                                              "mimeType":  "text/html",
+                                                              "name":  "projects/12185237422534899983/files/b65da35aea0049b2a95a5d3e0cd75a5e"
+                                                          },
+                                             "name":  "projects/12185237422534899983/screens/608e9da4d3054134a381b10fbada2254",
+                                             "screenshot":  {
+                                                                "downloadUrl":  "https://lh3.googleusercontent.com/aida/AP1WRLtqFZD62VItTwSpJP7ZgwWwKdYRTsey4iNWdx8K2yFKuz32abd5o8dbBdGIngQzSd8Eq3nYULSbSMcYzFb5BzSTIbGjq08yn6E7uk9ErOB76tkFcnivcjz5AMoQx0dQfxs3WCQu9jmcKZ0aki5fiv1bA4RR3j-U-JTdkw4WdHTGnOvrJH_clK0EsQF43z1CPzM-vXD8VHHuKCDkIrmg_KcqPED9o7ZDUbA_w8CnS4Ni-6eIPVZYBt-1ZvU",
+                                                                "name":  "projects/12185237422534899983/files/4e3ea544392040ebb28449ea797fc78d"
+                                                            },
+                                             "title":  "部署助手 - 桌面端设计",
+                                             "width":  "2560"
+                                         }
+               }
+}

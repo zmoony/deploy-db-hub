@@ -32,6 +32,7 @@ public:
 
     RemoteCommandResult execute(const QString &command, int timeoutSec);
     UploadResult uploadFile(const QString &localPath, const QString &remotePath);
+    UploadResult uploadFile(const QString &localPath, const QString &remotePath, bool ensureRemoteDir);
     RemoteFileListResult listDirectory(const QString &remotePath);
     RemoteFileReadResult readFile(const QString &remotePath);
     RemoteFileReadResult readFileTail(const QString &remotePath, int lineCount);

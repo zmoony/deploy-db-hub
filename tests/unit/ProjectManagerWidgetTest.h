@@ -8,4 +8,5 @@ class ProjectManagerWidgetTest final : public QObject
 
 private slots:
     void quickAddDraftCopiesProjectDetailsWithNewIdentity();
+    void projectSearchMatchesNameAndServer();
 };

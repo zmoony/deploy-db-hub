@@ -1,0 +1,31 @@
+# Build outputs
+build*/
+Testing/
+.superpowers/
+
+# Packaged artifacts
+dist/
+
+# Local dependencies and package manager state
+deps/
+vcpkg_installed/
+
+# Runtime/local app data
+config/
+logs/
+workspace/
+
+# Temporary output
+test-output.txt
+test-*.txt
+
+# IDE and OS files
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+
+# Isolated worktrees
+.worktrees/

@@ -13,4 +13,12 @@ private slots:
     void sidebarNavigationRemainsModuleScoped();
     void sidebarNavigationUsesIcons();
     void aiConfigPageUsesUnifiedTemplate();
+    void aiChatPageMatchesPixsoLayout();
+    void logAiAnalysisShowsResultFirst();
+    void projectManagerSelectionIsProminent();
+    void contentButtonsStayCompact();
+    void serviceModuleButtonsKeepConsistentSize();
+    void projectServiceControlCopyExplainsRemoteCommands();
+    void legacyGroupBoxCardsUseDeploySectionTitleStyle();
+    void deployPageMatchesStitchLayout();
 };

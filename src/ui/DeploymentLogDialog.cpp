@@ -35,6 +35,8 @@ DeploymentLogDialog::DeploymentLogDialog(const QString &relativePath,
     setWindowTitle(QStringLiteral("部署日志"));
     setModal(true);
     PageLayout::applyModalDialog(this);
+    resize(1040, 720);
+    setMinimumSize(900, 620);
     AppBranding::applyWindowIcon(this);
 
     QString error;
@@ -66,7 +68,7 @@ void DeploymentLogDialog::buildUi(const QString &relativePath, const QString &co
     auto *editor = new QPlainTextEdit(logPanel);
     editor->setReadOnly(true);
     editor->setPlainText(content);
-    editor->setMinimumHeight(220);
+    editor->setMinimumHeight(180);
     editor->setFrameShape(QFrame::NoFrame);
     logPanelLayout->addWidget(editor, 1);
     splitter->addWidget(logPanel);
@@ -78,16 +80,15 @@ void DeploymentLogDialog::buildUi(const QString &relativePath, const QString &co
         aiPanelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
         aiPanelLayout->setSpacing(PageLayout::Space8);
 
-        auto *aiTitle = new QLabel(QStringLiteral("AI 日志分析"), aiPanel);
-        aiTitle->setObjectName(QStringLiteral("sectionLabel"));
-        aiPanelLayout->addWidget(aiTitle);
-
         auto *aiWidget = new LogAiAnalysisWidget(m_aiSettings, m_credentials, aiPanel);
         aiWidget->setLogContent(content);
+        aiWidget->setMinimumHeight(260);
         aiPanelLayout->addWidget(aiWidget, 1);
+        aiPanel->setMinimumHeight(300);
         splitter->addWidget(aiPanel);
-        splitter->setStretchFactor(0, 3);
-        splitter->setStretchFactor(1, 2);
+        splitter->setStretchFactor(0, 1);
+        splitter->setStretchFactor(1, 1);
+        splitter->setSizes({320, 320});
     }
 
     layout->addWidget(splitter, 1);

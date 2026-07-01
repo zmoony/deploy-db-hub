@@ -16,7 +16,7 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QFutureWatcher>
-#include <QGroupBox>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -63,9 +63,17 @@ QJsonObject defaultRemoteFilesConfig(const QString &defaultBrowsePath)
     };
 }
 
-void tuneFormBox(QGroupBox *box, QFormLayout *form)
+QFrame *makeFormCard(QWidget *parent, const QString &title, QFormLayout **formOut)
 {
-    PageLayout::tuneDialogFormBox(box, form);
+    QVBoxLayout *body = nullptr;
+    auto *card = PageLayout::makeDeploySectionCard(parent, title, &body);
+    auto *form = new QFormLayout;
+    PageLayout::applyDialogForm(form);
+    body->addLayout(form);
+    if (formOut != nullptr) {
+        *formOut = form;
+    }
+    return card;
 }
 
 QJsonObject defaultMonitoringConfig()
@@ -126,9 +134,8 @@ void ServerDialog::buildUi()
     auto *rightColumn = new QVBoxLayout;
     rightColumn->setSpacing(PageLayout::Space16);
 
-    auto *basicBox = new QGroupBox(QStringLiteral("基本信息"));
-    auto *basicForm = new QFormLayout(basicBox);
-    tuneFormBox(basicBox, basicForm);
+    QFormLayout *basicForm = nullptr;
+    auto *basicBox = makeFormCard(this, QStringLiteral("基本信息"), &basicForm);
     m_id = new QLineEdit;
     m_id->setPlaceholderText(QStringLiteral("例如 prod-linux-1"));
     m_name = new QLineEdit;
@@ -156,9 +163,8 @@ void ServerDialog::buildUi()
     basicForm->addRow(QStringLiteral("用户名"), m_username);
     leftColumn->addWidget(basicBox);
 
-    auto *authBox = new QGroupBox(QStringLiteral("认证"));
-    auto *authForm = new QFormLayout(authBox);
-    tuneFormBox(authBox, authForm);
+    QFormLayout *authForm = nullptr;
+    auto *authBox = makeFormCard(this, QStringLiteral("认证"), &authForm);
     m_authMode = new QComboBox;
     m_authMode->addItem(QStringLiteral("密码"), QStringLiteral("password"));
     m_authMode->addItem(QStringLiteral("SSH 私钥 (Linux)"), QStringLiteral("ssh-key"));
@@ -217,9 +223,8 @@ void ServerDialog::buildUi()
     connect(m_authMode, qOverload<int>(&QComboBox::currentIndexChanged), this, &ServerDialog::onAuthModeChanged);
     rightColumn->addWidget(authBox);
 
-    auto *remoteBox = new QGroupBox(QStringLiteral("远程协议"));
-    auto *remoteForm = new QFormLayout(remoteBox);
-    tuneFormBox(remoteBox, remoteForm);
+    QFormLayout *remoteForm = nullptr;
+    auto *remoteBox = makeFormCard(this, QStringLiteral("远程协议"), &remoteForm);
     m_osStack = new QStackedWidget;
     auto *linuxPanel = new QLabel(QStringLiteral("SSH Host Key 策略：strict-with-prompt（首次连接需确认指纹）"));
     linuxPanel->setWordWrap(true);
@@ -242,9 +247,8 @@ void ServerDialog::buildUi()
     columns->addLayout(rightColumn, 1);
     bodyLayout->addLayout(columns);
 
-    auto *pathsBox = new QGroupBox(QStringLiteral("路径与目录"));
-    auto *pathsForm = new QFormLayout(pathsBox);
-    tuneFormBox(pathsBox, pathsForm);
+    QFormLayout *pathsForm = nullptr;
+    auto *pathsBox = makeFormCard(this, QStringLiteral("路径与目录"), &pathsForm);
     m_defaultRemoteBaseDir = new PathPickerWidget(PathPickerWidget::Mode::Directory);
     m_defaultRemoteBaseDir->setPlaceholderText(QStringLiteral("/home"));
     m_defaultRemoteBaseDir->setBrowseHandler([this]() { browseRemoteBaseDir(); });

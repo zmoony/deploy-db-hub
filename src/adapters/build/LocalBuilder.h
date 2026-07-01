@@ -8,6 +8,7 @@ struct BuildRequest {
     QString command;
     QMap<QString, QString> environment;
     int timeoutSec = 600;
+    std::function<bool()> shouldCancel = {};
 };
 
 struct BuildResult {

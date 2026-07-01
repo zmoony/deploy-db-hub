@@ -13,6 +13,7 @@
 
 #include <QJsonObject>
 #include <QHeaderView>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
@@ -20,15 +21,34 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
+#include <QTcpSocket>
+#include <QtConcurrent>
+#include <QPointer>
+#include <QGraphicsDropShadowEffect>
 
 namespace {
 
-QLabel *createStatusLabel(const QString &text, const QString &objectName)
+QLabel *createStatusDot(QWidget *parent)
 {
-    auto *label = new QLabel(text);
-    label->setObjectName(objectName);
-    label->setAlignment(Qt::AlignCenter);
-    return label;
+    auto *dot = new QLabel(QStringLiteral("\u25CF"), parent);
+    dot->setAlignment(Qt::AlignCenter);
+    dot->setFixedSize(24, 24);
+    dot->setStyleSheet(QStringLiteral("color: #D97706; font-size: 16px;"));
+    // Soft drop shadow for depth.
+    auto *shadow = new QGraphicsDropShadowEffect(dot);
+    shadow->setBlurRadius(4);
+    shadow->setOffset(0, 1);
+    shadow->setColor(QColor(0, 0, 0, 40));
+    dot->setGraphicsEffect(shadow);
+    return dot;
+}
+
+void setDotColor(QLabel *dot, const QString &colorHex)
+{
+    if (dot == nullptr) return;
+    dot->style()->unpolish(dot);
+    dot->setStyleSheet(QStringLiteral("color: %1; font-size: 16px;").arg(colorHex));
+    dot->style()->polish(dot);
 }
 
 QWidget *wrapStatusLabel(QLabel *label, QWidget *parent)
@@ -52,7 +72,8 @@ ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent, bo
 {
     auto *layout = new QVBoxLayout(this);
     if (showPageHeader) {
-        PageLayout::applyPage(layout);
+        setProperty("cardStackPage", true);
+        PageLayout::applyToolPage(layout);
     } else {
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(PageLayout::Space12);
@@ -90,8 +111,13 @@ ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent, bo
         m_table,
         &m_emptyState,
         QStringLiteral("暂无服务器。点击「新建服务器」添加第一台目标机器。"));
-    auto *contentPanel = PageLayout::wrapContentPanel(tableSection);
+    auto *contentPanel = new QFrame(this);
+    contentPanel->setObjectName(QStringLiteral("contentPanel"));
     contentPanel->setAttribute(Qt::WA_StyledBackground, true);
+    auto *panelLayout = new QVBoxLayout(contentPanel);
+    PageLayout::configureToolCard(panelLayout);
+    PageLayout::applyLighterCardShadow(contentPanel);
+    panelLayout->addWidget(tableSection, 1);
     layout->addWidget(contentPanel, 1);
 
     connect(addButton, &QPushButton::clicked, this, &ServerManagerWidget::addServer);
@@ -99,8 +125,9 @@ ServerManagerWidget::ServerManagerWidget(ConfigStore *store, QWidget *parent, bo
     connect(monitorButton, &QPushButton::clicked, this, &ServerManagerWidget::openServerMonitor);
     connect(remoteFilesButton, &QPushButton::clicked, this, &ServerManagerWidget::browseRemoteFiles);
     connect(deleteButton, &QPushButton::clicked, this, &ServerManagerWidget::deleteServer);
-    connect(refreshButton, &QPushButton::clicked, this, &ServerManagerWidget::reload);
-    connect(m_table, &QTableWidget::doubleClicked, this, &ServerManagerWidget::editServer);
+   connect(refreshButton, &QPushButton::clicked, this, &ServerManagerWidget::reload);
+    connect(refreshButton, &QPushButton::clicked, this, &ServerManagerWidget::pingServers);
+   connect(m_table, &QTableWidget::doubleClicked, this, &ServerManagerWidget::editServer);
 
     reload();
 }
@@ -193,21 +220,20 @@ void ServerManagerWidget::reload()
             + QLatin1Char(':')
             + QString::number(record.config.value(QStringLiteral("port")).toInt());
 
-        auto *statusLabel = createStatusLabel(QStringLiteral("未连接"),
-                                              QStringLiteral("serviceInstanceStatusBad"));
-        m_table->setItem(row, 0, new QTableWidgetItem(record.id));
-        m_table->setItem(row, 1, new QTableWidgetItem(record.config.value(QStringLiteral("name")).toString()));
-        m_table->setCellWidget(row, 2, wrapStatusLabel(statusLabel, m_table));
+       auto *statusDot = createStatusDot(m_table);
+       m_table->setItem(row, 0, new QTableWidgetItem(record.id));
+       m_table->setItem(row, 1, new QTableWidgetItem(record.config.value(QStringLiteral("name")).toString()));
+        m_table->setCellWidget(row, 2, statusDot);
         m_table->setItem(row, 3, new QTableWidgetItem(osLabel));
         m_table->setItem(row, 4, new QTableWidgetItem(endpoint));
         m_table->setItem(row, 5, new QTableWidgetItem(record.config.value(QStringLiteral("defaultRemoteBaseDir")).toString()));
     }
 
-    PageLayout::updateTableEmptyState(m_table, m_emptyState, records.size());
+   PageLayout::updateTableEmptyState(m_table, m_emptyState, records.size());
 
-    if (!records.isEmpty()) {
-        m_table->selectRow(0);
-    }
+   if (!records.isEmpty()) {
+       m_table->selectRow(0);
+   }
 }
 
 void ServerManagerWidget::addServer()
@@ -265,16 +291,10 @@ void ServerManagerWidget::editServer()
     connect(dialog, &ServerDialog::connectionTestSucceeded, this, [this, id]() {
         for (int row = 0; row < m_table->rowCount(); ++row) {
             if (m_table->item(row, 0)->text() == id) {
-                auto *wrapper = m_table->cellWidget(row, 2);
-                if (wrapper != nullptr) {
-                    auto *label = wrapper->findChild<QLabel *>();
-                    if (label != nullptr) {
-                        label->setText(QStringLiteral("已连接"));
-                        label->setObjectName(QStringLiteral("serviceInstanceStatusOk"));
-                        label->style()->unpolish(label);
-                        label->style()->polish(label);
-                    }
-                }
+             auto *wrapper = m_table->cellWidget(row, 2);
+              if (auto *label = qobject_cast<QLabel *>(wrapper)) {
+                setDotColor(label, QStringLiteral("#00874D"));
+               }
                 break;
             }
         }
@@ -381,4 +401,52 @@ void ServerManagerWidget::deleteServer()
 
     reload();
     emit serversChanged();
+}
+
+void ServerManagerWidget::pingServers()
+{
+    const int rowCount = m_table->rowCount();
+    if (rowCount == 0) {
+        return;
+    }
+
+    QStringList ids;
+    QStringList hosts;
+    QList<int> ports;
+    for (int row = 0; row < rowCount; ++row) {
+        ids.append(m_table->item(row, 0)->text());
+        const QString endpoint = m_table->item(row, 4)->text();
+        const int colon = endpoint.lastIndexOf(QLatin1Char(':'));
+        hosts.append(endpoint.left(colon));
+        ports.append(endpoint.mid(colon + 1).toInt());
+    }
+
+    QPointer<ServerManagerWidget> guard(this);
+
+    for (int i = 0; i < rowCount; ++i) {
+        const QString host = hosts.at(i);
+        const int port = ports.at(i);
+        const QString id = ids.at(i);
+
+        QtConcurrent::run([guard, host, port, id]() {
+            QTcpSocket sock;
+            sock.connectToHost(host, static_cast<quint16>(port));
+            const bool ok = sock.waitForConnected(3000);
+            sock.disconnectFromHost();
+
+            if (guard) {
+                QMetaObject::invokeMethod(guard.data(), [guard, id, ok]() {
+                    if (!guard) return;
+                    for (int row = 0; row < guard->m_table->rowCount(); ++row) {
+                        if (guard->m_table->item(row, 0)->text() == id) {
+                           if (auto *label = qobject_cast<QLabel *>(guard->m_table->cellWidget(row, 2))) {
+                                setDotColor(label, ok ? QStringLiteral("#00874D") : QStringLiteral("#CB2634"));
+                           }
+                            break;
+                        }
+                    }
+                }, Qt::QueuedConnection);
+            }
+        });
+    }
 }

@@ -54,6 +54,8 @@ constexpr int DialogFieldMinWidth = 240;
 constexpr int DialogFieldHeight = 40;
 
 void applyPage(QVBoxLayout *layout);
+void applyToolPage(QVBoxLayout *layout);
+void configureToolCard(QVBoxLayout *layout);
 void applyDialog(QVBoxLayout *layout);
 void applyForm(QFormLayout *form);
 void applyDialogForm(QFormLayout *form);
@@ -112,6 +114,7 @@ QWidget *wrapContentPanel(QWidget *page);
 QWidget *wrapContentPadding(QWidget *page);
 QWidget *wrapScrollableContentPanel(QWidget *page);
 QWidget *wrapScrollableCardStack(QWidget *page);
+QWidget *wrapWorkspacePage(QWidget *page);
 QWidget *wrapModulePage(QWidget *page);
 QListWidget *createSidebarNavigationList(QWidget *parent = nullptr);
 QWidget *wrapSidebarNavigation(QListWidget *navigation, QPushButton **settingsButtonOut = nullptr);
@@ -124,5 +127,12 @@ QPushButton *makeTableActionButton(const QString &label, const QString &objectNa
 QWidget *wrapTableSection(QTableWidget *table, QLabel **emptyStateOut, const QString &emptyMessage);
 void updateTableEmptyState(QTableWidget *table, QLabel *emptyState, int rowCount);
 void applyLighterCardShadow(QWidget *widget);
+
+QFrame *makeDeploySectionCard(QWidget *parent,
+                              const QString &title,
+                              QVBoxLayout **bodyOut,
+                              QWidget **headerActionsOut = nullptr);
+QFrame *makeDeployPlainCard(QWidget *parent, QVBoxLayout **bodyOut);
+QLabel *makeDeployFieldLabel(const QString &text, QWidget *parent);
 
 }

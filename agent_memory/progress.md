@@ -357,6 +357,7 @@
 - 2026-06-25：项目配置新增 `deploy.restartMode`（`restart-script` / `service-command`）启动方式下拉；UI 用 QStackedWidget 按选择显示脚本或自定义命令，保存时只写入当前模式字段。
 - 2026-06-25：修复一键部署 service-command 模式重启找不到 jar：`executeProjectRestart` 在非脚本模式下用 `wrapCommandWithWorkingDirectory` 自动 `cd` 到产物目录再执行命令（Linux `cd '<dir>' && <cmd>` / Windows `cd /d "<dir>" && <cmd>`）。新增 `ProjectServiceConfigTest` 3 个用例；Release 构建与 deploy_hub_tests 通过。
 - 2026-06-25：AI 聊天页改参考豆包风格，UI 减重：顶部 toolbar 三个文字按钮去掉，发送/停止做成输入卡片内右下角圆形图标按钮；「新对话」图标按钮放标题右侧；输入区改成圆角 QFrame（`#aiInputCard`），含 AI 头像（`images/icon.png`）+ 多行输入；输入框下方加 7 个快速操作 chip（快速/图像/PPT/编程/视频/翻译/更多），每个带 SVG 图标，chip 点击插入示例提示词；新增 `images/ai/{quick,image,presentation,code,video,translate,more}.svg` 并写入 QRC/CMakeLists。`AppStyle.cpp` 新增对应样式（`#aiInputCard` / `#aiActionChip` / `#aiSendButton` / `#aiStopButton` / `#aiNewChatButton` / `#aiChatHistory` / `#aiChatInput` / `#aiAvatar` / `#secondaryText`）。Release 构建、ctest、应用冒烟启动均通过。
+- 2026-06-29：AI 聊天页按 Pixso 稿（`i7NgdTXe2h7BW2STrtullg` / `2:1`）重构：蓝色渐变标题栏「AI 智能助手」+「清空」；消息行含头像/昵称/时间戳/气泡；流式三点 typing 指示器；输入区拆为顶行 zap 标识 + 灰色边框内容区；chip 选中态；44px 渐变发送按钮；卡片阴影。`PageLayoutTest::aiChatPageMatchesPixsoLayout` 防回归；Release 构建与 CTest 通过。
 - 2026-06-26：按参考图完成第 1 轮 UI 主壳/主题系统重构（不改业务逻辑）：
   - 新增 `src/ui/Theme.h` 固定 Deploy Hub 设计 token：Primary `#3B82F6`、Hover `#2563EB`、背景 `#F7F9FC`、卡片 `#FFFFFF`、边框 `#E5E7EB`、标题 `#111827`、次级文字 `#6B7280`，圆角 8/10，页面 padding 24，输入高度 40。
   - `AppStyle` 改为从 `src/ui/style.qss` 资源读取统一 QSS，并保留 `AppStyle::apply()` 入口；主程序/测试目标均纳入资源与主题头文件。
@@ -434,3 +435,50 @@
   - 空状态提示改为「点击右侧「新建」添加第一个部署配置」。
   - 服务操作工具栏按钮（刷新/查看状态/启动服务/关闭服务）统一设置 `secondaryButton` 对象名。
   - 已通过 `scripts/build-release.ps1` 与 `ctest --test-dir build-release --output-on-failure`，并提交 `b61df1d`。
+- 2026-06-29：部署工具模块间距与 AI 聊天对齐：
+  - `PageLayout` 新增 `applyToolPage`（spacing 16）与 `configureToolCard`（padding 20/spacing 12）；`wrapContentPanel`/`wrapContentPadding` 统一 20px。
+  - 部署工具 6 页（仪表盘/项目管理/服务器/一键部署/历史/设置）改用 `cardStackPage`，去除双重 24px padding 与 `fitFirstScreen`。
+  - 卡片统一 `applyLighterCardShadow`；次要按钮补全 `secondaryButton`；QSS 缩小 `deployConfigBox`/`emptyState`/`moduleTabBar` padding。
+  - 已通过 `scripts/build-release.ps1` 编译验证。
+- 2026-06-29：一键部署页按 Stitch 稿（`608e9da4d3054134a381b10fbada2254`）重构 UI：
+  - `PageLayout` 新增 `makeDeploySectionCard`/`makeDeployPlainCard`/`makeDeployFieldLabel` 统一卡片与字段标签。
+  - 左列 5:7 右列：部署配置 / 服务状态 / 远程日志三张卡片 + 右侧部署执行控制台（任务标签、细进度条、深色日志区、底栏状态）。
+  - `style.qss` 增补 `deploySectionCard`、`deployLog` 终端样式等；`PageLayoutTest::deployPageMatchesStitchLayout` 防回归。
+  - `deploy_hub_tests` 通过；`deploy-hub.exe` 链接因进程占用未覆盖（需关闭运行中实例后重编）。
+- 2026-06-30：AI 日志分析模块从问答气泡改为直接结果展示：
+  - `LogAiAnalysisWidget` 移除源日志预览用户气泡与 bot 气泡容器，点击分析后直接在满宽 `logAiAnalysisResult` 区域流式展示分析结果。
+  - 操作区改为弱化的 `logAiAnalysisToolbar`，停止按钮紧跟「AI 分析日志」按钮；结果区使用独立白底卡片样式强化展示。
+  - 新增 `PageLayoutTest::logAiAnalysisShowsResultFirst` 静态回归测试。`cmake --build build-release --target deploy-hub --config Release` 通过；`deploy_hub_tests` 中新增日志分析测试通过，但整套仍受既有 `aiConfigPageUsesUnifiedTemplate` 的「查看文档」断言失败影响。
+  - 根据反馈二次调整：`AI 日志分析` label 与「AI 分析日志 / 停止」按钮合并到同一标题行，移除弹窗内单独 AI 标题行；部署日志弹窗默认尺寸改为 1040x720、最小 900x620，splitter 默认 320/320，AI 结果区最小高度 220，避免非全屏桌面端卡片折叠。
+- 2026-06-30：项目管理左侧项目列表选中态增强：
+  - `ProjectManagerWidget` 左侧列表从通用 `toolListNav` 改为专用 `projectListNav`，避免影响通用工具列表。
+  - `style.qss` 为项目列表选中项增加浅蓝底、蓝色文字、1px 边框、3px 左侧强调条和 600 字重；focus 选中态进一步加深背景/强调条。
+  - 新增 `PageLayoutTest::projectManagerSelectionIsProminent` 静态回归测试。`cmake --build build-release --target deploy-hub deploy_hub_tests --config Release` 通过；`deploy_hub_tests` 中项目管理选中态测试通过，整套仍受既有 `aiConfigPageUsesUnifiedTemplate` 的「查看文档」断言失败影响。
+- 2026-06-30：项目管理增加项目名/部署服务器搜索：
+  - 顶部工具栏新增搜索框，placeholder 为「搜索项目名 / 部署服务器」；搜索与分组筛选叠加生效。
+  - `ProjectManagerWidget::projectMatchesSearch` 支持匹配项目名/项目 id、部署 serverId、服务器 id/name/host/username；列表渲染时复用缓存的项目与服务器记录过滤，输入变化即时刷新。
+  - 新增 `ProjectManagerWidgetTest::projectSearchMatchesNameAndServer`。测试目标编译通过，新增测试通过；`deploy-hub` Release 目标编译通过（仅保留既有 FluentUI 插件链接范围警告）。全量 `ctest` 仍受既有 `aiConfigPageUsesUnifiedTemplate` 的「查看文档」断言失败影响。
+- 2026-06-30：右侧内容区按钮整体收窄、项目搜索框加宽：
+  - `style.qss` 将常用按钮水平 padding 从 15/16px 收到 12px，默认按钮最小宽度 110→96，表单操作按钮 120→104；同步收窄 `deployStartButton`、`dangerButton`、`toolPrimaryButton`。
+  - 项目管理搜索框最小宽度从 220 调整到 300。
+  - 新增 `PageLayoutTest::contentButtonsStayCompact` 静态回归测试。`cmake --build build-release --target deploy-hub deploy_hub_tests --config Release` 通过；全量 `ctest` 仍受既有 `aiConfigPageUsesUnifiedTemplate` 的「查看文档」断言失败影响。
+- 2026-06-30：明确项目管理服务启动与一键部署本地脚本的边界：
+  - `ProjectDialog` 将「启动方式」改为「部署后重启方式」，选项改为「本地脚本（部署时上传执行）」和「远程服务命令（项目管理可用）」；脚本字段改为「本地脚本路径」，启动命令 placeholder 明确为远程启动命令。
+  - SSH/WinRM 项目管理启动服务缺少 `startCommand` 时，错误提示改为引导编辑项目填写「远程服务命令」里的启动命令，并说明「本地脚本」仅在一键部署时上传执行。
+  - 新增 `PageLayoutTest::projectServiceControlCopyExplainsRemoteCommands` 静态回归测试。`cmake --build build-release --target deploy-hub deploy_hub_tests --config Release` 通过；全量 `ctest` 仍受既有 `aiConfigPageUsesUnifiedTemplate` 的「查看文档」断言失败影响。
+- 2026-06-30：统一旧卡片标题样式，修复 label 遮挡：
+  - `style.qss` 将 `deployConfigBox` / `dialogFormBox` 的 `QGroupBox::title` 从边框悬浮标题改为一键部署卡片同款顶部标题条：`#F1F3FF` 背景、36px 高度、底部分隔线、顶部圆角。
+  - 卡片内容 padding 改为 `48px 16px 16px 16px`，为固定标题条预留空间；移除 `dialogFormBox::title top:-8px` 负偏移，避免部署工具/大数据/数据库等页面标题被遮挡或显示不全。
+  - 新增 `PageLayoutTest::legacyGroupBoxCardsUseDeploySectionTitleStyle` 静态回归测试。`cmake --build build-release --target deploy-hub deploy_hub_tests --config Release` 通过；全量 `ctest` 仍受既有 `aiConfigPageUsesUnifiedTemplate` 的「查看文档」断言失败影响。
+  - 根据截图继续修正：`ProjectDialog`、`ServerDialog`、部署设置页、数据库驱动设置、AI 辅助摘要卡片全部从 `QGroupBox` 标题迁移为 `PageLayout::makeDeploySectionCard` 真实 header 结构，标题背景可铺满整行。
+  - 项目管理的 SSH/WinRM 远程服务启动/停止/重启命令执行前，自动用 `wrapCommandWithWorkingDirectory` 切换到 `deploy.remoteBaseDir` 后再执行；远端目录为空时保持原命令。
+- 2026-06-30：统一大数据/数据库模块按钮宽高：
+  - `ServiceProductPanel` 新增共用 `configureServiceToolbarButton`，将大数据/数据库列表工具栏与详情工具栏按钮固定为 96x32，覆盖 Kafka/Redis/Elasticsearch/Oracle/PostgreSQL。
+  - 按钮颜色保持原样（新建=primary、删除=danger、编辑/刷新=默认），只统一宽高尺寸。
+  - 新增 `PageLayoutTest::serviceModuleButtonsKeepConsistentSize` 静态回归测试。`cmake --build build-release --target deploy-hub deploy_hub_tests --config Release` 通过；`PageLayoutTest` 中新增测试通过。全量 `ctest` 仍受既有 `aiConfigPageUsesUnifiedTemplate` 的「查看文档」断言失败影响。
+  - 根因修复：编辑/刷新按钮无 objectName，走 QPushButton 基类 `min-height: 40px`，覆盖了 C++ `setFixedSize` 的 32px。改为动态属性 `serviceToolbar="true"` + QSS 规则 `QPushButton[serviceToolbar="true"]` 显式锁死 min/max-height=32px + min/max-width=96px，并在设置属性后强制 `unpolish/polish` 刷新样式，彻底解决 QSS 优先级覆盖问题。
+- 2026-06-30：Oracle/PostgreSQL 数据库 SQL 工作台重构：
+  - 移除「表管理」Tab，仅保留 SQL；模式选择与刷新移至 Tab 行右侧。
+  - `ServiceSqlWorkbenchWidget`：左侧表树（选中态 QSS、右键查看结构/刷新/删表）、SQL 模式提示、结果分页（50/100/200 + 总数 + 耗时 ms）、复制行 JSON、导出 CSV/JSON/Excel、工具栏间距压缩以扩大编辑/结果区。
+  - `SqlServiceClient`：`withSchemaContext`、`describeTable`、`dropTable`；`ServiceProductPanel` 执行 SQL 时注入当前 schema 上下文。
+  - `scripts/build-release.ps1` Release 构建通过。

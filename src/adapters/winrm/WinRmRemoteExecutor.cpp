@@ -20,6 +20,14 @@ RemoteCommandResult WinRmRemoteExecutor::execute(const QString &command, int tim
 
 UploadResult WinRmRemoteExecutor::uploadFile(const QString &localPath, const QString &remotePath)
 {
+    return uploadFile(localPath, remotePath, true);
+}
+
+UploadResult WinRmRemoteExecutor::uploadFile(const QString &localPath,
+                                             const QString &remotePath,
+                                             bool ensureRemoteDir)
+{
+    Q_UNUSED(ensureRemoteDir);
     WinRmClient client(m_context);
-    return client.uploadFile(localPath, remotePath);
+    return client.uploadFile(localPath, remotePath, ensureRemoteDir);
 }

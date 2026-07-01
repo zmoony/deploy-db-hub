@@ -11,6 +11,9 @@ public:
     RemoteCommandResult testConnection() override;
     RemoteCommandResult execute(const QString &command, int timeoutSec) override;
     UploadResult uploadFile(const QString &localPath, const QString &remotePath) override;
+    UploadResult uploadFile(const QString &localPath,
+                            const QString &remotePath,
+                            bool ensureRemoteDir) override;
 
 private:
     RemoteConnectionContext m_context;

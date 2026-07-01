@@ -23,6 +23,18 @@ public:
     static ServiceResult searchIndexBody(const ServiceEndpoint &endpoint,
                                          const QString &index,
                                          const QJsonObject &body);
+    static ServiceResult getIndexMapping(const ServiceEndpoint &endpoint,
+                                         const QString &index);
+    static ServiceResult getIndexSettings(const ServiceEndpoint &endpoint,
+                                          const QString &index);
+    static ServiceResult getAliasesForIndex(const ServiceEndpoint &endpoint,
+                                            const QString &index);
+    static ServiceResult listIndexTemplates(const ServiceEndpoint &endpoint);
+    static ServiceResult analyzeText(const ServiceEndpoint &endpoint,
+                                     const QString &index,
+                                     const QString &analyzer,
+                                     const QString &text);
+    static QStringList listAnalyzersFromSettings(const QJsonObject &settingsRoot);
     static ServiceResult indexCount(const ServiceEndpoint &endpoint, const QString &index);
     static QString kibanaUrl(const ServiceEndpoint &endpoint);
 };

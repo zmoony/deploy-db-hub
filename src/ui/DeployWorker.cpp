@@ -167,6 +167,9 @@ ServiceControlResult executeProjectRestart(const QJsonObject &server,
     if (!plan.requiresScriptUpload) {
         const QString workingDir = remoteDirectoryOf(remoteArtifactPath);
         finalCommand = wrapCommandWithWorkingDirectory(os, commandText, workingDir);
+        if (os != QStringLiteral("windows")) {
+            finalCommand += defaultRestartCommandSuffix();
+        }
     }
     const RemoteCommandResult command = executor->execute(finalCommand, 120);
     result.ok = command.ok;
@@ -188,7 +191,8 @@ UploadDirectoryResult uploadDirectoryRecursive(RemoteExecutor *executor,
                                                const QString &localDir,
                                                const QString &remoteDir,
                                                const QString &os,
-                                               const std::function<void(int)> &progressCb)
+                                               const std::function<void(int)> &progressCb,
+                                               const std::function<bool()> &shouldCancel = {})
 {
     UploadDirectoryResult result;
     QDir dir(localDir);
@@ -217,15 +221,8 @@ UploadDirectoryResult uploadDirectoryRecursive(RemoteExecutor *executor,
         progressCb(0);
     }
 
-    const QString ensureBase = ensureRemoteDirCommand(os, remoteDir);
-    const RemoteCommandResult ensureBaseResult = executor->execute(ensureBase, 30);
-    if (!ensureBaseResult.ok) {
-        result.error = ensureBaseResult.error.isEmpty() ? ensureBaseResult.stderrText.trimmed() : ensureBaseResult.error;
-        return result;
-    }
-
-    qint64 sent = 0;
-    int uploaded = 0;
+    QStringList parentDirs;
+    parentDirs << remoteDir;
     for (const QString &localFile : fileList) {
         const QString relativePath = QDir(localDir).relativeFilePath(localFile);
         QString remotePath = remoteDir;
@@ -233,17 +230,40 @@ UploadDirectoryResult uploadDirectoryRecursive(RemoteExecutor *executor,
             remotePath += QLatin1Char('/');
         }
         remotePath += QDir::fromNativeSeparators(relativePath);
-
         const QString remoteParent = remoteDirectoryOf(remotePath);
-        const RemoteCommandResult ensureDirResult = executor->execute(ensureRemoteDirCommand(os, remoteParent), 15);
-        if (!ensureDirResult.ok) {
-            result.error = QStringLiteral("创建远端目录失败 %1: %2")
-                               .arg(remoteParent,
-                                    ensureDirResult.error.isEmpty() ? ensureDirResult.stderrText.trimmed() : ensureDirResult.error);
+        if (!parentDirs.contains(remoteParent)) {
+            parentDirs << remoteParent;
+        }
+    }
+    if (!parentDirs.isEmpty()) {
+        QStringList quotedDirs;
+        for (const QString &d : parentDirs) {
+            const QString n = QDir::fromNativeSeparators(d);
+            quotedDirs << (n == QStringLiteral(".") ? QStringLiteral(".") : shellQuote(n));
+        }
+        const QString ensureAllCommand = QStringLiteral("mkdir -p %1").arg(quotedDirs.join(QLatin1Char(' ')));
+        const RemoteCommandResult ensureAllResult = executor->execute(ensureAllCommand, 60);
+        if (!ensureAllResult.ok) {
+            result.error = ensureAllResult.error.isEmpty() ? ensureAllResult.stderrText.trimmed() : ensureAllResult.error;
             return result;
         }
+    }
 
-        const UploadResult upload = executor->uploadFile(localFile, remotePath);
+    qint64 sent = 0;
+    int uploaded = 0;
+    for (const QString &localFile : fileList) {
+        if (shouldCancel && shouldCancel()) {
+            result.error = QStringLiteral("已取消");
+            return result;
+        }
+        const QString relativePath = QDir(localDir).relativeFilePath(localFile);
+        QString remotePath = remoteDir;
+        if (!remotePath.endsWith(QLatin1Char('/'))) {
+            remotePath += QLatin1Char('/');
+        }
+        remotePath += QDir::fromNativeSeparators(relativePath);
+
+        const UploadResult upload = executor->uploadFile(localFile, remotePath, false);
         if (!upload.ok) {
             result.error = QStringLiteral("上传文件失败 %1: %2").arg(relativePath, upload.error);
             return result;
@@ -392,17 +412,144 @@ void writeDeploymentLog(DeployOrchestrator::ActiveDeployment *deployment, const 
     deployment->logWriter->writeLine(line, error);
 }
 
+struct RollbackResult {
+    bool attempted = false;
+    bool restored = false;
+    bool restarted = false;
+    QString summary;
+};
+
+QString rollbackKillCurrentCommand(const QString &os, const QString &jarName)
+{
+    if (jarName.isEmpty()) {
+        return {};
+    }
+    if (os == QStringLiteral("windows")) {
+        const QString match = jarName;
+        return QStringLiteral(
+            "powershell -NoProfile -Command \""
+            "$match = '%1'; "
+            "$procs = Get-CimInstance Win32_Process | Where-Object { "
+            "  $_.CommandLine -like ('*' + $match + '*') "
+            "  -and $_.CommandLine -notlike '*powershell*' "
+            "  -and $_.CommandLine -notlike '*winrs*' "
+            "}; "
+            "if ($procs) { $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }; "
+            "echo DONE\"")
+            .arg(match);
+    }
+    const QString pattern = shellQuote(pgrepSafePattern(jarName));
+    return QStringLiteral(
+        "pids=$(pgrep -f %1 2>/dev/null || true); "
+        "if [ -n \"$pids\" ]; then echo \"$pids\" | xargs -r kill -KILL 2>/dev/null || true; fi; "
+        "sleep 1; "
+        "remaining=$(pgrep -f %1 2>/dev/null || true); "
+        "if [ -z \"$remaining\" ]; then echo KILLED; else echo \"STILL_ALIVE:$remaining\"; fi")
+        .arg(pattern);
+}
+
+QString rollbackMoveFileCommand(const QString &os, const QString &fromPath, const QString &toPath)
+{
+    const QString from = QDir::fromNativeSeparators(fromPath);
+    const QString to = QDir::fromNativeSeparators(toPath);
+    if (os == QStringLiteral("windows")) {
+        const QString fromNative = QDir::toNativeSeparators(from).replace(QLatin1Char('\''), QStringLiteral("''"));
+        const QString toNative = QDir::toNativeSeparators(to).replace(QLatin1Char('\''), QStringLiteral("''"));
+        return QStringLiteral(
+            "powershell -NoProfile -Command \""
+            "if (Test-Path '%1') { "
+            "  New-Item -ItemType Directory -Force -Path (Split-Path '%2' -Parent) | Out-Null; "
+            "  Move-Item -Force '%1' '%2' "
+            "} else { echo 'SOURCE_MISSING' }\"")
+            .arg(fromNative, toNative);
+    }
+    return QStringLiteral(
+        "if [ -f %1 ]; then mkdir -p %2 && mv -f %1 %3 && echo MOVED; "
+        "else if [ -e %1 ]; then mkdir -p %2 && mv -f %1 %3 && echo MOVED; "
+        "else echo SOURCE_MISSING; fi; fi")
+        .arg(shellQuote(from), shellQuote(remoteDirectoryOf(to)), shellQuote(to));
+}
+
+RollbackResult rollbackToBackup(const QJsonObject &server,
+                                const QJsonObject &project,
+                                RemoteExecutor *executor,
+                                RemoteMonitor *monitor,
+                                const QString &backupPath,
+                                const QString &remoteArtifact,
+                                const QString &os)
+{
+    RollbackResult result;
+    if (executor == nullptr) {
+        result.summary = QStringLiteral("回滚失败：远程执行器不可用");
+        return result;
+    }
+    result.attempted = true;
+
+    const ProjectServiceConfig service = projectServiceConfig(project);
+    const QString jarName = remoteArtifact.isEmpty()
+        ? QString()
+        : QFileInfo(QDir::fromNativeSeparators(remoteArtifact)).fileName();
+
+    QStringList steps;
+
+    if (!jarName.isEmpty()) {
+        const QString killCmd = rollbackKillCurrentCommand(os, jarName);
+        if (!killCmd.isEmpty()) {
+            const RemoteCommandResult killResult = executor->execute(killCmd, 15);
+            steps << QStringLiteral("杀掉新进程：%1").arg(killResult.ok ? QStringLiteral("成功") : killResult.error);
+        }
+    }
+
+    if (!backupPath.isEmpty() && !remoteArtifact.isEmpty()) {
+        const QString moveCmd = rollbackMoveFileCommand(os, backupPath, remoteArtifact);
+        if (!moveCmd.isEmpty()) {
+            const RemoteCommandResult moveResult = executor->execute(moveCmd, 30);
+            if (moveResult.ok && moveResult.stdoutText.contains(QStringLiteral("MOVED"))) {
+                result.restored = true;
+                steps << QStringLiteral("还原备份：成功");
+            } else if (moveResult.stdoutText.contains(QStringLiteral("SOURCE_MISSING"))) {
+                steps << QStringLiteral("还原备份：备份文件不存在（可能首次部署或备份失败）");
+            } else {
+                const QString err = moveResult.error.isEmpty() ? moveResult.stderrText.trimmed() : moveResult.error;
+                steps << QStringLiteral("还原备份：失败（%1）").arg(err);
+            }
+        }
+    } else {
+        steps << QStringLiteral("未配置备份路径，跳过文件还原");
+    }
+
+    if (monitor != nullptr && !service.startCommand.isEmpty()) {
+        const ServiceControlResult start = monitor->startService(server, project);
+        if (start.ok) {
+            result.restarted = true;
+            steps << QStringLiteral("启动旧服务：%1").arg(start.output.isEmpty() ? QStringLiteral("成功") : start.output);
+        } else {
+            steps << QStringLiteral("启动旧服务：失败（%1）").arg(start.error);
+        }
+    } else {
+        steps << QStringLiteral("未配置启动命令，请手动启动旧服务");
+    }
+
+    result.summary = steps.join(QLatin1String("；"));
+    return result;
+}
+
 }
 
 DeployWorker::DeployWorker(QString databasePath,
-                           QString selectedJdkId,
-                           RemoteConnectionContext connectionContext,
-                           QObject *parent)
+                         QString selectedJdkId,
+                         RemoteConnectionContext connectionContext,
+                         QObject *parent)
     : QObject(parent)
     , m_databasePath(std::move(databasePath))
     , m_selectedJdkId(std::move(selectedJdkId))
     , m_connectionContext(std::move(connectionContext))
 {
+}
+
+void DeployWorker::requestCancel()
+{
+    m_cancelRequested.storeRelease(1);
 }
 
 void DeployWorker::run(const QString &projectId, const QString &serverId)
@@ -529,6 +676,7 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
         request.workingDirectory = workingDirectory;
         request.command = command;
         request.timeoutSec = build.value(QStringLiteral("timeoutSec")).toInt(600);
+        request.shouldCancel = [this]() { return m_cancelRequested.loadAcquire() != 0; };
         const QJsonObject envObject = build.value(QStringLiteral("env")).toObject();
         for (auto it = envObject.begin(); it != envObject.end(); ++it) {
             request.environment.insert(it.key(), it.value().toString());
@@ -685,7 +833,8 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
             [this](int percent) {
                 const int scaled = 75 + (percent * 20) / 100;
                 emit progress(scaled);
-            });
+            },
+            [this]() { return m_cancelRequested.loadAcquire() != 0; });
 
         if (!uploadResult.ok) {
             emit logLine(QStringLiteral("UPLOAD"), uploadResult.error);
@@ -696,9 +845,6 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
         emit progress(95);
         emit logLine(QStringLiteral("UPLOAD"), QStringLiteral("静态文件上传完成，共 %1 个文件").arg(uploadResult.totalFiles));
         writeDeploymentLog(&deployment, QStringLiteral("[UPLOAD] completed, files: %1").arg(uploadResult.totalFiles), &error);
-
-        deployment.job.transitionTo(DeploymentStatus::Success);
-        orchestrator.persistJobState(&deployment, &error);
 
         const QStringList artifactNames{QFileInfo(artifactPath).fileName()};
         if (!orchestrator.completeSuccess(&deployment,
@@ -789,8 +935,41 @@ void DeployWorker::run(const QString &projectId, const QString &serverId)
     if (!restart.ok) {
         const QString restartError = restart.error.isEmpty() ? QStringLiteral("服务重启失败") : restart.error;
         emit logLine(QStringLiteral("RESTART"), restartError);
-        fail(&deployment, FailureStep::Restarting, restartError, 95);
+        emit logLine(QStringLiteral("ROLLBACK"), QStringLiteral("重启失败，开始回滚到上一个版本…"));
+        const RollbackResult rb = rollbackToBackup(server, project, executor.get(), monitor.get(), backupPath, remoteArtifact, os);
+        emit logLine(QStringLiteral("ROLLBACK"), rb.summary);
+        writeDeploymentLog(&deployment, QStringLiteral("[ROLLBACK] ") + rb.summary, &error);
+        const QString fullError = rb.summary.isEmpty()
+            ? restartError
+            : QStringLiteral("%1；回滚：%2").arg(restartError, rb.summary);
+        fail(&deployment, FailureStep::Restarting, fullError, 95);
         return;
+    }
+
+    const int healthCheckPort = resolveHealthCheckPort(project);
+    if (healthCheckPort > 0) {
+        emit logLine(QStringLiteral("HEALTH"), QStringLiteral("等待端口 %1 监听（最长 60s）…").arg(healthCheckPort));
+        const QString waitCmd = waitForPortOpenCommand(os, QStringLiteral("127.0.0.1"), healthCheckPort, 60);
+        const RemoteCommandResult waitResult = executor->execute(waitCmd, 90);
+        if (!waitResult.ok || !waitResult.stdoutText.contains(QStringLiteral("LISTENING"))) {
+            const QString healthError = QStringLiteral("健康检查超时：服务在 60s 内未监听端口 %1").arg(healthCheckPort);
+            emit logLine(QStringLiteral("HEALTH"), healthError);
+            writeDeploymentLog(&deployment, QStringLiteral("[HEALTH] timeout port: ") + QString::number(healthCheckPort), &error);
+            emit logLine(QStringLiteral("ROLLBACK"), QStringLiteral("健康检查失败，开始回滚到上一个版本…"));
+            const RollbackResult rb = rollbackToBackup(server, project, executor.get(), monitor.get(), backupPath, remoteArtifact, os);
+            emit logLine(QStringLiteral("ROLLBACK"), rb.summary);
+            writeDeploymentLog(&deployment, QStringLiteral("[ROLLBACK] ") + rb.summary, &error);
+            const QString fullError = rb.summary.isEmpty()
+                ? healthError
+                : QStringLiteral("%1；回滚：%2").arg(healthError, rb.summary);
+            fail(&deployment, FailureStep::Restarting, fullError, 95);
+            return;
+        }
+        emit logLine(QStringLiteral("HEALTH"), QStringLiteral("服务已监听端口 %1").arg(healthCheckPort));
+        writeDeploymentLog(&deployment, QStringLiteral("[HEALTH] listening on port ") + QString::number(healthCheckPort), &error);
+    } else {
+        emit progress(98);
+        emit logLine(QStringLiteral("HEALTH"), QStringLiteral("未配置健康检查端口，跳过（建议在项目里配置 deploy.healthCheckPort）"));
     }
 
     emit progress(100);

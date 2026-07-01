@@ -498,7 +498,17 @@ ServiceResult ServiceBroker::runAction(const QJsonObject &instance,
 
     if (productKey == QStringLiteral("redis") && tab == TabKind::Key) {
         if (action.contains(QStringLiteral("搜索")) || action.contains(QStringLiteral("刷新"))) {
-            return RedisServiceClient::listKeys(endpoint, input.isEmpty() ? QStringLiteral("*") : input);
+            QString pattern = input;
+            QString typeFilter;
+            const int sepIndex = input.indexOf(QLatin1Char('\t'));
+            if (sepIndex >= 0) {
+                pattern = input.left(sepIndex);
+                typeFilter = input.mid(sepIndex + 1);
+            }
+            if (pattern.isEmpty()) {
+                pattern = QStringLiteral("*");
+            }
+            return RedisServiceClient::listKeys(endpoint, pattern, typeFilter);
         }
         if (action.contains(QStringLiteral("写入"))) {
             const QString key = selection.value(QStringLiteral("key")).toString();

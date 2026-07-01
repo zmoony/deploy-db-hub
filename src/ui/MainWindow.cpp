@@ -25,6 +25,7 @@
 #include "ui/PageLayout.h"
 #include "ui/ProjectManagerWidget.h"
 #include "ui/RemoteFileViewerDialog.h"
+#include "ui/RemoteFileBrowserDialog.h"
 #include "ui/RemoteUiHelpers.h"
 #include "ui/ServerManagerWidget.h"
 #include "infra/AppBranding.h"
@@ -189,8 +190,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *root = new QWidget(this);
     auto *rootLayout = new QHBoxLayout(root);
-    rootLayout->setContentsMargins(0, 0, PageLayout::Space24, 0);
-    rootLayout->setSpacing(PageLayout::Space24);
+    rootLayout->setContentsMargins(0, 0, 5, 0);
+    rootLayout->setSpacing(5);
 
     m_navigation = PageLayout::createSidebarNavigationList();
     rootLayout->addWidget(PageLayout::wrapSidebarNavigation(m_navigation, &m_settingsButton));
@@ -435,7 +436,7 @@ void MainWindow::navigateToPage(int moduleIndex, int pageRow)
 QWidget *MainWindow::createDashboardPage()
 {
     auto *page = new QWidget;
-    page->setProperty("fitFirstScreen", true);
+    page->setProperty("cardStackPage", true);
     auto *pageLayout = new QVBoxLayout(page);
     pageLayout->setContentsMargins(0, 0, 0, 0);
     pageLayout->setSpacing(0);
@@ -456,9 +457,10 @@ QWidget *MainWindow::createDashboardPage()
 
     auto *contentPanel = new QFrame;
     contentPanel->setObjectName(QStringLiteral("contentPanel"));
+    contentPanel->setAttribute(Qt::WA_StyledBackground, true);
     auto *panelLayout = new QVBoxLayout(contentPanel);
-    panelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
-    panelLayout->setSpacing(PageLayout::Space12);
+    PageLayout::configureToolCard(panelLayout);
+    PageLayout::applyLighterCardShadow(contentPanel);
 
     auto *recentTable = createTable(
         {QStringLiteral("时间"), QStringLiteral("项目"), QStringLiteral("服务器"), QStringLiteral("状态"), QStringLiteral("操作")},
@@ -485,6 +487,7 @@ QWidget *MainWindow::createDashboardPage()
     headerLayout->addWidget(sectionLabel);
     headerLayout->addStretch();
     auto *clearButton = new QPushButton(QStringLiteral("清空记录"));
+    clearButton->setObjectName(QStringLiteral("secondaryButton"));
     connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearDeploymentHistory);
     headerLayout->addWidget(clearButton);
 
@@ -507,87 +510,165 @@ QWidget *MainWindow::createDashboardPage()
 QWidget *MainWindow::createDeployPage()
 {
     auto *page = new QWidget;
-    page->setProperty("fitFirstScreen", true);
+    page->setObjectName(QStringLiteral("deployPage"));
+    page->setProperty("workspacePage", true);
+    page->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *layout = new QVBoxLayout(page);
-    PageLayout::applyPage(layout);
-    layout->setSpacing(PageLayout::Space16);
+    layout->setContentsMargins(PageLayout::Space12,
+                               PageLayout::Space12,
+                               PageLayout::Space12,
+                               PageLayout::Space12);
+    layout->setSpacing(0);
+
     auto *body = new QHBoxLayout;
     body->setContentsMargins(0, 0, 0, 0);
-    body->setSpacing(PageLayout::Space16);
+    body->setSpacing(PageLayout::Space12);
     layout->addLayout(body, 1);
 
     auto *configColumn = new QWidget(page);
     configColumn->setObjectName(QStringLiteral("deployConfigColumn"));
     configColumn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
-    configColumn->setMinimumWidth(420);
-    configColumn->setMaximumWidth(560);
+    configColumn->setMinimumWidth(400);
+    configColumn->setMaximumWidth(520);
     auto *configLayout = new QVBoxLayout(configColumn);
     configLayout->setContentsMargins(0, 0, 0, 0);
-    configLayout->setSpacing(PageLayout::Space16);
+    configLayout->setSpacing(PageLayout::Space10);
 
-    auto *formBox = new QGroupBox(QStringLiteral("部署配置"));
-    formBox->setObjectName(QStringLiteral("deployConfigBox"));
-    auto *form = new QFormLayout(formBox);
-    PageLayout::applyForm(form);
-    form->setContentsMargins(0, PageLayout::Space8, 0, 0);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    QWidget *configHeaderActions = nullptr;
+    QVBoxLayout *configBody = nullptr;
+    auto *configCard = PageLayout::makeDeploySectionCard(configColumn,
+                                                         QStringLiteral("部署配置"),
+                                                         &configBody,
+                                                         &configHeaderActions);
+    configLayout->addWidget(configCard);
+    configCard->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+
+    auto addField = [&](const QString &labelText, QWidget *field) {
+        auto *group = new QWidget(configColumn);
+        auto *groupLayout = new QVBoxLayout(group);
+        groupLayout->setContentsMargins(0, 0, 0, 0);
+        groupLayout->setSpacing(PageLayout::Space4);
+        groupLayout->addWidget(PageLayout::makeDeployFieldLabel(labelText, group));
+        groupLayout->addWidget(field);
+        configBody->addWidget(group);
+    };
+
     m_deployProject = new QComboBox;
     m_deployServer = new QComboBox;
     m_jdkSelector = new QComboBox;
     m_manageJdkButton = new QPushButton(QStringLiteral("管理 JDK"));
+    m_manageJdkButton->setObjectName(QStringLiteral("secondaryButton"));
     PageLayout::configureFormInput(m_deployProject);
     PageLayout::configureFormInput(m_deployServer);
     PageLayout::configureFormInput(m_jdkSelector);
-    m_deployProject->setMinimumWidth(360);
-    m_deployServer->setMinimumWidth(360);
-    m_jdkSelector->setMinimumWidth(260);
-    form->addRow(QStringLiteral("项目"), m_deployProject);
-    form->addRow(QStringLiteral("服务器"), m_deployServer);
+    addField(QStringLiteral("项目"), m_deployProject);
+
+    auto *serverRow = new QWidget;
+    auto *serverRowLayout = new QVBoxLayout(serverRow);
+    serverRowLayout->setContentsMargins(0, 0, 0, 0);
+    serverRowLayout->setSpacing(PageLayout::Space4);
+    serverRowLayout->addWidget(PageLayout::makeDeployFieldLabel(QStringLiteral("目标服务器"), serverRow));
+
+    auto *serverInputRow = new QWidget(serverRow);
+    auto *serverInputLayout = new QHBoxLayout(serverInputRow);
+    serverInputLayout->setContentsMargins(0, 0, 0, 0);
+    serverInputLayout->setSpacing(PageLayout::Space8);
+    serverInputLayout->addWidget(m_deployServer, 1);
+
+    m_openServerManagerButton = new QPushButton(QStringLiteral("远程管理"), serverInputRow);
+    m_openServerManagerButton->setObjectName(QStringLiteral("secondaryButton"));
+    m_openServerManagerButton->setToolTip(QStringLiteral("打开所选服务器的远程文件管理（SFTP/终端）"));
+    m_openServerManagerButton->setMinimumHeight(0);
+    m_openServerManagerButton->setMaximumHeight(40);
+    m_openServerManagerButton->setMinimumWidth(96);
+    m_openServerManagerButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    serverInputLayout->addWidget(m_openServerManagerButton, 0);
+    serverRowLayout->addWidget(serverInputRow);
+    configBody->addWidget(serverRow);
+    connect(m_openServerManagerButton, &QPushButton::clicked, this, &MainWindow::openDeployServerManager);
+
     auto *jdkRow = new QWidget;
     auto *jdkRowLayout = new QHBoxLayout(jdkRow);
     jdkRowLayout->setContentsMargins(0, 0, 0, 0);
-    jdkRowLayout->setSpacing(PageLayout::Space8);
-    jdkRowLayout->addWidget(m_jdkSelector, 1);
-    jdkRowLayout->addWidget(m_manageJdkButton);
+    jdkRowLayout->setSpacing(PageLayout::Space10);
+    auto *jdkFieldColumn = new QWidget(jdkRow);
+    auto *jdkFieldLayout = new QVBoxLayout(jdkFieldColumn);
+    jdkFieldLayout->setContentsMargins(0, 0, 0, 0);
+    jdkFieldLayout->setSpacing(PageLayout::Space8);
+    jdkFieldLayout->setAlignment(Qt::AlignBottom);
+    jdkFieldLayout->addWidget(PageLayout::makeDeployFieldLabel(QStringLiteral("JDK"), jdkFieldColumn));
+    jdkFieldLayout->addWidget(m_jdkSelector);
+    auto *jdkButtonColumn = new QWidget(jdkRow);
+    auto *jdkButtonLayout = new QVBoxLayout(jdkButtonColumn);
+    jdkButtonLayout->setContentsMargins(0, 0, 0, 0);
+    jdkButtonLayout->setSpacing(0);
+    jdkButtonLayout->setAlignment(Qt::AlignBottom);
+    jdkButtonLayout->addWidget(m_manageJdkButton);
+    jdkRowLayout->addWidget(jdkFieldColumn, 1);
+    jdkRowLayout->addWidget(jdkButtonColumn, 1);
     connect(m_manageJdkButton, &QPushButton::clicked, this, &MainWindow::manageJdkProfiles);
-    form->addRow(QStringLiteral("JDK"), jdkRow);
-    configLayout->addWidget(formBox);
+    configBody->addWidget(jdkRow);
 
-    auto *statusBox = new QGroupBox(QStringLiteral("服务状态"));
-    statusBox->setObjectName(QStringLiteral("deployConfigBox"));
-    auto *statusForm = new QFormLayout(statusBox);
-    PageLayout::applyForm(statusForm);
-    statusForm->setContentsMargins(0, PageLayout::Space8, 0, 0);
-    statusForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    statusForm->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    m_serviceStatusLabel = new QLabel(QStringLiteral("未检测"));
-    m_serviceStatusLabel->setObjectName(QStringLiteral("serviceStatusBadge"));
+    QWidget *statusHeaderActions = nullptr;
+    QVBoxLayout *statusBody = nullptr;
+    auto *statusCard = PageLayout::makeDeploySectionCard(configColumn,
+                                                         QStringLiteral("服务状态"),
+                                                         &statusBody,
+                                                         &statusHeaderActions);
+    configLayout->addWidget(statusCard);
+    statusCard->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+
     m_refreshServiceStatusButton = new QPushButton(QStringLiteral("刷新状态"));
+    m_refreshServiceStatusButton->setObjectName(QStringLiteral("deployHeaderActionButton"));
     connect(m_refreshServiceStatusButton, &QPushButton::clicked, this, [this]() {
         refreshServiceStatus(true);
     });
-    auto *statusRow = new QWidget;
-    auto *statusRowLayout = new QHBoxLayout(statusRow);
-    statusRowLayout->setContentsMargins(0, 0, 0, 0);
-    statusRowLayout->setSpacing(PageLayout::Space8);
-    statusRowLayout->addWidget(m_serviceStatusLabel, 1);
-    statusRowLayout->addWidget(m_refreshServiceStatusButton);
-    statusForm->addRow(QStringLiteral("运行状态"), statusRow);
-    configLayout->addWidget(statusBox);
+    if (statusHeaderActions != nullptr) {
+        auto *statusActionsLayout = qobject_cast<QHBoxLayout *>(statusHeaderActions->layout());
+        if (statusActionsLayout != nullptr) {
+            statusActionsLayout->addWidget(m_refreshServiceStatusButton);
+        }
+    }
 
-    auto *logBox = new QGroupBox(QStringLiteral("应用日志"));
-    logBox->setObjectName(QStringLiteral("deployConfigBox"));
-    auto *logForm = new QFormLayout(logBox);
-    PageLayout::applyForm(logForm);
-    logForm->setContentsMargins(0, PageLayout::Space8, 0, 0);
-    logForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    logForm->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    auto *statusPanel = new QFrame;
+    statusPanel->setObjectName(QStringLiteral("deployStatusPanel"));
+    statusPanel->setAttribute(Qt::WA_StyledBackground, true);
+    auto *statusPanelLayout = new QHBoxLayout(statusPanel);
+    statusPanelLayout->setContentsMargins(PageLayout::Space12,
+                                          PageLayout::Space10,
+                                          PageLayout::Space12,
+                                          PageLayout::Space10);
+    statusPanelLayout->setSpacing(PageLayout::Space10);
+
+    auto *statusDot = new QLabel(statusPanel);
+    statusDot->setObjectName(QStringLiteral("deployStatusDot"));
+    statusDot->setFixedSize(12, 12);
+
+    auto *statusTextColumn = new QWidget(statusPanel);
+    auto *statusTextLayout = new QVBoxLayout(statusTextColumn);
+    statusTextLayout->setContentsMargins(0, 0, 0, 0);
+    statusTextLayout->setSpacing(PageLayout::Space4);
+    m_serviceStatusLabel = new QLabel(QStringLiteral("未检测"));
+    m_serviceStatusLabel->setObjectName(QStringLiteral("deployStatusValue"));
+    auto *statusHint = new QLabel(QStringLiteral("点击「刷新状态」获取最新运行信息"));
+    statusHint->setObjectName(QStringLiteral("deployStatusHint"));
+    statusHint->setWordWrap(true);
+    statusTextLayout->addWidget(m_serviceStatusLabel);
+    statusTextLayout->addWidget(statusHint);
+
+    statusPanelLayout->addWidget(statusDot, 0, Qt::AlignVCenter);
+    statusPanelLayout->addWidget(statusTextColumn, 1);
+    statusBody->addWidget(statusPanel);
+
+    QVBoxLayout *logBody = nullptr;
+    auto *logCard = PageLayout::makeDeploySectionCard(configColumn, QStringLiteral("远程日志"), &logBody);
+    configLayout->addWidget(logCard);
+    logCard->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+
     m_logPathInput = new QComboBox;
     m_logPathInput->setEditable(true);
     m_logPathInput->setInsertPolicy(QComboBox::NoInsert);
     m_logPathInput->setProperty("manualEdit", true);
-    m_logPathInput->setMinimumWidth(360);
     PageLayout::configureFormInput(m_logPathInput);
     if (QLineEdit *logPathEditor = m_logPathInput->lineEdit()) {
         logPathEditor->setReadOnly(false);
@@ -595,21 +676,38 @@ QWidget *MainWindow::createDeployPage()
             QStringLiteral("选择或输入远程日志文件路径，例如 /home/app/logs/app.log"));
     }
     m_refreshLogListButton = new QPushButton(QStringLiteral("刷新列表"));
-    m_viewLogButton = new QPushButton(QStringLiteral("一键查看"));
+    m_refreshLogListButton->setObjectName(QStringLiteral("secondaryButton"));
+    m_viewLogButton = new QPushButton(QStringLiteral("查看日志"));
     m_viewLogButton->setObjectName(QStringLiteral("primaryButton"));
     connect(m_refreshLogListButton, &QPushButton::clicked, this, [this]() {
         refreshLocalLogFiles(true);
     });
     connect(m_viewLogButton, &QPushButton::clicked, this, &MainWindow::viewDeploymentLog);
-    auto *logFieldRow = new QWidget;
-    auto *logRowLayout = new QHBoxLayout(logFieldRow);
-    logRowLayout->setContentsMargins(0, 0, 0, 0);
-    logRowLayout->setSpacing(PageLayout::Space8);
-    logRowLayout->addWidget(m_logPathInput, 1);
-    logRowLayout->addWidget(m_refreshLogListButton);
-    logRowLayout->addWidget(m_viewLogButton);
-    logForm->addRow(QStringLiteral("远程日志"), logFieldRow);
-    configLayout->addWidget(logBox);
+
+    m_logPathDisplayLabel = new QLabel(configColumn);
+    m_logPathDisplayLabel->setObjectName(QStringLiteral("logPathDisplayLabel"));
+    m_logPathDisplayLabel->setWordWrap(true);
+    m_logPathDisplayLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    logBody->addWidget(m_logPathDisplayLabel);
+    logBody->addWidget(PageLayout::makeDeployFieldLabel(QStringLiteral("日志路径"), configColumn));
+
+    auto *logPathRow = new QWidget;
+    logPathRow->setObjectName(QStringLiteral("deployLogPathRow"));
+    auto *logPathRowLayout = new QHBoxLayout(logPathRow);
+    logPathRowLayout->setContentsMargins(0, 0, 0, 0);
+    logPathRowLayout->setSpacing(0);
+    logPathRowLayout->addWidget(m_logPathInput, 1);
+    logBody->addWidget(logPathRow);
+
+    auto *logActionsRow = new QWidget;
+    logActionsRow->setObjectName(QStringLiteral("deployLogActionsRow"));
+    auto *logActionsLayout = new QHBoxLayout(logActionsRow);
+    logActionsLayout->setContentsMargins(0, 0, 0, 0);
+    logActionsLayout->setSpacing(PageLayout::Space8);
+    logActionsLayout->addStretch(1);
+    logActionsLayout->addWidget(m_refreshLogListButton);
+    logActionsLayout->addWidget(m_viewLogButton);
+    logBody->addWidget(logActionsRow);
     configLayout->addStretch(1);
 
     connect(m_deployProject, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::refreshDeployLogPath);
@@ -618,56 +716,135 @@ QWidget *MainWindow::createDeployPage()
     });
     connect(m_deployServer, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         refreshServiceStatus(false);
+        if (m_openServerManagerButton != nullptr) {
+            m_openServerManagerButton->setEnabled(m_deployServer->count() > 0);
+        }
     });
+    connect(m_logPathInput, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (m_logPathDisplayLabel != nullptr) {
+            m_logPathDisplayLabel->setText(m_logPathInput->currentText());
+        }
+    });
+    if (QLineEdit *le = m_logPathInput->lineEdit()) {
+        connect(le, &QLineEdit::textChanged, this, [this](const QString &text) {
+            if (m_logPathDisplayLabel != nullptr) {
+                m_logPathDisplayLabel->setText(text);
+            }
+        });
+    }
 
     refreshLocalLogFiles(false);
     refreshJdkProfiles();
 
-    auto *execBox = new QFrame(page);
-    execBox->setObjectName(QStringLiteral("contentPanel"));
-    execBox->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    auto *execLayout = new QVBoxLayout(execBox);
-    execLayout->setContentsMargins(PageLayout::Space20, PageLayout::Space20, PageLayout::Space20, PageLayout::Space20);
-    execLayout->setSpacing(PageLayout::Space12);
+    QWidget *execHeaderActions = nullptr;
+    QVBoxLayout *execBody = nullptr;
+    auto *execCard = PageLayout::makeDeploySectionCard(page,
+                                                       QStringLiteral("部署执行"),
+                                                       &execBody,
+                                                       &execHeaderActions);
+    execCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    execBody->setSpacing(PageLayout::Space8);
 
-    auto *execHeader = new QHBoxLayout;
-    execHeader->setContentsMargins(0, 0, 0, 0);
-    execHeader->setSpacing(PageLayout::Space12);
-    auto *execTitle = PageLayout::makeSectionLabel(QStringLiteral("部署执行"), execBox);
-    execTitle->setWordWrap(false);
-    execHeader->addWidget(execTitle);
-    execHeader->addStretch(1);
     m_deployButton = new QPushButton(QStringLiteral("开始部署"));
-    m_deployButton->setObjectName(QStringLiteral("primaryButton"));
+    m_deployButton->setObjectName(QStringLiteral("deployStartButton"));
     connect(m_deployButton, &QPushButton::clicked, this, &MainWindow::startDeployment);
-    execHeader->addWidget(m_deployButton);
-    execLayout->addLayout(execHeader);
+
+    m_stopDeployButton = new QPushButton(QStringLiteral("停止部署"));
+    m_stopDeployButton->setObjectName(QStringLiteral("dangerButton"));
+    m_stopDeployButton->setToolTip(QStringLiteral("请求停止当前正在进行的部署"));
+    m_stopDeployButton->setEnabled(false);
+    connect(m_stopDeployButton, &QPushButton::clicked, this, &MainWindow::requestStopDeployment);
+
+    if (execHeaderActions != nullptr) {
+        auto *execActionsLayout = qobject_cast<QHBoxLayout *>(execHeaderActions->layout());
+        if (execActionsLayout != nullptr) {
+            execActionsLayout->addWidget(m_deployButton);
+            execActionsLayout->addWidget(m_stopDeployButton);
+        }
+    }
+
+    auto *progressHeader = new QHBoxLayout;
+    progressHeader->setContentsMargins(0, 0, 0, 0);
+    progressHeader->setSpacing(PageLayout::Space8);
+    auto *taskPrefix = new QLabel(QStringLiteral("当前任务："));
+    taskPrefix->setObjectName(QStringLiteral("deployProgressCaption"));
+    m_deployTaskLabel = new QLabel(QStringLiteral("等待开始"));
+    m_deployTaskLabel->setObjectName(QStringLiteral("deployTaskValue"));
+    auto *taskRow = new QWidget;
+    auto *taskRowLayout = new QHBoxLayout(taskRow);
+    taskRowLayout->setContentsMargins(0, 0, 0, 0);
+    taskRowLayout->setSpacing(PageLayout::Space4);
+    taskRowLayout->addWidget(taskPrefix);
+    taskRowLayout->addWidget(m_deployTaskLabel, 1);
+    progressHeader->addWidget(taskRow, 1);
+    m_deployProgressLabel = new QLabel(QStringLiteral("0%"));
+    m_deployProgressLabel->setObjectName(QStringLiteral("deployProgressValue"));
+    m_deployProgressLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    progressHeader->addWidget(m_deployProgressLabel);
+    execBody->addLayout(progressHeader);
 
     m_progress = new QProgressBar;
     m_progress->setObjectName(QStringLiteral("deployProgress"));
     m_progress->setRange(0, 100);
     m_progress->setValue(0);
-    execLayout->addWidget(m_progress);
+    m_progress->setTextVisible(false);
+    m_progress->setFixedHeight(8);
+    connect(m_progress, &QProgressBar::valueChanged, this, [this](int value) {
+        if (m_deployProgressLabel != nullptr) {
+            m_deployProgressLabel->setText(QStringLiteral("%1%").arg(value));
+        }
+    });
+    execBody->addWidget(m_progress);
 
-    auto *outputLabel = new QLabel(QStringLiteral("部署输出"));
-    outputLabel->setObjectName(QStringLiteral("formFieldLabel"));
-    execLayout->addWidget(outputLabel);
+    auto *outputHeader = new QHBoxLayout;
+    outputHeader->setContentsMargins(0, 0, 0, 0);
+    outputHeader->setSpacing(PageLayout::Space8);
+    auto *outputLabel = new QLabel(QStringLiteral("运行输出"));
+    outputLabel->setObjectName(QStringLiteral("deployOutputCaption"));
+    outputHeader->addWidget(outputLabel);
+    auto *outputDivider = new QFrame;
+    outputDivider->setObjectName(QStringLiteral("deployOutputDivider"));
+    outputDivider->setFrameShape(QFrame::HLine);
+    outputDivider->setFixedHeight(1);
+    outputDivider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    outputHeader->addWidget(outputDivider, 1);
+    execBody->addLayout(outputHeader);
 
     m_log = new QPlainTextEdit;
     m_log->setObjectName(QStringLiteral("deployLog"));
     m_log->setReadOnly(true);
-    execLayout->addWidget(m_log, 1);
+    m_log->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    execBody->addWidget(m_log, 1);
 
-    body->addWidget(configColumn);
-    body->addWidget(execBox, 1);
+    auto *consoleFooter = new QFrame;
+    consoleFooter->setObjectName(QStringLiteral("deployConsoleFooter"));
+    consoleFooter->setAttribute(Qt::WA_StyledBackground, true);
+    auto *consoleFooterLayout = new QHBoxLayout(consoleFooter);
+    consoleFooterLayout->setContentsMargins(PageLayout::Space12,
+                                            PageLayout::Space6,
+                                            PageLayout::Space12,
+                                            PageLayout::Space6);
+    consoleFooter->setFixedHeight(28);
+    auto *footerStatus = new QLabel(QStringLiteral("状态：就绪"));
+    footerStatus->setObjectName(QStringLiteral("deployConsoleFooterText"));
+    auto *footerEncoding = new QLabel(QStringLiteral("编码：UTF-8"));
+    footerEncoding->setObjectName(QStringLiteral("deployConsoleFooterText"));
+    footerEncoding->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    consoleFooterLayout->addWidget(footerStatus, 1);
+    consoleFooterLayout->addWidget(footerEncoding);
+    execBody->addWidget(consoleFooter);
+
+    body->addWidget(configColumn, 5);
+    body->addWidget(execCard, 7);
     return page;
 }
 
 QWidget *MainWindow::createHistoryPage()
 {
     auto *page = new QWidget;
+    page->setProperty("cardStackPage", true);
     auto *layout = new QVBoxLayout(page);
-    PageLayout::applyPage(layout);
+    PageLayout::applyToolPage(layout);
 
     auto *historyTable = createTable(
         {QStringLiteral("部署 ID"), QStringLiteral("项目"), QStringLiteral("状态"), QStringLiteral("版本"), QStringLiteral("日志")},
@@ -686,9 +863,10 @@ QWidget *MainWindow::createHistoryPage()
 
     auto *contentPanel = new QFrame;
     contentPanel->setObjectName(QStringLiteral("contentPanel"));
+    contentPanel->setAttribute(Qt::WA_StyledBackground, true);
     auto *panelLayout = new QVBoxLayout(contentPanel);
-    panelLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
-    panelLayout->setSpacing(PageLayout::Space12);
+    PageLayout::configureToolCard(panelLayout);
+    PageLayout::applyLighterCardShadow(contentPanel);
 
     auto *headerLayout = new QHBoxLayout;
     headerLayout->setContentsMargins(0, 0, 0, 0);
@@ -721,17 +899,18 @@ QWidget *MainWindow::createHistoryPage()
 QWidget *MainWindow::createDeploySettingsPage()
 {
     auto *page = new QWidget;
+    page->setProperty("cardStackPage", true);
     auto *layout = new QVBoxLayout(page);
-    PageLayout::applyPage(layout);
+    PageLayout::applyToolPage(layout);
 AppSettings settings;
     QString settingsError;
     AppSettingsStore(AppSettingsStore::defaultSettingsFile()).load(&settings, &settingsError);
 
-    auto *settingsBox = new QGroupBox(QStringLiteral("全局设置"));
-    settingsBox->setObjectName(QStringLiteral("deployConfigBox"));
-    auto *form = new QFormLayout(settingsBox);
+    QVBoxLayout *settingsBody = nullptr;
+    auto *settingsBox = PageLayout::makeDeploySectionCard(page, QStringLiteral("全局设置"), &settingsBody);
+    auto *form = new QFormLayout;
     PageLayout::applyForm(form);
-    form->setContentsMargins(0, PageLayout::Space8, 0, 0);
+    form->setContentsMargins(0, 0, 0, 0);
     form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     auto makePathRow = [this](QLineEdit **input, const QString &value, const QString &placeholder) {
@@ -744,6 +923,7 @@ AppSettings settings;
         (*input)->setPlaceholderText(placeholder);
         PageLayout::configureFormInput(*input);
         auto *browse = new QPushButton(QStringLiteral("浏览..."));
+        browse->setObjectName(QStringLiteral("secondaryButton"));
         connect(browse, &QPushButton::clicked, this, [input, this]() {
             const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("选择目录"), (*input)->text());
             if (!selected.isEmpty()) {
@@ -768,6 +948,7 @@ AppSettings settings;
     saveButton->setObjectName(QStringLiteral("primaryButton"));
     connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveSettings);
     form->addRow(QString(), saveButton);
+    settingsBody->addLayout(form);
     layout->addWidget(settingsBox);
 
     layout->addWidget(PageLayout::makeSectionLabel(QStringLiteral("当前路径"), page));
@@ -821,10 +1002,8 @@ AppSettings settings;
         return row;
     };
 
-    auto *driverBox = new QGroupBox(QStringLiteral("数据库驱动 (JDBC)"));
-    driverBox->setObjectName(QStringLiteral("deployConfigBox"));
-    auto *driverLayout = new QVBoxLayout(driverBox);
-    driverLayout->setContentsMargins(0, PageLayout::Space8, 0, 0);
+    QVBoxLayout *driverLayout = nullptr;
+    auto *driverBox = PageLayout::makeDeploySectionCard(page, QStringLiteral("数据库驱动 (JDBC)"), &driverLayout);
     driverLayout->setSpacing(PageLayout::Space8);
 
     auto *driverForm = new QFormLayout;
@@ -877,10 +1056,8 @@ AppSettings settings;
     driverLayout->addWidget(driverActions);
     layout->addWidget(driverBox);
 
-    auto *aiBox = new QGroupBox(QStringLiteral("AI 辅助"));
-    aiBox->setObjectName(QStringLiteral("deployConfigBox"));
-    auto *aiLayout = new QVBoxLayout(aiBox);
-    aiLayout->setContentsMargins(0, PageLayout::Space8, 0, 0);
+    QVBoxLayout *aiLayout = nullptr;
+    auto *aiBox = PageLayout::makeDeploySectionCard(page, QStringLiteral("AI 辅助"), &aiLayout);
     aiLayout->setSpacing(PageLayout::Space8);
 
     auto *aiHint = new QLabel(
@@ -1032,6 +1209,9 @@ void MainWindow::refreshDeploySelectors()
     refreshLocalLogFiles(false);
     refreshDeployLogPath();
     refreshJdkProfiles();
+    if (m_openServerManagerButton != nullptr) {
+        m_openServerManagerButton->setEnabled(m_deployServer->count() > 0);
+    }
 }
 
 void MainWindow::refreshJdkProfiles()
@@ -1066,6 +1246,95 @@ void MainWindow::manageJdkProfiles()
     if (dialog.exec() == QDialog::Accepted) {
         refreshJdkProfiles();
     }
+}
+
+void MainWindow::openDeployServerManager()
+{
+    if (m_deployServer == nullptr || m_deployServer->count() == 0) {
+        QMessageBox::information(this,
+                                 QStringLiteral("未选择"),
+                                 QStringLiteral("请先在「目标服务器」下拉框中选择一台服务器。"));
+        return;
+    }
+
+    const QString serverId = m_deployServer->currentData().toString();
+    if (serverId.isEmpty()) {
+        return;
+    }
+
+    QJsonObject server;
+    QString error;
+    if (!m_store->getServer(serverId, &server, &error)) {
+        QMessageBox::warning(this, QStringLiteral("加载失败"), error);
+        return;
+    }
+
+    if (server.value(QStringLiteral("os")).toString() != QStringLiteral("linux")) {
+        QMessageBox::information(this,
+                                 QStringLiteral("暂不支持"),
+                                 QStringLiteral("远程文件浏览当前仅支持 Linux 服务器。"));
+        return;
+    }
+
+    const RemoteConnectionContext context =
+        RemoteCredentialResolver::resolve(server, m_credentials.get(), m_sessionCache.get(), this);
+    const QString authMode = server.value(QStringLiteral("auth")).toObject().value(QStringLiteral("mode")).toString();
+    if (authMode != QStringLiteral("ssh-key") && context.password.isEmpty()) {
+        QMessageBox::warning(this,
+                             QStringLiteral("无法连接"),
+                             QStringLiteral("未获取到服务器密码，请先在「部署工具 → 服务器管理」中保存密码。"));
+        return;
+    }
+
+    auto *dialog = new RemoteFileBrowserDialog(context, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(QStringLiteral("远程管理 - %1").arg(serverId));
+
+    if (m_deployProject != nullptr) {
+        const QString projectId = m_deployProject->currentData().toString();
+        if (!projectId.isEmpty()) {
+            QJsonObject project;
+            QString projectError;
+            if (m_store->getProject(projectId, &project, &projectError)) {
+                const QString initial = remoteBaseDirFromProject(project);
+                if (!initial.isEmpty()) {
+                    dialog->setInitialPath(initial);
+                }
+            }
+        }
+    }
+
+    dialog->show();
+}
+
+void MainWindow::requestStopDeployment()
+{
+    if (!m_deployRunning || m_activeWorker == nullptr) {
+        return;
+    }
+
+    const QMessageBox::StandardButton button = QMessageBox::question(this,
+                                                                     QStringLiteral("停止部署"),
+                                                                     QStringLiteral("确定要停止当前正在进行的部署吗？\n")
+                                                                         + QStringLiteral("正在执行的步骤会立即终止，部分文件可能已上传。"),
+                                                                     QMessageBox::Yes | QMessageBox::No,
+                                                                     QMessageBox::No);
+    if (button != QMessageBox::Yes) {
+        return;
+    }
+
+    m_activeWorker->requestCancel();
+    if (m_activeWorkerThread != nullptr) {
+        m_activeWorkerThread->requestInterruption();
+    }
+    if (m_stopDeployButton != nullptr) {
+        m_stopDeployButton->setEnabled(false);
+    }
+    if (m_deployButton != nullptr) {
+        m_deployButton->setEnabled(false);
+    }
+    statusBar()->showMessage(QStringLiteral("正在停止部署…"));
+    appendLog(QStringLiteral("CONTROL"), QStringLiteral("用户请求停止部署，正在终止当前步骤…"));
 }
 
 void MainWindow::saveSettings()
@@ -1196,6 +1465,9 @@ void MainWindow::applyRemoteLogPathOptions(const QStringList &options, const QSt
         m_logPathInput->setCurrentIndex(index);
     } else {
         m_logPathInput->setEditText(pick);
+    }
+    if (m_logPathDisplayLabel != nullptr) {
+        m_logPathDisplayLabel->setText(pick);
     }
 }
 
@@ -1574,7 +1846,14 @@ void MainWindow::startDeployment()
     m_deployRunning = true;
     m_log->clear();
     m_progress->setValue(0);
+    if (m_deployTaskLabel != nullptr) {
+        m_deployTaskLabel->setText(QStringLiteral("初始化"));
+    }
+    if (m_deployProgressLabel != nullptr) {
+        m_deployProgressLabel->setText(QStringLiteral("0%"));
+    }
     m_deployButton->setEnabled(false);
+    m_stopDeployButton->setEnabled(true);
     statusBar()->showMessage(QStringLiteral("部署进行中…"));
 
     auto *thread = new QThread;
@@ -1601,9 +1880,15 @@ void MainWindow::startDeployment()
     }, Qt::QueuedConnection);
     connect(worker, &DeployWorker::finished, this, &MainWindow::onDeploymentFinished, Qt::QueuedConnection);
     connect(worker, &DeployWorker::finished, thread, &QThread::quit, Qt::QueuedConnection);
+    connect(thread, &QThread::finished, this, [this, thread]() {
+        m_activeWorker = nullptr;
+        m_activeWorkerThread = nullptr;
+    });
     connect(thread, &QThread::finished, worker, &QObject::deleteLater);
     connect(thread, &QThread::finished, thread, &QObject::deleteLater);
 
+    m_activeWorker = worker;
+    m_activeWorkerThread = thread;
     thread->start();
 }
 
@@ -1611,6 +1896,9 @@ void MainWindow::onDeploymentFinished(bool ok, const QString &summary, const QSt
 {
     m_deployRunning = false;
     m_deployButton->setEnabled(true);
+    if (m_stopDeployButton != nullptr) {
+        m_stopDeployButton->setEnabled(false);
+    }
     statusBar()->showMessage(ok ? QStringLiteral("部署完成") : QStringLiteral("部署失败"));
 
     if (!logRelativePath.isEmpty()) {
@@ -1629,6 +1917,9 @@ void MainWindow::onDeploymentFinished(bool ok, const QString &summary, const QSt
 
 void MainWindow::appendLog(const QString &stage, const QString &message)
 {
+    if (m_deployTaskLabel != nullptr && !stage.isEmpty()) {
+        m_deployTaskLabel->setText(stage);
+    }
     m_log->appendPlainText(QStringLiteral("[%1] [%2] %3")
         .arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")), stage, message));
 }

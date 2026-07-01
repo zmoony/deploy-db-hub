@@ -57,7 +57,7 @@ void ElasticsearchIndexOrganizeTest::keepsStandaloneIndexFlat()
     const QVector<QJsonObject> organized = ElasticsearchServiceClient::organizeIndexRows(flat);
     QCOMPARE(organized.size(), 3);
     QCOMPARE(organized.at(0).value(QStringLiteral("rowKind")).toString(), QStringLiteral("group"));
-    QCOMPARE(organized.at(0).value(QStringLiteral("queryIndex")).toString(), QStringLiteral("index_vehicle"));
+    QCOMPARE(organized.at(0).value(QStringLiteral("queryIndex")).toString(), QStringLiteral("index_vehicle*"));
     QCOMPARE(organized.at(1).value(QStringLiteral("name")).toString(), QStringLiteral("index_vehicle"));
     QCOMPARE(organized.at(2).value(QStringLiteral("name")).toString(), QStringLiteral("index_vehicle202603"));
 }

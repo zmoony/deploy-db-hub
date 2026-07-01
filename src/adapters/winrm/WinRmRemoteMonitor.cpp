@@ -49,7 +49,10 @@ ServiceControlResult runServiceCommand(const RemoteConnectionContext &context,
     }
 
     WinRmClient client(context);
-    const RemoteCommandResult command = client.execute(commandText, 45);
+    const QString remoteBaseDir = projectConfig.value(QStringLiteral("deploy")).toObject()
+                                      .value(QStringLiteral("remoteBaseDir")).toString();
+    const QString finalCommand = wrapCommandWithWorkingDirectory(QStringLiteral("windows"), commandText, remoteBaseDir);
+    const RemoteCommandResult command = client.execute(finalCommand, 45);
     result.ok = command.ok;
     result.output = command.stdoutText.trimmed();
     result.error = command.ok
@@ -245,7 +248,7 @@ ServiceControlResult WinRmRemoteMonitor::startService(const QJsonObject &serverC
     return runServiceCommand(m_context,
                              projectConfig,
                              projectServiceConfig(projectConfig).startCommand,
-                             QStringLiteral("项目未配置启动命令"));
+                             QStringLiteral("项目未配置远程启动命令。请编辑项目并填写「远程服务命令」里的启动命令；「本地脚本」仅在一键部署时上传执行。"));
 }
 
 ServiceControlResult WinRmRemoteMonitor::stopService(const QJsonObject &serverConfig,

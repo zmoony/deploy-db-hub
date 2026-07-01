@@ -75,7 +75,10 @@ bool DeployJob::canTransition(DeploymentStatus next) const
     case DeploymentStatus::Building:
         return next == DeploymentStatus::Uploading || next == DeploymentStatus::Failed || next == DeploymentStatus::Canceled;
     case DeploymentStatus::Uploading:
-        return next == DeploymentStatus::Restarting || next == DeploymentStatus::Failed || next == DeploymentStatus::Canceled;
+        return next == DeploymentStatus::Restarting
+            || next == DeploymentStatus::Success
+            || next == DeploymentStatus::Failed
+            || next == DeploymentStatus::Canceled;
     case DeploymentStatus::Restarting:
         return next == DeploymentStatus::Success
             || next == DeploymentStatus::Failed

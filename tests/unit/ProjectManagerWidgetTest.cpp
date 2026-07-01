@@ -49,3 +49,27 @@ void ProjectManagerWidgetTest::quickAddDraftCopiesProjectDetailsWithNewIdentity(
     QCOMPARE(draft.value(QStringLiteral("build")).toObject(), original.value(QStringLiteral("build")).toObject());
     QCOMPARE(draft.value(QStringLiteral("deploy")).toObject(), original.value(QStringLiteral("deploy")).toObject());
 }
+
+void ProjectManagerWidgetTest::projectSearchMatchesNameAndServer()
+{
+    const QJsonObject project{
+        {QStringLiteral("id"), QStringLiteral("gateway")},
+        {QStringLiteral("name"), QStringLiteral("Gateway API")},
+        {QStringLiteral("deploy"), QJsonObject{
+            {QStringLiteral("serverId"), QStringLiteral("prod-linux-1")}
+        }}
+    };
+    const QJsonObject server{
+        {QStringLiteral("id"), QStringLiteral("prod-linux-1")},
+        {QStringLiteral("name"), QStringLiteral("Production Linux")},
+        {QStringLiteral("host"), QStringLiteral("172.17.112.121")},
+        {QStringLiteral("username"), QStringLiteral("deploy")}
+    };
+
+    QVERIFY(ProjectManagerWidget::projectMatchesSearch(project, server, QStringLiteral("gateway")));
+    QVERIFY(ProjectManagerWidget::projectMatchesSearch(project, server, QStringLiteral("prod-linux")));
+    QVERIFY(ProjectManagerWidget::projectMatchesSearch(project, server, QStringLiteral("Production")));
+    QVERIFY(ProjectManagerWidget::projectMatchesSearch(project, server, QStringLiteral("172.17")));
+    QVERIFY(ProjectManagerWidget::projectMatchesSearch(project, server, QStringLiteral("")));
+    QVERIFY(!ProjectManagerWidget::projectMatchesSearch(project, server, QStringLiteral("staging")));
+}

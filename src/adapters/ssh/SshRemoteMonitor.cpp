@@ -6,6 +6,14 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#define DH_SLEEP_SEC(s) Sleep(static_cast<DWORD>((s) * 1000))
+#else
+#include <unistd.h>
+#define DH_SLEEP_SEC(s) sleep(s)
+#endif
+
 namespace {
 
 bool monitoringEnabled(const QJsonObject &serverConfig)
@@ -202,7 +210,11 @@ ServiceControlResult runServiceCommand(SshClient *client,
         return result;
     }
 
-    const RemoteCommandResult command = client->execute(commandText, 45);
+    const QString remoteBaseDir = projectConfig.value(QStringLiteral("deploy")).toObject()
+                                      .value(QStringLiteral("remoteBaseDir")).toString();
+    QString finalCommand = wrapCommandWithWorkingDirectory(QStringLiteral("linux"), commandText, remoteBaseDir);
+    finalCommand += defaultRestartCommandSuffix();
+    const RemoteCommandResult command = client->execute(finalCommand, 120);
     result.ok = command.ok;
     result.output = command.stdoutText.trimmed();
     result.error = command.ok
@@ -246,7 +258,7 @@ ServiceControlResult SshRemoteMonitor::startService(const QJsonObject &serverCon
     return runServiceCommand(&m_client,
                              projectConfig,
                              projectServiceConfig(projectConfig).startCommand,
-                             QStringLiteral("项目未配置启动命令"));
+                             QStringLiteral("项目未配置远程启动命令。请编辑项目并填写「远程服务命令」里的启动命令；「本地脚本」仅在一键部署时上传执行。"));
 }
 
 ServiceControlResult SshRemoteMonitor::stopService(const QJsonObject &serverConfig,
@@ -267,10 +279,27 @@ ServiceControlResult SshRemoteMonitor::stopService(const QJsonObject &serverConf
     if (status.pid <= 0) {
         return {true, QStringLiteral("服务未运行"), {}};
     }
-    const RemoteCommandResult command = m_client.execute(QStringLiteral("kill -TERM %1").arg(status.pid), 20);
-    return {command.ok,
-            command.stdoutText.trimmed(),
-            command.ok ? QString() : (command.error.isEmpty() ? command.stderrText.trimmed() : command.error)};
+    const int pid = status.pid;
+    const RemoteCommandResult command = m_client.execute(QStringLiteral("kill -TERM %1").arg(pid), 20);
+    if (!command.ok) {
+        return {command.ok,
+                command.stdoutText.trimmed(),
+                command.ok ? QString() : (command.error.isEmpty() ? command.stderrText.trimmed() : command.error)};
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        const RemoteCommandResult alive = m_client.execute(QStringLiteral("kill -0 %1 2>/dev/null && echo ALIVE || echo DEAD").arg(pid), 5);
+        if (alive.ok && alive.stdoutText.trimmed() == QStringLiteral("DEAD")) {
+            return {true, QStringLiteral("服务已停止（PID %1）").arg(pid), {}};
+        }
+        DH_SLEEP_SEC(1);
+    }
+
+    const RemoteCommandResult killForce = m_client.execute(QStringLiteral("kill -KILL %1 2>/dev/null; sleep 1; kill -0 %1 2>/dev/null && echo ALIVE || echo DEAD").arg(pid), 10);
+    if (killForce.ok && killForce.stdoutText.contains(QStringLiteral("DEAD"))) {
+        return {true, QStringLiteral("服务已强制停止（PID %1）").arg(pid), {}};
+    }
+    return {false, {}, QStringLiteral("无法停止服务 PID %1（SIGTERM/SIGKILL 后进程仍存活）").arg(pid)};
 }
 
 ServiceControlResult SshRemoteMonitor::restartService(const QJsonObject &serverConfig,

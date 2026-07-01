@@ -8,6 +8,7 @@ class QComboBox;
 class QFrame;
 class QJsonObject;
 class QLabel;
+class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
 class ConfigStore;
@@ -22,6 +23,9 @@ public:
     int projectCount() const;
     QStringList projectIds() const;
     static QJsonObject makeQuickAddDraft(const QJsonObject &sourceProject);
+    static bool projectMatchesSearch(const QJsonObject &project,
+                                     const QJsonObject &server,
+                                     const QString &query);
 
 signals:
     void projectsChanged();
@@ -51,6 +55,9 @@ private:
 
     ConfigStore *m_store = nullptr;
     QComboBox *m_groupFilter = nullptr;
+    QLineEdit *m_projectSearch = nullptr;
+    QVector<StoredRecord> m_projectRecords;
+    QVector<StoredRecord> m_serverRecords;
     QListWidget *m_projectList = nullptr;
     QLabel *m_emptyState = nullptr;
 

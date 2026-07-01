@@ -26,12 +26,9 @@ public:
     void abortAnalysis();
 
 private:
-    enum class BubbleRole { User, Bot };
-
-    void appendBubble(BubbleRole role, const QString &text);
-    void appendToBotBubble(const QString &chunk);
-    void flushBotBubble();
-    void clearConversation();
+    void appendToResult(const QString &chunk);
+    void flushResult();
+    void clearResult();
     void scrollToBottom();
 
     AiSettingsStore *m_aiSettings = nullptr;
@@ -45,9 +42,7 @@ private:
     QLabel *m_message = nullptr;
 
     QScrollArea *m_scrollArea = nullptr;
-    QWidget *m_chatContainer = nullptr;
-    QVBoxLayout *m_chatLayout = nullptr;
-    QLabel *m_currentBotBubble = nullptr;
+    QLabel *m_resultLabel = nullptr;
 
     QTimer *m_streamFlushTimer = nullptr;
 };

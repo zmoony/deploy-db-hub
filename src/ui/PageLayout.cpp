@@ -97,6 +97,18 @@ void applyPage(QVBoxLayout *layout)
     layout->setSpacing(Space24);
 }
 
+void applyToolPage(QVBoxLayout *layout)
+{
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(Space16);
+}
+
+void configureToolCard(QVBoxLayout *layout)
+{
+    layout->setContentsMargins(Space20, Space20, Space20, Space20);
+    layout->setSpacing(Space12);
+}
+
 void applyDialog(QVBoxLayout *layout)
 {
     layout->setContentsMargins(Space16, Space16, Space16, Space16);
@@ -289,6 +301,82 @@ void applyLighterCardShadow(QWidget *widget)
     shadow->setOffset(0, 1);
     shadow->setColor(QColor(0, 0, 0, 18));
     widget->setGraphicsEffect(shadow);
+}
+
+QFrame *makeDeploySectionCard(QWidget *parent,
+                              const QString &title,
+                              QVBoxLayout **bodyOut,
+                              QWidget **headerActionsOut)
+{
+    auto *card = new QFrame(parent);
+    card->setObjectName(QStringLiteral("deploySectionCard"));
+    card->setAttribute(Qt::WA_StyledBackground, true);
+    applyLighterCardShadow(card);
+
+    auto *cardLayout = new QVBoxLayout(card);
+    cardLayout->setContentsMargins(0, 0, 0, 0);
+    cardLayout->setSpacing(0);
+
+    auto *header = new QFrame(card);
+    header->setObjectName(QStringLiteral("deploySectionHeader"));
+    header->setAttribute(Qt::WA_StyledBackground, true);
+    header->setFixedHeight(36);
+    auto *headerLayout = new QHBoxLayout(header);
+    headerLayout->setContentsMargins(Space16, 0, Space16, 0);
+    headerLayout->setSpacing(Space8);
+
+    auto *titleLabel = new QLabel(title, header);
+    titleLabel->setObjectName(QStringLiteral("deploySectionTitle"));
+    headerLayout->addWidget(titleLabel, 1);
+
+    if (headerActionsOut != nullptr) {
+        auto *actions = new QWidget(header);
+        auto *actionsLayout = new QHBoxLayout(actions);
+        actionsLayout->setContentsMargins(0, 0, 0, 0);
+        actionsLayout->setSpacing(Space8);
+        headerLayout->addWidget(actions, 0);
+        *headerActionsOut = actions;
+    }
+
+    cardLayout->addWidget(header);
+
+    auto *body = new QWidget(card);
+    body->setObjectName(QStringLiteral("deploySectionBody"));
+    auto *bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(Space16, Space12, Space16, Space12);
+    bodyLayout->setSpacing(Space10);
+    cardLayout->addWidget(body, 1);
+
+    if (bodyOut != nullptr) {
+        *bodyOut = bodyLayout;
+    }
+    return card;
+}
+
+QFrame *makeDeployPlainCard(QWidget *parent, QVBoxLayout **bodyOut)
+{
+    auto *card = new QFrame(parent);
+    card->setObjectName(QStringLiteral("deploySectionCard"));
+    card->setAttribute(Qt::WA_StyledBackground, true);
+    applyLighterCardShadow(card);
+
+    auto *bodyLayout = new QVBoxLayout(card);
+    bodyLayout->setContentsMargins(Space16, Space12, Space16, Space12);
+    bodyLayout->setSpacing(Space8);
+
+    if (bodyOut != nullptr) {
+        *bodyOut = bodyLayout;
+    }
+    return card;
+}
+
+QLabel *makeDeployFieldLabel(const QString &text, QWidget *parent)
+{
+    auto *label = new QLabel(text, parent);
+    label->setObjectName(QStringLiteral("deployFieldLabel"));
+    label->setFixedHeight(16);
+    configureStaticLabel(label);
+    return label;
 }
 
 void configurePathField(QWidget *widget)
@@ -677,8 +765,8 @@ QWidget *wrapContentPanel(QWidget *page)
     panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     panel->setMinimumWidth(0);
     auto *panelLayout = new QVBoxLayout(panel);
-    panelLayout->setContentsMargins(Space24, Space24, Space24, Space24);
-    panelLayout->setSpacing(Space24);
+    panelLayout->setContentsMargins(Space20, Space20, Space20, Space20);
+    panelLayout->setSpacing(Space16);
     if (page != nullptr) {
         page->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         page->setMinimumWidth(0);
@@ -693,8 +781,8 @@ QWidget *wrapContentPadding(QWidget *page)
     shell->setObjectName(QStringLiteral("contentPaddingShell"));
     shell->setAttribute(Qt::WA_StyledBackground, true);
     auto *panelLayout = new QVBoxLayout(shell);
-    panelLayout->setContentsMargins(Space24, Space24, Space24, Space24);
-    panelLayout->setSpacing(0);
+    panelLayout->setContentsMargins(Space20, Space20, Space20, Space20);
+    panelLayout->setSpacing(Space16);
     if (page != nullptr) {
         page->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
         panelLayout->addWidget(page);
@@ -730,10 +818,29 @@ QWidget *wrapScrollableCardStack(QWidget *page)
     return scroll;
 }
 
+QWidget *wrapWorkspacePage(QWidget *page)
+{
+    auto *shell = new QWidget;
+    shell->setObjectName(QStringLiteral("workspacePageShell"));
+    shell->setAttribute(Qt::WA_StyledBackground, true);
+    shell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto *layout = new QVBoxLayout(shell);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    if (page != nullptr) {
+        page->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        layout->addWidget(page, 1);
+    }
+    return shell;
+}
+
 QWidget *wrapModulePage(QWidget *page)
 {
     if (page == nullptr) {
         return nullptr;
+    }
+    if (page->property("workspacePage").toBool()) {
+        return wrapWorkspacePage(page);
     }
     if (page->property("cardStackPage").toBool()) {
         return wrapScrollableCardStack(page);

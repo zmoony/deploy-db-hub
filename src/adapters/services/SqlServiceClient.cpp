@@ -169,6 +169,75 @@ ServiceResult SqlServiceClient::executeQuery(const ServiceEndpoint &endpoint,
     return runSql(endpoint, productKey, sql);
 }
 
+QString SqlServiceClient::withSchemaContext(const QString &productKey, const QString &schema, const QString &sql)
+{
+    const QString trimmedSchema = schema.trimmed();
+    if (trimmedSchema.isEmpty()) {
+        return sql;
+    }
+    if (productKey == QStringLiteral("oracle")) {
+        return QStringLiteral("ALTER SESSION SET CURRENT_SCHEMA = %1;\n%2")
+            .arg(trimmedSchema.toUpper(), sql);
+    }
+    QString escapedSchema = trimmedSchema;
+    escapedSchema.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+    return QStringLiteral("SET search_path TO \"%1\";\n%2").arg(escapedSchema, sql);
+}
+
+QString describeTableSql(const QString &productKey, const QString &schema, const QString &table)
+{
+    QString escapedSchema = schema;
+    escapedSchema.replace(QLatin1Char('\''), QStringLiteral("''"));
+    QString escapedTable = table;
+    escapedTable.replace(QLatin1Char('\''), QStringLiteral("''"));
+    if (productKey == QStringLiteral("oracle")) {
+        return QStringLiteral(
+                   "SELECT column_id AS ordinal, column_name, data_type, nullable, data_default "
+                   "FROM all_tab_columns WHERE owner = '%1' AND table_name = '%2' ORDER BY column_id")
+            .arg(escapedSchema.toUpper(), escapedTable.toUpper());
+    }
+    return QStringLiteral(
+               "SELECT ordinal_position AS ordinal, column_name, data_type, is_nullable AS nullable, "
+               "column_default AS data_default "
+               "FROM information_schema.columns "
+               "WHERE table_schema = '%1' AND table_name = '%2' ORDER BY ordinal_position")
+        .arg(escapedSchema, escapedTable);
+}
+
+QString dropTableSql(const QString &productKey, const QString &schema, const QString &table)
+{
+    QString escapedSchema = schema;
+    escapedSchema.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+    QString escapedTable = table;
+    escapedTable.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+    if (productKey == QStringLiteral("oracle")) {
+        return QStringLiteral("DROP TABLE %1.%2").arg(escapedSchema.toUpper(), escapedTable.toUpper());
+    }
+    return QStringLiteral("DROP TABLE \"%1\".\"%2\"").arg(escapedSchema, escapedTable);
+}
+
+ServiceResult SqlServiceClient::describeTable(const ServiceEndpoint &endpoint,
+                                              const QString &productKey,
+                                              const QString &schema,
+                                              const QString &table)
+{
+    const QString activeSchema = schema.trimmed().isEmpty()
+        ? (productKey == QStringLiteral("oracle") ? endpoint.username.toUpper() : QStringLiteral("public"))
+        : schema.trimmed();
+    return runSql(endpoint, productKey, describeTableSql(productKey, activeSchema, table));
+}
+
+ServiceResult SqlServiceClient::dropTable(const ServiceEndpoint &endpoint,
+                                          const QString &productKey,
+                                          const QString &schema,
+                                          const QString &table)
+{
+    const QString activeSchema = schema.trimmed().isEmpty()
+        ? (productKey == QStringLiteral("oracle") ? endpoint.username.toUpper() : QStringLiteral("public"))
+        : schema.trimmed();
+    return runSql(endpoint, productKey, dropTableSql(productKey, activeSchema, table));
+}
+
 QString SqlServiceClient::defaultSelectSql(const QString &productKey,
                                            const QString &schema,
                                            const QString &table,

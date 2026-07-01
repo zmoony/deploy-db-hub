@@ -39,51 +39,92 @@ ServiceElasticsearchQueryDialog::ServiceElasticsearchQueryDialog(QWidget *parent
     auto *body = new QHBoxLayout;
     body->setSpacing(PageLayout::Space16);
 
-    auto *formPanel = new QWidget(this);
-    auto *formLayout = new QVBoxLayout(formPanel);
-    formLayout->setContentsMargins(0, 0, 0, 0);
-    formLayout->setSpacing(PageLayout::Space12);
+    auto *formContainer = new QWidget(this);
+    auto *formContainerLayout = new QVBoxLayout(formContainer);
+    formContainerLayout->setContentsMargins(0, 0, 0, 0);
+    formContainerLayout->setSpacing(PageLayout::Space12);
 
-    QFormLayout *form = nullptr;
-    formLayout->addWidget(PageLayout::wrapDialogFormSection(QStringLiteral("查询条件"), formPanel, &form));
+    auto *formCard = new QFrame(formContainer);
+    formCard->setObjectName(QStringLiteral("dialogFormPanel"));
+    formCard->setAttribute(Qt::WA_StyledBackground, true);
+    auto *formCardLayout = new QVBoxLayout(formCard);
+    formCardLayout->setContentsMargins(0, 0, 0, 0);
+    formCardLayout->setSpacing(0);
 
-    m_indexName = new QLineEdit(formPanel);
+    auto *formHeader = new QWidget(formCard);
+    formHeader->setObjectName(QStringLiteral("dialogFormPanelHeader"));
+    formHeader->setAttribute(Qt::WA_StyledBackground, true);
+    auto *formHeaderLayout = new QHBoxLayout(formHeader);
+    formHeaderLayout->setContentsMargins(PageLayout::Space16, PageLayout::Space12, PageLayout::Space16, PageLayout::Space12);
+    formHeaderLayout->setSpacing(0);
+    auto *formHeaderTitle = new QLabel(QStringLiteral("查询条件"), formHeader);
+    formHeaderTitle->setObjectName(QStringLiteral("dialogFormPanelTitle"));
+    formHeaderLayout->addWidget(formHeaderTitle);
+    formHeaderLayout->addStretch();
+    formCardLayout->addWidget(formHeader);
+
+    auto *formBody = new QWidget(formCard);
+    auto *form = new QFormLayout(formBody);
+    form->setContentsMargins(PageLayout::Space16, PageLayout::Space16, PageLayout::Space16, PageLayout::Space16);
+    form->setVerticalSpacing(PageLayout::Space12);
+    form->setHorizontalSpacing(PageLayout::Space16);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+    form->setRowWrapPolicy(QFormLayout::DontWrapRows);
+    formCardLayout->addWidget(formBody);
+
+    m_indexName = new QLineEdit(formBody);
+    m_indexName->setPlaceholderText(QStringLiteral("索引名 / 别名 / 模板前缀（自动加 *）"));
     PageLayout::configureFormInput(m_indexName);
     form->addRow(QStringLiteral("索引名称"), m_indexName);
 
-    m_queryMode = new QComboBox(formPanel);
+    m_queryMode = new QComboBox(formBody);
     m_queryMode->addItem(QStringLiteral("查询全部 (match_all)"), static_cast<int>(QueryMode::MatchAll));
     m_queryMode->addItem(QStringLiteral("query_string"), static_cast<int>(QueryMode::QueryString));
     m_queryMode->addItem(QStringLiteral("Query DSL (JSON)"), static_cast<int>(QueryMode::QueryDsl));
     PageLayout::configureFormInput(m_queryMode);
     form->addRow(QStringLiteral("查询方式"), m_queryMode);
 
-    m_queryText = new QPlainTextEdit(formPanel);
+    m_queryText = new QPlainTextEdit(formBody);
     m_queryText->setObjectName(QStringLiteral("deployLog"));
     m_queryText->setPlaceholderText(QStringLiteral("query_string 示例: status:200 AND message:error"));
     m_queryText->setMinimumHeight(140);
     form->addRow(QStringLiteral("查询内容"), m_queryText);
 
-    m_page = new QSpinBox(formPanel);
+    auto *pagingRow = new QWidget(formBody);
+    auto *pagingLayout = new QHBoxLayout(pagingRow);
+    pagingLayout->setContentsMargins(0, 0, 0, 0);
+    pagingLayout->setSpacing(PageLayout::Space8);
+
+    m_page = new QSpinBox(pagingRow);
     m_page->setMinimum(1);
     m_page->setMaximum(100000);
     m_page->setValue(1);
+    m_page->setSuffix(QStringLiteral(" 页"));
     PageLayout::configureFormInput(m_page);
-    form->addRow(QStringLiteral("当前页号"), m_page);
 
-    m_pageSize = new QSpinBox(formPanel);
+    m_pageSize = new QSpinBox(pagingRow);
     m_pageSize->setMinimum(1);
     m_pageSize->setMaximum(1000);
     m_pageSize->setValue(10);
+    m_pageSize->setSuffix(QStringLiteral(" 条"));
     PageLayout::configureFormInput(m_pageSize);
-    form->addRow(QStringLiteral("每页大小"), m_pageSize);
+
+    pagingLayout->addWidget(new QLabel(QStringLiteral("当前页号"), pagingRow));
+    pagingLayout->addWidget(m_page);
+    pagingLayout->addSpacing(PageLayout::Space16);
+    pagingLayout->addWidget(new QLabel(QStringLiteral("每页大小"), pagingRow));
+    pagingLayout->addWidget(m_pageSize);
+    pagingLayout->addStretch();
+    form->addRow(QStringLiteral("分页"), pagingRow);
 
     auto *formActions = new QHBoxLayout;
     formActions->setSpacing(PageLayout::Space8);
-    m_searchButton = new QPushButton(QStringLiteral("查询"), formPanel);
+    m_searchButton = new QPushButton(QStringLiteral("查询"), formBody);
     m_searchButton->setObjectName(QStringLiteral("primaryButton"));
     m_searchButton->setMinimumHeight(PageLayout::DialogFieldHeight);
-    auto *cancelButton = new QPushButton(QStringLiteral("关闭"), formPanel);
+    auto *cancelButton = new QPushButton(QStringLiteral("关闭"), formBody);
     cancelButton->setMinimumHeight(PageLayout::DialogFieldHeight);
     connect(m_searchButton, &QPushButton::clicked, this, &ServiceElasticsearchQueryDialog::onSearch);
     connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
@@ -91,14 +132,24 @@ ServiceElasticsearchQueryDialog::ServiceElasticsearchQueryDialog(QWidget *parent
     formActions->addWidget(m_searchButton);
     formActions->addWidget(cancelButton);
     formActions->addStretch();
-    formLayout->addLayout(formActions);
+    form->addRow(QString(), formActions);
 
-    auto *hint = new QLabel(QStringLiteral("Query DSL 模式下可填写完整 _search 请求体 JSON；"
-                                           "未写 from/size 时将自动补充分页参数。"),
-                            formPanel);
-    hint->setWordWrap(true);
-    hint->setObjectName(QStringLiteral("sectionLabel"));
-    formLayout->addWidget(hint);
+    formContainerLayout->addWidget(formCard);
+
+    QLabel *hintText = nullptr;
+    formContainerLayout->addWidget(
+        PageLayout::wrapDialogHintSection(QStringLiteral("使用提示"), formContainer, &hintText));
+    if (hintText != nullptr) {
+        hintText->setText(
+            QStringLiteral(
+                "• 索引名称支持直接填写「具体索引」、「别名」或「模板前缀」（自动补 *）。\n"
+                "• 三种查询方式：\n"
+                "    1) match_all — 列出该索引最近 N 条文档（无需填写查询内容）。\n"
+                "    2) query_string — 类 Lucene 语法，例如 status:active AND level:>5。\n"
+                "    3) Query DSL — 完整 JSON；未写 from/size 时将自动补充分页参数。\n"
+                "• 模板组行点击「查询」会按组名前缀（如 index_face*）一次查询所有日期子索引。"));
+    }
+    formContainerLayout->addStretch();
 
     auto *resultPanel = new QWidget(this);
     auto *resultLayout = new QVBoxLayout(resultPanel);
@@ -121,7 +172,7 @@ ServiceElasticsearchQueryDialog::ServiceElasticsearchQueryDialog(QWidget *parent
     m_result->setPlaceholderText(QStringLiteral("点击「查询」后在此显示 JSON 结果"));
     resultLayout->addWidget(m_result, 1);
 
-    body->addWidget(formPanel, 2);
+    body->addWidget(formContainer, 2);
     body->addWidget(resultPanel, 3);
     layout->addLayout(body, 1);
 
@@ -177,6 +228,7 @@ QJsonObject ServiceElasticsearchQueryDialog::buildSearchBody(int *fromOut, int *
         return QJsonObject{
             {QStringLiteral("from"), from},
             {QStringLiteral("size"), size},
+            {QStringLiteral("track_total_hits"), true},
             {QStringLiteral("query"), QJsonObject{{QStringLiteral("match_all"), QJsonObject{}}}}
         };
     }
@@ -193,6 +245,7 @@ QJsonObject ServiceElasticsearchQueryDialog::buildSearchBody(int *fromOut, int *
         return QJsonObject{
             {QStringLiteral("from"), from},
             {QStringLiteral("size"), size},
+            {QStringLiteral("track_total_hits"), true},
             {QStringLiteral("query"),
              QJsonObject{{QStringLiteral("query_string"), QJsonObject{{QStringLiteral("query"), text}}}}}
         };
@@ -210,6 +263,7 @@ QJsonObject ServiceElasticsearchQueryDialog::buildSearchBody(int *fromOut, int *
     QJsonObject body = document.object();
     body.insert(QStringLiteral("from"), from);
     body.insert(QStringLiteral("size"), size);
+    body.insert(QStringLiteral("track_total_hits"), true);
     return body;
 }
 

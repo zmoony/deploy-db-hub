@@ -21,6 +21,7 @@
 #include <QFutureWatcher>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMessageBox>
@@ -62,6 +63,19 @@ QLabel *makeMetaLabel(const QString &text, QWidget *parent)
     return label;
 }
 
+bool containsSearchToken(const QString &value, const QString &query)
+{
+    return !value.isEmpty() && value.contains(query, Qt::CaseInsensitive);
+}
+
+QJsonObject findServerConfig(const QVector<StoredRecord> &servers, const QString &serverId)
+{
+    const auto it = std::find_if(servers.cbegin(), servers.cend(), [&serverId](const StoredRecord &server) {
+        return server.id == serverId;
+    });
+    return it == servers.cend() ? QJsonObject{} : it->config;
+}
+
 }
 
 QString ProjectManagerWidget::sourceSummary(const QJsonObject &project)
@@ -83,8 +97,9 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     : QWidget(parent)
     , m_store(store)
 {
+    setProperty("cardStackPage", true);
     auto *layout = new QVBoxLayout(this);
-    PageLayout::applyPage(layout);
+    PageLayout::applyToolPage(layout);
 
     auto *toolbarWidget = new QWidget(this);
     auto *toolbar = new QHBoxLayout(toolbarWidget);
@@ -109,6 +124,15 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     PageLayout::configureFormInput(m_groupFilter);
     toolbar->addWidget(new QLabel(QStringLiteral("分组筛选")));
     toolbar->addWidget(m_groupFilter);
+
+    m_projectSearch = new QLineEdit(toolbarWidget);
+    m_projectSearch->setObjectName(QStringLiteral("projectSearchInput"));
+    m_projectSearch->setPlaceholderText(QStringLiteral("搜索项目名 / 部署服务器"));
+    m_projectSearch->setClearButtonEnabled(true);
+    m_projectSearch->setMinimumWidth(300);
+    PageLayout::configureFormInput(m_projectSearch);
+    toolbar->addWidget(new QLabel(QStringLiteral("搜索")));
+    toolbar->addWidget(m_projectSearch);
     layout->addWidget(toolbarWidget);
 
     auto *splitter = new QSplitter(Qt::Horizontal, this);
@@ -129,7 +153,7 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     leftLayout->addWidget(m_emptyState, 1);
 
     m_projectList = new QListWidget(leftPanel);
-    m_projectList->setObjectName(QStringLiteral("toolListNav"));
+    m_projectList->setObjectName(QStringLiteral("projectListNav"));
     m_projectList->setMinimumWidth(200);
     m_projectList->setFrameShape(QFrame::NoFrame);
     m_projectList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -142,6 +166,7 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     m_detailCard = new QFrame(this);
     m_detailCard->setObjectName(QStringLiteral("contentPanel"));
     m_detailCard->setAttribute(Qt::WA_StyledBackground, true);
+    PageLayout::applyLighterCardShadow(m_detailCard);
     buildDetailCard();
     splitter->addWidget(m_detailCard);
     splitter->setStretchFactor(1, 1);
@@ -156,7 +181,10 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     connect(m_projectList, &QListWidget::currentItemChanged, this, &ProjectManagerWidget::refreshDetailCard);
     connect(m_projectList, &QListWidget::itemDoubleClicked, this, &ProjectManagerWidget::editProject);
     connect(m_groupFilter, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-        reload();
+        populateList(m_projectRecords);
+    });
+    connect(m_projectSearch, &QLineEdit::textChanged, this, [this](const QString &) {
+        populateList(m_projectRecords);
     });
 
     reload();
@@ -172,8 +200,7 @@ void ProjectManagerWidget::setupList()
 void ProjectManagerWidget::buildDetailCard()
 {
     auto *cardLayout = new QVBoxLayout(m_detailCard);
-    cardLayout->setContentsMargins(PageLayout::Space24, PageLayout::Space24, PageLayout::Space24, PageLayout::Space24);
-    cardLayout->setSpacing(PageLayout::Space16);
+    PageLayout::configureToolCard(cardLayout);
 
     m_detailEmptyState = new QLabel(QStringLiteral("请在左侧选择项目"), m_detailCard);
     m_detailEmptyState->setObjectName(QStringLiteral("emptyState"));
@@ -184,7 +211,7 @@ void ProjectManagerWidget::buildDetailCard()
     m_detailContent = new QWidget(m_detailCard);
     auto *contentLayout = new QVBoxLayout(m_detailContent);
     contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(PageLayout::Space20);
+    contentLayout->setSpacing(PageLayout::Space16);
 
     auto *actions = new QHBoxLayout;
     actions->setContentsMargins(0, 0, 0, 0);
@@ -303,6 +330,26 @@ QJsonObject ProjectManagerWidget::makeQuickAddDraft(const QJsonObject &sourcePro
     return draft;
 }
 
+bool ProjectManagerWidget::projectMatchesSearch(const QJsonObject &project,
+                                                const QJsonObject &server,
+                                                const QString &query)
+{
+    const QString trimmedQuery = query.trimmed();
+    if (trimmedQuery.isEmpty()) {
+        return true;
+    }
+
+    const QJsonObject deploy = project.value(QStringLiteral("deploy")).toObject();
+    const QString serverId = deploy.value(QStringLiteral("serverId")).toString();
+    return containsSearchToken(project.value(QStringLiteral("name")).toString(), trimmedQuery)
+        || containsSearchToken(project.value(QStringLiteral("id")).toString(), trimmedQuery)
+        || containsSearchToken(serverId, trimmedQuery)
+        || containsSearchToken(server.value(QStringLiteral("id")).toString(), trimmedQuery)
+        || containsSearchToken(server.value(QStringLiteral("name")).toString(), trimmedQuery)
+        || containsSearchToken(server.value(QStringLiteral("host")).toString(), trimmedQuery)
+        || containsSearchToken(server.value(QStringLiteral("username")).toString(), trimmedQuery);
+}
+
 bool ProjectManagerWidget::isGroupHeaderItem(const QListWidgetItem *item)
 {
     return item != nullptr && item->data(kGroupHeaderRole).toBool();
@@ -354,6 +401,7 @@ void ProjectManagerWidget::populateList(const QVector<StoredRecord> &records)
 {
     const QString filter = m_groupFilter != nullptr ? m_groupFilter->currentData().toString() : kFilterAllGroups;
     const bool showAllGroups = filter == kFilterAllGroups;
+    const QString searchQuery = m_projectSearch != nullptr ? m_projectSearch->text().trimmed() : QString();
 
     QVector<StoredRecord> sorted = records;
     std::sort(sorted.begin(), sorted.end(), [](const StoredRecord &left, const StoredRecord &right) {
@@ -390,7 +438,12 @@ void ProjectManagerWidget::populateList(const QVector<StoredRecord> &records)
         m_projectList->addItem(header);
     };
 
-    const auto appendProject = [this, &projectCount, &firstProjectItem](const StoredRecord &record) {
+    const auto appendProject = [this, &projectCount, &firstProjectItem, &searchQuery](const StoredRecord &record) {
+        const QString serverId = record.config.value(QStringLiteral("deploy")).toObject().value(QStringLiteral("serverId")).toString();
+        const QJsonObject server = findServerConfig(m_serverRecords, serverId);
+        if (!projectMatchesSearch(record.config, server, searchQuery)) {
+            return false;
+        }
         auto *item = new QListWidgetItem(record.config.value(QStringLiteral("name")).toString());
         item->setData(Qt::UserRole, record.id);
         item->setData(kGroupHeaderRole, false);
@@ -400,6 +453,7 @@ void ProjectManagerWidget::populateList(const QVector<StoredRecord> &records)
             firstProjectItem = item;
         }
         ++projectCount;
+        return true;
     };
 
     if (showAllGroups) {
@@ -412,8 +466,9 @@ void ProjectManagerWidget::populateList(const QVector<StoredRecord> &records)
                 pendingGroup = groupLabel;
                 pendingCount = 0;
             }
-            appendProject(record);
-            ++pendingCount;
+            if (appendProject(record)) {
+                ++pendingCount;
+            }
         }
         appendGroupHeader(pendingGroup, pendingCount);
     } else {
@@ -433,6 +488,9 @@ void ProjectManagerWidget::populateList(const QVector<StoredRecord> &records)
     blocker.unblock();
 
     const bool hasProjects = projectCount > 0;
+    m_emptyState->setText(searchQuery.isEmpty()
+                              ? QStringLiteral("暂无项目。点击右侧「新建」添加第一个部署配置。")
+                              : QStringLiteral("没有匹配的项目"));
     m_emptyState->setVisible(!hasProjects);
     m_projectList->setVisible(hasProjects);
 
@@ -505,8 +563,15 @@ void ProjectManagerWidget::reload()
         return;
     }
 
+    QVector<StoredRecord> servers;
+    if (!m_store->listServers(&servers, &error)) {
+        servers.clear();
+    }
+
+    m_projectRecords = records;
+    m_serverRecords = servers;
     refreshGroupFilter(records);
-    populateList(records);
+    populateList(m_projectRecords);
     setServiceStatusLabel(QStringLiteral("未检测"), QStringLiteral("-"));
 }
 

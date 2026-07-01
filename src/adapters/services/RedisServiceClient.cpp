@@ -391,7 +391,10 @@ ServiceResult RedisServiceClient::serverInfo(const ServiceEndpoint &endpoint)
             }}};
 }
 
-ServiceResult RedisServiceClient::listKeys(const ServiceEndpoint &endpoint, const QString &pattern, int limit)
+ServiceResult RedisServiceClient::listKeys(const ServiceEndpoint &endpoint,
+                                            const QString &pattern,
+                                            const QString &typeFilter,
+                                            int limit)
 {
     RedisRespSession session(endpoint);
     const ServiceResult connected = session.connectAndAuth();
@@ -400,22 +403,32 @@ ServiceResult RedisServiceClient::listKeys(const ServiceEndpoint &endpoint, cons
     }
 
     const QString matchPattern = pattern.trimmed().isEmpty() ? QStringLiteral("*") : pattern.trimmed();
+    const QString requestedType = typeFilter.trimmed();
     QStringList keys;
-    const ServiceResult scanned = session.scanKeys(matchPattern, limit, &keys);
+    ServiceResult scanned = session.scanKeys(matchPattern, limit, &keys);
     if (!scanned.ok) {
         return scanned;
     }
 
     ServiceResult result{true, {}, {}, {}};
+    int filteredOut = 0;
     for (const QString &key : keys) {
         const ServiceResult type = session.command({QStringLiteral("TYPE"), key});
+        const QString actualType = type.message;
+        if (!requestedType.isEmpty() && actualType.compare(requestedType, Qt::CaseInsensitive) != 0) {
+            ++filteredOut;
+            continue;
+        }
         const ServiceResult ttl = session.command({QStringLiteral("TTL"), key});
         result.rows.append(QJsonObject{
             {QStringLiteral("key"), key},
-            {QStringLiteral("type"), type.message},
+            {QStringLiteral("type"), actualType},
             {QStringLiteral("ttl"), formatTtl(ttl.message)},
-            {QStringLiteral("size"), keySize(session, key, type.message)}
+            {QStringLiteral("size"), keySize(session, key, actualType)}
         });
+    }
+    if (!requestedType.isEmpty()) {
+        result.message = QStringLiteral("已应用类型筛选：%1（过滤掉 %2 个不匹配项）").arg(requestedType).arg(filteredOut);
     }
     return result;
 }

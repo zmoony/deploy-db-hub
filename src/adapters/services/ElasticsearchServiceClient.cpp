@@ -3,6 +3,7 @@
 #include "infra/ServiceDefaults.h"
 
 #include <QEventLoop>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -10,6 +11,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QRegularExpression>
+#include <QSet>
 #include <QUrl>
 
 #include <algorithm>
@@ -148,14 +150,36 @@ ServiceResult ElasticsearchServiceClient::clusterHealth(const ServiceEndpoint &e
 ServiceResult ElasticsearchServiceClient::listIndices(const ServiceEndpoint &endpoint)
 {
     QNetworkAccessManager manager;
-    QNetworkReply *reply = manager.get(makeRequest(endpoint, QStringLiteral("_cat/indices?format=json&bytes=b")));
-    const ServiceResult result = waitReply(&manager, reply);
-    reply->deleteLater();
-    if (!result.ok) {
-        return result;
+    QNetworkReply *indicesReply = manager.get(makeRequest(endpoint, QStringLiteral("_cat/indices?format=json&bytes=b&h=index,health,docs.count,store.size,is_closed")));
+    const ServiceResult indicesResult = waitReply(&manager, indicesReply);
+    indicesReply->deleteLater();
+    if (!indicesResult.ok) {
+        return indicesResult;
     }
 
-    const QJsonDocument document = QJsonDocument::fromJson(result.message.toUtf8());
+    QNetworkReply *aliasReply = manager.get(makeRequest(endpoint, QStringLiteral("_cat/aliases?format=json&h=alias,index")));
+    const ServiceResult aliasResult = waitReply(&manager, aliasReply);
+    aliasReply->deleteLater();
+
+    QSet<QString> aliasNames;
+    QHash<QString, QStringList> aliasTargets;
+    if (aliasResult.ok) {
+        const QJsonDocument aliasDoc = QJsonDocument::fromJson(aliasResult.message.toUtf8());
+        if (aliasDoc.isArray()) {
+            for (const QJsonValue &v : aliasDoc.array()) {
+                const QJsonObject item = v.toObject();
+                const QString aliasName = item.value(QStringLiteral("alias")).toString();
+                const QString indexName = item.value(QStringLiteral("index")).toString();
+                if (aliasName.isEmpty() || indexName.isEmpty() || aliasName == indexName) {
+                    continue;
+                }
+                aliasNames.insert(aliasName);
+                aliasTargets[aliasName].append(indexName);
+            }
+        }
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(indicesResult.message.toUtf8());
     if (!document.isArray()) {
         return {false, QStringLiteral("索引列表响应不是 JSON 数组"), {}, {}};
     }
@@ -163,24 +187,72 @@ ServiceResult ElasticsearchServiceClient::listIndices(const ServiceEndpoint &end
     ServiceResult rows{true, {}, {}, {}};
     for (const QJsonValue &value : document.array()) {
         const QJsonObject item = value.toObject();
+        const QString name = item.value(QStringLiteral("index")).toString();
+        if (name.isEmpty() || name.startsWith(QLatin1Char('.'))) {
+            continue;
+        }
         const qint64 docsRaw = item.value(QStringLiteral("docs.count")).toString().toLongLong();
         const qint64 diskRaw = item.value(QStringLiteral("store.size")).toString().toLongLong();
+        const bool isClosed = item.value(QStringLiteral("is_closed")).toString().trimmed()
+                                  .compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
         rows.rows.append(QJsonObject{
-            {QStringLiteral("name"), item.value(QStringLiteral("index")).toString()},
-            {QStringLiteral("status"), item.value(QStringLiteral("health")).toString()},
+            {QStringLiteral("name"), name},
+            {QStringLiteral("status"), isClosed ? QStringLiteral("closed") : item.value(QStringLiteral("health")).toString()},
             {QStringLiteral("docs"), QString::number(docsRaw)},
             {QStringLiteral("disk"), humanBytes(diskRaw)},
             {QStringLiteral("docsRaw"), docsRaw},
-            {QStringLiteral("diskRaw"), diskRaw}
+            {QStringLiteral("diskRaw"), diskRaw},
+            {QStringLiteral("kind"), QStringLiteral("index")}
         });
     }
+
+    for (const QString &aliasName : aliasNames) {
+        QStringList targets = aliasTargets.value(aliasName);
+        std::sort(targets.begin(), targets.end(), [](const QString &a, const QString &b) {
+            const int dateA = indexSuffix(a).isEmpty() ? 0 : 1;
+            const int dateB = indexSuffix(b).isEmpty() ? 0 : 1;
+            if (dateA != dateB) {
+                return dateA > dateB;
+            }
+            return a < b;
+        });
+        const QString targetSummary = targets.size() > 3
+            ? QStringLiteral("%1 等 %2 个").arg(targets.first()).arg(targets.size())
+            : targets.join(QLatin1String(", "));
+        rows.rows.append(QJsonObject{
+            {QStringLiteral("name"), aliasName},
+            {QStringLiteral("status"), QStringLiteral("alias")},
+            {QStringLiteral("docs"), QStringLiteral("-")},
+            {QStringLiteral("disk"), QStringLiteral("-")},
+            {QStringLiteral("docsRaw"), 0},
+            {QStringLiteral("diskRaw"), 0},
+            {QStringLiteral("kind"), QStringLiteral("alias")},
+            {QStringLiteral("targets"), targetSummary}
+        });
+    }
+
     return rows;
 }
 
 QVector<QJsonObject> ElasticsearchServiceClient::organizeIndexRows(const QVector<QJsonObject> &flatRows)
 {
-    QHash<QString, QVector<QJsonObject>> groups;
+    QVector<QJsonObject> organized;
+    QVector<QJsonObject> groupable;
+
     for (const QJsonObject &row : flatRows) {
+        const QString kind = row.value(QStringLiteral("kind")).toString();
+        if (kind == QStringLiteral("alias")) {
+            QJsonObject aliasRow = row;
+            aliasRow.insert(QStringLiteral("rowKind"), QStringLiteral("alias"));
+            aliasRow.insert(QStringLiteral("queryIndex"), row.value(QStringLiteral("name")).toString());
+            organized.append(aliasRow);
+            continue;
+        }
+        groupable.append(row);
+    }
+
+    QHash<QString, QVector<QJsonObject>> groups;
+    for (const QJsonObject &row : groupable) {
         const QString name = row.value(QStringLiteral("name")).toString();
         const QString base = indexBaseName(name);
         groups[base].append(row);
@@ -189,7 +261,6 @@ QVector<QJsonObject> ElasticsearchServiceClient::organizeIndexRows(const QVector
     QStringList groupKeys = groups.keys();
     groupKeys.sort(Qt::CaseInsensitive);
 
-    QVector<QJsonObject> organized;
     for (const QString &groupKey : groupKeys) {
         QVector<QJsonObject> members = groups.value(groupKey);
         std::sort(members.begin(), members.end(), [](const QJsonObject &left, const QJsonObject &right) {
@@ -212,21 +283,17 @@ QVector<QJsonObject> ElasticsearchServiceClient::organizeIndexRows(const QVector
         qint64 docsRaw = 0;
         qint64 diskRaw = 0;
         QString status = members.first().value(QStringLiteral("status")).toString();
-        QString queryIndex = members.first().value(QStringLiteral("name")).toString();
         for (const QJsonObject &member : members) {
             docsRaw += member.value(QStringLiteral("docsRaw")).toVariant().toLongLong();
             diskRaw += member.value(QStringLiteral("diskRaw")).toVariant().toLongLong();
             status = worstHealth(status, member.value(QStringLiteral("status")).toString());
-            if (indexSuffix(member.value(QStringLiteral("name")).toString()).isEmpty()) {
-                queryIndex = member.value(QStringLiteral("name")).toString();
-            }
         }
 
         organized.append(QJsonObject{
             {QStringLiteral("rowKind"), QStringLiteral("group")},
             {QStringLiteral("groupKey"), groupKey},
             {QStringLiteral("name"), groupKey},
-            {QStringLiteral("queryIndex"), queryIndex},
+            {QStringLiteral("queryIndex"), groupKey + QStringLiteral("*")},
             {QStringLiteral("status"), status},
             {QStringLiteral("docs"), QString::number(docsRaw)},
             {QStringLiteral("disk"), humanBytes(diskRaw)},
@@ -272,6 +339,7 @@ ServiceResult ElasticsearchServiceClient::searchIndex(const ServiceEndpoint &end
     QJsonObject body{
         {QStringLiteral("from"), qMax(0, from)},
         {QStringLiteral("size"), qMax(1, size)},
+        {QStringLiteral("track_total_hits"), true},
         {QStringLiteral("sort"), QJsonArray{QJsonObject{{QStringLiteral("_doc"), QStringLiteral("desc")}}}}
     };
     if (!queryText.trimmed().isEmpty()) {
@@ -297,6 +365,102 @@ ServiceResult ElasticsearchServiceClient::indexCount(const ServiceEndpoint &endp
     }
     const QJsonObject root = QJsonDocument::fromJson(result.message.toUtf8()).object();
     return {true, root.value(QStringLiteral("count")).toVariant().toString(), {}, {}};
+}
+
+ServiceResult ElasticsearchServiceClient::getIndexMapping(const ServiceEndpoint &endpoint,
+                                                          const QString &index)
+{
+    QNetworkAccessManager manager;
+    QNetworkReply *reply = manager.get(makeRequest(endpoint,
+                                                   QStringLiteral("%1/_mapping?pretty").arg(index)));
+    const ServiceResult result = waitReply(&manager, reply);
+    reply->deleteLater();
+    return result;
+}
+
+ServiceResult ElasticsearchServiceClient::getIndexSettings(const ServiceEndpoint &endpoint,
+                                                           const QString &index)
+{
+    QNetworkAccessManager manager;
+    QNetworkReply *reply = manager.get(makeRequest(endpoint,
+                                                   QStringLiteral("%1/_settings?pretty&flat_settings=true").arg(index)));
+    const ServiceResult result = waitReply(&manager, reply);
+    reply->deleteLater();
+    return result;
+}
+
+ServiceResult ElasticsearchServiceClient::getAliasesForIndex(const ServiceEndpoint &endpoint,
+                                                             const QString &index)
+{
+    QNetworkAccessManager manager;
+    QNetworkReply *reply = manager.get(makeRequest(endpoint,
+                                                   QStringLiteral("%1/_alias?pretty").arg(index)));
+    const ServiceResult result = waitReply(&manager, reply);
+    reply->deleteLater();
+    return result;
+}
+
+ServiceResult ElasticsearchServiceClient::listIndexTemplates(const ServiceEndpoint &endpoint)
+{
+    QNetworkAccessManager manager;
+    QNetworkReply *reply = manager.get(makeRequest(endpoint,
+                                                   QStringLiteral("_index_template?pretty&filter_path=index_templates.name,index_templates.index_template.index_patterns,index_templates.index_template.priority,index_templates.index_template.template.settings,index_templates.index_template.template.mappings")));
+    const ServiceResult result = waitReply(&manager, reply);
+    reply->deleteLater();
+    return result;
+}
+
+ServiceResult ElasticsearchServiceClient::analyzeText(const ServiceEndpoint &endpoint,
+                                                      const QString &index,
+                                                      const QString &analyzer,
+                                                      const QString &text)
+{
+    QJsonObject body{
+        {QStringLiteral("text"), text}
+    };
+    if (analyzer.startsWith(QLatin1String("field:"))) {
+        body.insert(QStringLiteral("field"), analyzer.mid(6));
+    } else if (!analyzer.isEmpty()) {
+        body.insert(QStringLiteral("analyzer"), analyzer);
+    }
+    QNetworkAccessManager manager;
+    QNetworkReply *reply = manager.post(makeRequest(endpoint,
+                                                    QStringLiteral("%1/_analyze?pretty").arg(index)),
+                                        QJsonDocument(body).toJson(QJsonDocument::Compact));
+    const ServiceResult result = waitReply(&manager, reply);
+    reply->deleteLater();
+    return result;
+}
+
+QStringList ElasticsearchServiceClient::listAnalyzersFromSettings(const QJsonObject &settingsRoot)
+{
+    QStringList result;
+    if (settingsRoot.isEmpty()) {
+        return result;
+    }
+
+    auto collectAnalyzers = [&result](const QJsonObject &analysis) {
+        const QJsonObject analyzers = analysis.value(QStringLiteral("analyzer")).toObject();
+        for (const QString &key : analyzers.keys()) {
+            if (!result.contains(key)) {
+                result.append(key);
+            }
+        }
+    };
+
+    const QJsonObject indexSettings = settingsRoot.value(QStringLiteral("settings")).toObject();
+    if (!indexSettings.isEmpty()) {
+        collectAnalyzers(indexSettings.value(QStringLiteral("index")).toObject().value(QStringLiteral("analysis")).toObject());
+    }
+    for (auto it = settingsRoot.begin(); it != settingsRoot.end(); ++it) {
+        const QJsonObject perIndex = it.value().toObject();
+        const QJsonObject settings = perIndex.value(QStringLiteral("settings")).toObject();
+        const QJsonObject analysis = settings.value(QStringLiteral("index")).toObject().value(QStringLiteral("analysis")).toObject();
+        collectAnalyzers(analysis);
+    }
+    result.removeDuplicates();
+    result.sort(Qt::CaseInsensitive);
+    return result;
 }
 
 QString ElasticsearchServiceClient::kibanaUrl(const ServiceEndpoint &endpoint)

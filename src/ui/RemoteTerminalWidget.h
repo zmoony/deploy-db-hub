@@ -50,6 +50,12 @@ public:
     void sendCommand(const QString &command);
     QList<QWidget *> takeToolbarWidgets();
 
+    // 请求获取终端当前工作目录，结果通过 currentDirectoryReceived 信号返回。
+    void requestCurrentWorkingDirectory();
+
+signals:
+    void currentDirectoryReceived(const QString &path);
+
 private slots:
     void onReadyRead();
     void onProcessError();
@@ -64,6 +70,7 @@ private:
     void buildUi();
     void appendOutput(const QString &text);
     void appendNotice(const QString &text);
+    void checkForDirectoryMarker(const QString &rawText);
     void writeToProcess(const QByteArray &data);
     void setStatus(const QString &text, const QString &level);
     void stopProcess();
@@ -77,4 +84,5 @@ private:
     TerminalTextEdit *m_output = nullptr;
     QPushButton *m_reconnectButton = nullptr;
     QPushButton *m_interruptButton = nullptr;
+    bool m_pendingPwdRequest = false;
 };

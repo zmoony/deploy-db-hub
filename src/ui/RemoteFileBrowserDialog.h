@@ -63,6 +63,7 @@ private slots:
     void showTreeContextMenu(const QPoint &pos);
     void syncTerminalToolbar();
     void buildTerminalToolbar();
+    void syncPathFromTerminal();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

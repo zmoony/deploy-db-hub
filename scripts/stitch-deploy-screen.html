@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Deploy Hub Pro - Infrastructure Orchestration</title>
+<!-- Google Fonts & Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-background": "#141b2b",
+                    "tertiary-fixed": "#e1e3e4",
+                    "surface-container-high": "#e1e8fd",
+                    "secondary-fixed-dim": "#bdc7d8",
+                    "on-primary": "#ffffff",
+                    "surface": "#f9f9ff",
+                    "on-error": "#ffffff",
+                    "surface-variant": "#dce2f7",
+                    "on-primary-fixed": "#001849",
+                    "surface-container-lowest": "#ffffff",
+                    "primary-fixed-dim": "#b3c5ff",
+                    "surface-bright": "#f9f9ff",
+                    "primary": "#0050cb",
+                    "surface-dim": "#d3daef",
+                    "inverse-primary": "#b3c5ff",
+                    "on-secondary": "#ffffff",
+                    "on-tertiary-fixed-variant": "#454748",
+                    "on-secondary-fixed-variant": "#3e4755",
+                    "on-primary-container": "#f8f7ff",
+                    "inverse-surface": "#293040",
+                    "secondary": "#555f6d",
+                    "background": "#f9f9ff",
+                    "on-secondary-container": "#596372",
+                    "on-secondary-fixed": "#121c28",
+                    "tertiary-container": "#707273",
+                    "on-primary-fixed-variant": "#003fa4",
+                    "on-tertiary": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "outline": "#727687",
+                    "surface-container-highest": "#dce2f7",
+                    "secondary-container": "#d6e0f1",
+                    "surface-container": "#e9edff",
+                    "inverse-on-surface": "#edf0ff",
+                    "error": "#ba1a1a",
+                    "surface-container-low": "#f1f3ff",
+                    "primary-container": "#0066ff",
+                    "tertiary": "#575a5b",
+                    "tertiary-fixed-dim": "#c5c7c8",
+                    "surface-tint": "#0054d6",
+                    "primary-fixed": "#dae1ff",
+                    "on-tertiary-fixed": "#191c1d",
+                    "on-tertiary-container": "#f7f8f9",
+                    "on-surface": "#141b2b",
+                    "on-error-container": "#93000a",
+                    "secondary-fixed": "#d9e3f4",
+                    "outline-variant": "#c2c6d8",
+                    "on-surface-variant": "#424656"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sidebar-width": "240px",
+                    "sm": "8px",
+                    "lg": "24px",
+                    "gutter": "20px",
+                    "xs": "4px",
+                    "xl": "32px",
+                    "md": "16px",
+                    "base": "4px"
+            },
+            "fontFamily": {
+                    "headline-sm": ["Inter"],
+                    "code-sm": ["JetBrains Mono"],
+                    "label-md": ["Inter"],
+                    "body-sm": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "headline-md": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-sm": ["16px", {"lineHeight": "24px", "fontWeight": "600"}],
+                    "code-sm": ["13px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "headline-lg": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #dce2f7;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #c2c6d8;
+        }
+    </style>
+</head>
+<body class="bg-surface font-body-md text-on-surface">
+<!-- Navigation Drawer (SideNav) -->
+<aside class="fixed left-0 top-0 h-full w-sidebar-width bg-surface-container-low dark:bg-surface-container-lowest border-r border-outline-variant dark:border-outline shadow-md flex flex-col py-lg px-md z-40 hidden md:flex">
+<div class="mb-xl px-sm">
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface dark:text-inverse-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">rocket_launch</span>
+                Deploy Hub Pro
+            </span>
+</div>
+<nav class="flex-1 space-y-2">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant transition-all font-body-md text-body-md rounded-lg" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant transition-all font-body-md text-body-md rounded-lg" href="#">
+<span class="material-symbols-outlined">description</span>
+<span>Project Management</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant transition-all font-body-md text-body-md rounded-lg" href="#">
+<span class="material-symbols-outlined">dns</span>
+<span>Server Management</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 bg-secondary-container dark:bg-on-secondary-container text-on-secondary-container dark:text-on-primary-container rounded-lg font-bold font-body-md text-body-md active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">rocket_launch</span>
+<span>Deployments</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant transition-all font-body-md text-body-md rounded-lg" href="#">
+<span class="material-symbols-outlined">terminal</span>
+<span>Logs</span>
+</a>
+</nav>
+<div class="mt-auto space-y-2 pt-lg border-t border-outline-variant">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant transition-all font-body-md text-body-md rounded-lg" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span>Settings</span>
+</a>
+<div class="flex items-center gap-3 px-3 py-2">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-xs">AD</div>
+<div class="flex flex-col">
+<span class="text-xs font-semibold">Admin</span>
+<span class="text-[10px] text-outline">root@deployhub</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Top App Bar -->
+<header class="fixed top-0 right-0 left-0 md:left-sidebar-width h-16 bg-surface dark:bg-surface-dim border-b border-outline-variant dark:border-outline shadow-sm flex justify-between items-center px-gutter z-30">
+<div class="flex items-center gap-4">
+<button class="md:hidden p-2 hover:bg-surface-variant rounded-full">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="font-headline-md text-headline-md text-primary dark:text-primary-fixed-dim">Deployments</h1>
+</div>
+<div class="flex items-center gap-3">
+<div class="hidden md:flex items-center bg-surface-container rounded-full px-4 py-1.5 border border-outline-variant">
+<span class="material-symbols-outlined text-outline text-sm mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-48 placeholder-outline" placeholder="Search clusters..." type="text"/>
+</div>
+<button class="p-2 hover:bg-surface-variant rounded-full text-on-surface-variant relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="p-2 hover:bg-surface-variant rounded-full text-on-surface-variant">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="pt-24 pb-12 px-gutter md:ml-sidebar-width min-h-screen">
+<div class="max-w-[1440px] mx-auto space-y-6">
+<!-- Context Switcher (Tabs) -->
+<div class="flex border-b border-outline-variant mb-6">
+<button class="px-6 py-3 font-label-md text-label-md border-b-2 border-primary text-primary transition-colors">Deployment Hub</button>
+<button class="px-6 py-3 font-label-md text-label-md border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-colors">Pipelines</button>
+<button class="px-6 py-3 font-label-md text-label-md border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-colors">Monitoring</button>
+<button class="px-6 py-3 font-label-md text-label-md border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-colors">Inventory</button>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<!-- Left Column: Configurations -->
+<div class="lg:col-span-5 space-y-gutter">
+<!-- Section: Deployment Config -->
+<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<div class="px-6 py-4 bg-surface-container-low border-b border-outline-variant flex justify-between items-center">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Configuration Details</h2>
+<span class="material-symbols-outlined text-outline">tune</span>
+</div>
+<div class="p-6 space-y-6">
+<div class="space-y-2">
+<label class="text-xs font-semibold text-outline-variant uppercase tracking-wider">Project Scope</label>
+<select class="w-full bg-surface-bright border border-outline-variant rounded-lg p-3 text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all">
+<option>yz-wva-gateway</option>
+<option>auth-service-v2</option>
+<option>payment-bridge-node</option>
+</select>
+</div>
+<div class="space-y-2">
+<label class="text-xs font-semibold text-outline-variant uppercase tracking-wider">Target Instance</label>
+<select class="w-full bg-surface-bright border border-outline-variant rounded-lg p-3 text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all">
+<option>172.17.112.121 (Production East)</option>
+<option>172.17.112.122 (Staging West)</option>
+<option>10.0.4.15 (Internal Beta)</option>
+</select>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="space-y-2">
+<label class="text-xs font-semibold text-outline-variant uppercase tracking-wider">JDK Version</label>
+<select class="w-full bg-surface-bright border border-outline-variant rounded-lg p-3 text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all">
+<option>System Default (v17)</option>
+<option>OpenJDK 11</option>
+<option>OpenJDK 21 (Preview)</option>
+</select>
+</div>
+<div class="flex items-end">
+<button class="w-full p-3 border border-outline text-on-surface-variant rounded-lg hover:bg-surface-variant font-body-md transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">settings_suggest</span>
+                                        Manage JDK
+                                    </button>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Service Status -->
+<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<div class="px-6 py-4 bg-surface-container-low border-b border-outline-variant flex justify-between items-center">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Instance Health</h2>
+<button class="flex items-center gap-1 text-primary hover:bg-primary-fixed p-1 rounded transition-colors" id="refreshBtn">
+<span class="material-symbols-outlined text-[20px]">refresh</span>
+<span class="text-xs font-bold">POLL NOW</span>
+</button>
+</div>
+<div class="p-6">
+<div class="flex items-center justify-between p-4 bg-surface-container-high rounded-xl">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-inner">
+<span class="w-3 h-3 bg-tertiary rounded-full animate-pulse"></span>
+</div>
+<div>
+<div class="font-headline-sm text-headline-sm">Idle / Standby</div>
+<div class="text-xs text-on-surface-variant">Last ping: 2m 45s ago</div>
+</div>
+</div>
+<div class="text-right">
+<div class="text-xs font-bold text-outline uppercase">Uptime</div>
+<div class="font-code-sm text-code-sm">124:12:05</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Log Stream Selection -->
+<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<div class="p-6 space-y-4">
+<div class="space-y-2">
+<label class="text-xs font-semibold text-outline-variant uppercase tracking-wider">Remote Log Stream</label>
+<div class="flex gap-2">
+<select class="flex-1 bg-surface-bright border border-outline-variant rounded-lg p-3 text-body-md focus:ring-2 focus:ring-primary focus:border-primary">
+<option>/logs/wva-wva-gateway.log</option>
+<option>/logs/error.log</option>
+<option>/logs/access.log</option>
+</select>
+<button class="px-4 py-2 bg-primary text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+                                        Inspect
+                                    </button>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column: Execution Console -->
+<div class="lg:col-span-7 flex flex-col gap-gutter h-full">
+<!-- Deployment Controls Card -->
+<section class="bg-white border border-outline-variant rounded-xl shadow-sm overflow-hidden flex flex-col flex-1">
+<div class="px-6 py-4 bg-surface-container-low border-b border-outline-variant flex justify-between items-center">
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Deployment Execution</h2>
+<p class="text-xs text-on-surface-variant">Session ID: <span class="font-code-sm">#DH-7742-XP</span></p>
+</div>
+<button class="bg-primary hover:bg-primary-container text-white px-8 py-3 rounded-lg font-bold shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center gap-3" id="startDeploy">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+                                START DEPLOYMENT
+                            </button>
+</div>
+<!-- Progress Area -->
+<div class="px-6 pt-6">
+<div class="flex justify-between items-center mb-2">
+<span class="text-xs font-bold text-on-surface-variant">CURRENT TASK: <span class="text-primary italic" id="currentTask">Awaiting Initiation</span></span>
+<span class="font-code-sm text-code-sm font-bold text-primary" id="progressText">0%</span>
+</div>
+<div class="h-2 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary w-0 transition-all duration-500 rounded-full" id="progressBar"></div>
+</div>
+</div>
+<!-- Console Output -->
+<div class="flex-1 p-6 flex flex-col overflow-hidden">
+<div class="flex items-center gap-2 mb-4">
+<span class="text-xs font-bold text-outline-variant uppercase">Runtime Output</span>
+<div class="h-px flex-1 bg-outline-variant/30"></div>
+</div>
+<div class="flex-1 bg-on-background text-primary-fixed p-6 rounded-xl font-code-sm text-code-sm overflow-y-auto custom-scrollbar leading-relaxed border-2 border-on-background shadow-inner" id="console">
+<div class="opacity-50">[SYSTEM] Deploy Hub Pro Shell v4.2.1 initialized...</div>
+<div class="opacity-50">[SYSTEM] Connection established to control plane.</div>
+<div class="opacity-50">[SYSTEM] Ready for operational commands.</div>
+<div class="space-y-1 mt-2" id="liveLogs"></div>
+</div>
+</div>
+<div class="px-6 py-3 bg-surface-container-low border-t border-outline-variant flex justify-between text-[11px] text-outline font-code-sm">
+<span>Status: TERMINAL_READY</span>
+<div class="flex gap-4">
+<span>Encoding: UTF-8</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> CPU: 12%</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> MEM: 1.2GB</span>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</main>
+<!-- Global Footer Bar -->
+<footer class="fixed bottom-0 left-0 right-0 h-8 bg-surface-container-lowest border-t border-outline-variant px-md flex items-center justify-between text-[10px] text-on-surface-variant font-code-sm z-50">
+<div class="flex items-center gap-4">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">folder_open</span>
+                E:/software/tool-vibe/deploy-hub/config
+            </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">cloud_done</span>
+                Sync: Enabled
+            </span>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-primary font-bold">STABLE VERSION v2.4.0</span>
+<span>UTF-8 | LF | Java 17</span>
+</div>
+</footer>
+<!-- Interactive Scripts -->
+<script>
+        const startBtn = document.getElementById('startDeploy');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const currentTask = document.getElementById('currentTask');
+        const liveLogs = document.getElementById('liveLogs');
+        const consoleEl = document.getElementById('console');
+
+        const logs = [
+            { text: "> Checking instance reachability...", delay: 500, prog: 10, task: "CONNECTING" },
+            { text: "> Fetching build artifact from nexus-repo-01...", delay: 1500, prog: 25, task: "ARTIFACT_RETRIEVAL" },
+            { text: "[INFO] Pulling jar: wva-gateway-0.0.1-SNAPSHOT.jar", delay: 200, prog: 35, task: "ARTIFACT_RETRIEVAL" },
+            { text: "> Validating checksums... OK", delay: 800, prog: 40, task: "VALIDATING" },
+            { text: "> Preparing target container context...", delay: 1200, prog: 55, task: "CONTAINER_SETUP" },
+            { text: "[WARN] Detected stale process id: 1842. Killing...", delay: 2500, prog: 65, task: "CLEANUP" },
+            { text: "> Transferring payload to 172.17.112.121...", delay: 3000, prog: 85, task: "UPLOADING" },
+            { text: "> Executing startup script...", delay: 1500, prog: 95, task: "LAUNCHING" },
+            { text: "[SUCCESS] Application started on port 8080", delay: 500, prog: 100, task: "FINISHED" },
+            { text: "[SYSTEM] Deployment completed successfully in 12.4s", delay: 200, prog: 100, task: "IDLE" }
+        ];
+
+        startBtn.addEventListener('click', () => {
+            if(startBtn.disabled) return;
+            
+            // Reset
+            startBtn.disabled = true;
+            startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            liveLogs.innerHTML = '';
+            progressBar.style.width = '0%';
+            progressText.innerText = '0%';
+            
+            let i = 0;
+            const runLogs = () => {
+                if (i < logs.length) {
+                    const log = logs[i];
+                    setTimeout(() => {
+                        const div = document.createElement('div');
+                        div.className = log.text.includes('[SUCCESS]') ? 'text-green-400 font-bold' : log.text.includes('[WARN]') ? 'text-yellow-400' : 'text-primary-fixed';
+                        div.innerText = log.text;
+                        liveLogs.appendChild(div);
+                        
+                        progressBar.style.width = log.prog + '%';
+                        progressText.innerText = log.prog + '%';
+                        currentTask.innerText = log.task;
+                        
+                        consoleEl.scrollTop = consoleEl.scrollHeight;
+                        i++;
+                        runLogs();
+                    }, log.delay);
+                } else {
+                    startBtn.disabled = false;
+                    startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            };
+            runLogs();
+        });
+
+        // Simple Status Polling Simulation
+        document.getElementById('refreshBtn').addEventListener('click', function() {
+            const btn = this;
+            const icon = btn.querySelector('.material-symbols-outlined');
+            icon.classList.add('animate-spin');
+            btn.classList.add('opacity-50');
+            
+            setTimeout(() => {
+                icon.classList.remove('animate-spin');
+                btn.classList.remove('opacity-50');
+            }, 1000);
+        });
+    </script>
+</body></html>

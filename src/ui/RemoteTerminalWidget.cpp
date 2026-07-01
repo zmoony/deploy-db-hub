@@ -346,6 +346,38 @@ void RemoteTerminalWidget::sendCommand(const QString &command)
     writeToProcess(command.toUtf8() + '\r');
 }
 
+void RemoteTerminalWidget::requestCurrentWorkingDirectory()
+{
+    if (m_process == nullptr || m_process->state() != QProcess::Running) {
+        appendNotice(QStringLiteral("终端未连接，无法获取路径。"));
+        return;
+    }
+    m_pendingPwdRequest = true;
+    writeToProcess(QByteArray("echo __DH_PWD_S__$PWD__DH_PWD_E__\r"));
+}
+
+void RemoteTerminalWidget::checkForDirectoryMarker(const QString &rawText)
+{
+    if (!m_pendingPwdRequest) {
+        return;
+    }
+    const QString plain = TerminalStream::stripAnsi(rawText);
+    const int startIdx = plain.indexOf(QStringLiteral("__DH_PWD_S__"));
+    if (startIdx < 0) {
+        return;
+    }
+    const int pathStart = startIdx + 12; // length of "__DH_PWD_S__"
+    const int endIdx = plain.indexOf(QStringLiteral("__DH_PWD_E__"), pathStart);
+    if (endIdx < 0) {
+        return;
+    }
+    m_pendingPwdRequest = false;
+    const QString path = plain.mid(pathStart, endIdx - pathStart).trimmed();
+    if (!path.isEmpty()) {
+        emit currentDirectoryReceived(path);
+    }
+}
+
 void RemoteTerminalWidget::sendInterrupt()
 {
     if (m_process != nullptr && m_process->state() == QProcess::Running) {
@@ -377,6 +409,7 @@ void RemoteTerminalWidget::writeToProcess(const QByteArray &data)
 
 void RemoteTerminalWidget::appendOutput(const QString &text)
 {
+    checkForDirectoryMarker(text);
     QTextCursor cursor = m_output->textCursor();
     cursor.movePosition(QTextCursor::End);
     cursor.mergeBlockFormat(terminalBlockFormat());

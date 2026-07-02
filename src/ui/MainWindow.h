@@ -62,6 +62,7 @@ private slots:
     void onNavigationChanged(int row);
     void onSettingsClicked();
     void openAiConfigPage();
+    void onThemeChanged(int index);
 
 private:
     QWidget *createDashboardPage();
@@ -86,6 +87,7 @@ private:
     void refreshRemoteLogPathOptions(bool allowPrompt);
     void refreshServiceStatus(bool allowPrompt);
     void refreshAiSettingsSummary();
+    void updateQuickStartVisibility();
 
     std::unique_ptr<ConfigStore> m_store;
     std::unique_ptr<CredentialStore> m_credentials;
@@ -137,9 +139,11 @@ private:
     QLineEdit *m_postgresDriverJarInput = nullptr;
     QLineEdit *m_oracleDriverJarInput = nullptr;
     QLabel *m_driverProbeLabel = nullptr;
+    QComboBox *m_themeSelector = nullptr;
     QLineEdit *m_aiSummaryUrl = nullptr;
     QLineEdit *m_aiSummaryModel = nullptr;
     QLabel *m_aiSummaryKeyStatus = nullptr;
+    QWidget *m_aiQuickStartPanel = nullptr;
     bool m_deployRunning = false;
     int m_remoteLogRefreshGeneration = 0;
 };

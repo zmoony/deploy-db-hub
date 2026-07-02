@@ -59,6 +59,10 @@ void applySettingsObject(const QJsonObject &object, AppSettings *settings)
         QDir::fromNativeSeparators(object.value(QStringLiteral("postgresDriverJar")).toString().trimmed());
     settings->oracleDriverJar =
         QDir::fromNativeSeparators(object.value(QStringLiteral("oracleDriverJar")).toString().trimmed());
+    const QString tm = object.value(QStringLiteral("themeMode")).toString().trimmed();
+    if (tm == QStringLiteral("light") || tm == QStringLiteral("dark") || tm == QStringLiteral("system")) {
+        settings->themeMode = tm;
+    }
 }
 
 }
@@ -117,7 +121,8 @@ bool AppSettingsStore::save(const AppSettings &settings, QString *error) const
         {QStringLiteral("mavenHome"), QDir::fromNativeSeparators(settings.mavenHome.trimmed())},
         {QStringLiteral("mavenRepository"), QDir::fromNativeSeparators(settings.mavenRepository.trimmed())},
         {QStringLiteral("postgresDriverJar"), QDir::fromNativeSeparators(settings.postgresDriverJar.trimmed())},
-        {QStringLiteral("oracleDriverJar"), QDir::fromNativeSeparators(settings.oracleDriverJar.trimmed())}
+        {QStringLiteral("oracleDriverJar"), QDir::fromNativeSeparators(settings.oracleDriverJar.trimmed())},
+        {QStringLiteral("themeMode"), settings.themeMode}
     };
     file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
     return true;

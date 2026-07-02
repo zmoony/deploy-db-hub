@@ -8,6 +8,7 @@ struct AppSettings {
     QString mavenRepository;
     QString postgresDriverJar;
     QString oracleDriverJar;
+    QString themeMode = QStringLiteral("system");
 };
 
 class AppSettingsStore final

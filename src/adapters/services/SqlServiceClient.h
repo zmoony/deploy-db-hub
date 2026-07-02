@@ -17,6 +17,11 @@ public:
                                        const QString &productKey,
                                        const QString &schema,
                                        const QString &table);
+    static ServiceResult fetchTableDdl(const ServiceEndpoint &endpoint,
+                                       const QString &productKey,
+                                       const QString &schema,
+                                       const QString &table);
+    static QString ddlTextFromResult(const ServiceResult &result);
     static ServiceResult dropTable(const ServiceEndpoint &endpoint,
                                    const QString &productKey,
                                    const QString &schema,

@@ -95,6 +95,7 @@ qt_add_executable(deploy-hub WIN32
     src/ui/PageLayout.cpp
     src/ui/PageLayout.h
     src/ui/Theme.h
+    src/ui/Theme.cpp
     src/ui/DeployWorker.cpp
     src/ui/DeployWorker.h
     src/ui/CommonToolsWidget.cpp
@@ -111,6 +112,10 @@ qt_add_executable(deploy-hub WIN32
     src/ui/tools/AiAssistBar.h
     src/ui/tools/pages/AiConfigToolPage.cpp
     src/ui/tools/pages/AiConfigToolPage.h
+    src/ui/tools/pages/AiConnectionDialog.cpp
+    src/ui/tools/pages/AiConnectionDialog.h
+    src/ui/tools/pages/AiConnectionManagerDialog.cpp
+    src/ui/tools/pages/AiConnectionManagerDialog.h
     src/ui/tools/pages/Base64TextToolPage.cpp
     src/ui/tools/pages/Base64TextToolPage.h
     src/ui/tools/pages/CaseToolPage.cpp
@@ -213,6 +218,12 @@ qt_add_executable(deploy-hub WIN32
     src/ui/ServiceSqlDialog.h
     src/ui/ServiceSqlWorkbenchWidget.cpp
     src/ui/ServiceSqlWorkbenchWidget.h
+    src/ui/SqlCodeEditor.cpp
+    src/ui/SqlCodeEditor.h
+    src/ui/SqlColumnFilterPopup.cpp
+    src/ui/SqlColumnFilterPopup.h
+    src/ui/SqlResultHeaderView.cpp
+    src/ui/SqlResultHeaderView.h
     src/ui/ServiceContentDialog.cpp
     src/ui/ServiceContentDialog.h
     src/ui/ServiceDatabaseConnectionDialog.cpp
@@ -457,6 +468,7 @@ qt_add_executable(deploy_hub_tests
     src/ui/PageLayout.cpp
     src/ui/PageLayout.h
     src/ui/Theme.h
+    src/ui/Theme.cpp
     src/ui/PathPickerWidget.cpp
     src/ui/PathPickerWidget.h
     src/ui/ProjectDialog.cpp

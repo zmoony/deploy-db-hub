@@ -8,4 +8,8 @@ class AiSettingsStoreTest final : public QObject
 
 private slots:
     void roundTripsSettings();
+    void migratesLegacySingleConnection();
+    void persistsMultipleConnections();
+    void buildCredentialRef_isStable();
+    void defaultModelPresets_returnsNonEmpty();
 };

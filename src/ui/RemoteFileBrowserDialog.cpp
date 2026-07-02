@@ -28,6 +28,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSplitter>
+#include <QStyle>
 #include <QMenu>
 #include <QTabWidget>
 #include <QTabBar>
@@ -141,6 +142,7 @@ void RemoteFileBrowserDialog::buildUi()
     goButton->setObjectName(QStringLiteral("primaryButton"));
     connect(goButton, &QPushButton::clicked, this, &RemoteFileBrowserDialog::refreshListing);
     connect(m_pathEdit, &QLineEdit::returnPressed, this, &RemoteFileBrowserDialog::refreshListing);
+    m_goButton = goButton;
     pathRow->addWidget(pathLabel);
     pathRow->addWidget(m_pathEdit, 1);
     pathRow->addWidget(goButton);
@@ -207,10 +209,6 @@ void RemoteFileBrowserDialog::buildUi()
     auto *listLayout = new QVBoxLayout(listPanel);
     listLayout->setContentsMargins(0, 0, 0, 0);
     listLayout->setSpacing(PageLayout::Space8);
-
-    auto *listTitle = new QLabel(QStringLiteral("文件列表"));
-    listTitle->setObjectName(QStringLiteral("sectionLabel"));
-    listLayout->addWidget(listTitle);
 
     m_table = new QTableWidget(0, 5);
     m_table->setObjectName(QStringLiteral("remoteFileTable"));
@@ -352,7 +350,9 @@ void RemoteFileBrowserDialog::buildTerminalToolbar()
     connect(m_terminal, &RemoteTerminalWidget::currentDirectoryReceived,
             this, [this](const QString &path) {
                 setCurrentPath(path);
-                refreshListing();
+                if (m_goButton != nullptr) {
+                    m_goButton->click();
+                }
             });
 
     m_tabs->setCornerWidget(m_terminalToolbar, Qt::TopRightCorner);
@@ -664,9 +664,24 @@ void RemoteFileBrowserDialog::refreshListing()
 void RemoteFileBrowserDialog::populateTable(const QVector<RemoteFileEntry> &entries)
 {
     m_table->setRowCount(entries.size());
+    QStyle *s = style();
     for (int row = 0; row < entries.size(); ++row) {
         const RemoteFileEntry &entry = entries.at(row);
-        m_table->setItem(row, 0, new QTableWidgetItem(entry.name));
+        auto *nameItem = new QTableWidgetItem(entry.name);
+        if (s != nullptr) {
+            switch (entry.type) {
+            case RemoteFileType::Directory:
+                nameItem->setIcon(s->standardIcon(QStyle::SP_DirIcon));
+                break;
+            case RemoteFileType::Symlink:
+                nameItem->setIcon(s->standardIcon(QStyle::SP_FileLinkIcon));
+                break;
+            default:
+                nameItem->setIcon(s->standardIcon(QStyle::SP_FileIcon));
+                break;
+            }
+        }
+        m_table->setItem(row, 0, nameItem);
         m_table->setItem(row, 1, new QTableWidgetItem(fileTypeLabel(entry.type)));
         m_table->setItem(row, 2, new QTableWidgetItem(formatSize(entry.sizeBytes)));
         m_table->setItem(row, 3, new QTableWidgetItem(entry.writable ? QStringLiteral("rw") : QStringLiteral("r")));

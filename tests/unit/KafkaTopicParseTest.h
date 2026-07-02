@@ -10,4 +10,5 @@ private slots:
     void parseOffsetLinesSupportsColonFormat();
     void parseOffsetLinesSkipsNegativeOffsets();
     void parseDescribeTopicsOutputExtractsSummary();
+    void sanitizeConsumerOutputRemovesKafkaToolSummary();
 };

@@ -33,3 +33,16 @@ void KafkaTopicParseTest::parseDescribeTopicsOutputExtractsSummary()
     QCOMPARE(rows.at(0).value(QStringLiteral("partitions")).toString(), QStringLiteral("10"));
     QCOMPARE(rows.at(0).value(QStringLiteral("replication")).toString(), QStringLiteral("1"));
 }
+
+void KafkaTopicParseTest::sanitizeConsumerOutputRemovesKafkaToolSummary()
+{
+    const QString raw = QStringLiteral("{\"id\":1}\n"
+                                       "Processed a total of 5 messages\n"
+                                       "---process a total of 5message\n"
+                                       "hello world");
+    const QString sanitized = KafkaServiceClient::sanitizeConsumerOutput(raw);
+    QVERIFY(sanitized.contains(QStringLiteral("{\"id\":1}")));
+    QVERIFY(sanitized.contains(QStringLiteral("hello world")));
+    QVERIFY(!sanitized.contains(QStringLiteral("Processed a total of")));
+    QVERIFY(!sanitized.contains(QStringLiteral("process a total of")));
+}

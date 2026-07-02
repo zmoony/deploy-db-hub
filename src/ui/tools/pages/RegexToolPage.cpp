@@ -70,6 +70,7 @@ RegexToolPage::RegexToolPage(QWidget *parent)
 
     auto *message = new QLabel(this);
     message->setObjectName(QStringLiteral("toolMessage"));
+    message->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(message);
 
     connect(matchButton, &QPushButton::clicked, this,

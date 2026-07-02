@@ -93,6 +93,7 @@ private:
     void refreshSqlWorkbench();
     void executeSqlQuery(const QString &sql);
     void updateSqlConnectionSummary();
+    void queryTableRows(const QString &tableName);
     void showTableStructure(const QString &tableName);
     void deleteTable(const QString &tableName);
 

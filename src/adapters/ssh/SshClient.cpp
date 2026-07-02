@@ -317,6 +317,8 @@ bool SshClient::buildInteractiveInvocation(SshInteractiveInvocation *out, QStrin
         }
     }
 
+    env.insert(QStringLiteral("TERM"), QStringLiteral("xterm-256color"));
+
     QStringList args = baseSshArgs();
     args << QStringLiteral("-tt");
     args << target();

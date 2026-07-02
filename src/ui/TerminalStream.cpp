@@ -220,18 +220,47 @@ void applySgr(FormatState *state, const TerminalTheme &theme, const QString &par
     }
 }
 
-bool parseCsiSequence(const QString &text, int start, int *endOut, FormatState *state, const TerminalTheme &theme)
+int parseCsiCount(const QString &paramText, int defaultValue)
+{
+    QString digits;
+    for (const QChar &ch : paramText) {
+        if (ch.isDigit()) {
+            digits.append(ch);
+        }
+    }
+    bool ok = false;
+    const int n = digits.toInt(&ok);
+    return (ok && n > 0) ? n : defaultValue;
+}
+
+bool parseCsiSequence(const QString &text, int start, int *endOut, FormatState *state, const TerminalTheme &theme, QTextCursor &cursor)
 {
     if (start + 1 >= text.size() || text.at(start) != QLatin1Char('\x1B') || text.at(start + 1) != QLatin1Char('[')) {
         return false;
     }
 
     int index = start + 2;
+    QString paramText;
     while (index < text.size()) {
         const QChar ch = text.at(index);
         if (ch >= QLatin1Char('@') && ch <= QLatin1Char('~')) {
+            const QString rawParam = text.mid(start + 2, index - start - 2);
             if (ch == QLatin1Char('m')) {
-                applySgr(state, theme, text.mid(start + 2, index - start - 2));
+                applySgr(state, theme, rawParam);
+            } else if (ch == QLatin1Char('A')) {
+                cursor.movePosition(QTextCursor::Up, QTextCursor::MoveAnchor, parseCsiCount(rawParam, 1));
+            } else if (ch == QLatin1Char('B')) {
+                cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, parseCsiCount(rawParam, 1));
+            } else if (ch == QLatin1Char('C')) {
+                cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, parseCsiCount(rawParam, 1));
+            } else if (ch == QLatin1Char('D')) {
+                cursor.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, parseCsiCount(rawParam, 1));
+            } else if (ch == QLatin1Char('G')) {
+                cursor.movePosition(QTextCursor::StartOfBlock);
+                cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, qMax(0, parseCsiCount(rawParam, 1) - 1));
+            } else if (ch == QLatin1Char('K')) {
+                cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+                cursor.removeSelectedText();
             }
             *endOut = index + 1;
             return true;
@@ -294,9 +323,9 @@ bool parseSimpleEscape(const QString &text, int start, int *endOut)
     return true;
 }
 
-bool parseEscapeSequence(const QString &text, int start, int *endOut, FormatState *state, const TerminalTheme &theme)
+bool parseEscapeSequence(const QString &text, int start, int *endOut, FormatState *state, const TerminalTheme &theme, QTextCursor &cursor)
 {
-    if (parseCsiSequence(text, start, endOut, state, theme)) {
+    if (parseCsiSequence(text, start, endOut, state, theme, cursor)) {
         return true;
     }
     if (parseOscSequence(text, start, endOut)) {
@@ -319,6 +348,15 @@ bool isRetainedControlCharacter(QChar ch)
 
 void insertCharacter(QTextCursor &cursor, const FormatState &state, QChar ch)
 {
+    // 终端覆盖模式：仅当光标右侧有可见字符（非换行/非文档末尾）时才覆盖
+    const int pos = cursor.position();
+    QTextDocument *doc = cursor.document();
+    if (doc != nullptr && pos < doc->characterCount() - 1) {
+        const QChar next = doc->characterAt(pos);
+        if (next != QLatin1Char('\n') && next.unicode() != QChar::ParagraphSeparator) {
+            cursor.deleteChar();
+        }
+    }
     cursor.setCharFormat(state.toCharFormat());
     cursor.insertText(QString(ch));
 }
@@ -363,7 +401,7 @@ void appendToCursor(QTextCursor &cursor, const QString &text, const TerminalThem
         const QChar ch = text.at(i);
         if (ch == QLatin1Char('\x1B')) {
             int end = i;
-            if (parseEscapeSequence(text, i, &end, &state, resolvedTheme)) {
+            if (parseEscapeSequence(text, i, &end, &state, resolvedTheme, cursor)) {
                 i = end;
                 continue;
             }
@@ -381,13 +419,14 @@ void appendToCursor(QTextCursor &cursor, const QString &text, const TerminalThem
                 ++i;
                 continue;
             }
-            cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
-            cursor.removeSelectedText();
+            // \r 只移动光标到逻辑行首，不删除内容（真实终端行为）
+            cursor.movePosition(QTextCursor::StartOfBlock);
             ++i;
             continue;
         }
         if (ch == QLatin1Char('\b')) {
-            cursor.deletePreviousChar();
+            // \b 只移动光标左移一格，不删除字符（删除由后续覆盖或\x1b[K完成）
+            cursor.movePosition(QTextCursor::Left);
             ++i;
             continue;
         }

@@ -74,7 +74,7 @@ void centerWindowOnAvailableScreen(QWidget *window, const QRect &available)
 void configureStaticLabel(QLabel *label)
 {
     if (label != nullptr) {
-        label->setTextInteractionFlags(Qt::NoTextInteraction);
+        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
     }
 }
 

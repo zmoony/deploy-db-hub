@@ -64,7 +64,7 @@ public final class KafkaAdminRunner {
 
         if (action == null || bootstrap == null) {
             writeError("missing --action or --bootstrap-server");
-            System.exit(1);
+            return;
         }
 
         final Properties props = new Properties();
@@ -89,24 +89,23 @@ public final class KafkaAdminRunner {
             case "consumer-group":
                 if (group == null || group.isEmpty()) {
                     writeError("missing --group");
-                    System.exit(1);
+                    return;
                 }
                 writeConsumerGroups(admin, group);
                 break;
             case "consume-latest":
                 if (topic == null || topic.isEmpty()) {
                     writeError("missing --topic");
-                    System.exit(1);
+                    return;
                 }
                 writeConsumeLatest(admin, bootstrap, topic, maxMessages);
                 break;
             default:
                 writeError("unknown action: " + action);
-                System.exit(1);
+                return;
             }
         } catch (Exception ex) {
             writeError(ex.getMessage() == null ? ex.toString() : ex.getMessage());
-            System.exit(1);
         }
     }
 
@@ -133,8 +132,8 @@ public final class KafkaAdminRunner {
 
     private static void writeConsumeLatest(AdminClient admin, String bootstrap, String topic, int maxMessages)
             throws Exception {
-        final int limit = Math.max(1, Math.min(maxMessages, 50));
-        final int maxParts = 8;
+        const int limit = Math.max(1, Math.min(maxMessages, 50));
+        final int maxParts = 2;
 
         final Map<String, TopicDescription> descriptions =
             admin.describeTopics(Collections.singleton(topic)).all().get(TIMEOUT_SEC, TimeUnit.SECONDS);
@@ -184,7 +183,7 @@ public final class KafkaAdminRunner {
                 consumer.assign(Collections.singletonList(partition));
                 consumer.seek(partition, start);
                 final ConsumerRecords<byte[], byte[]> records =
-                    consumer.poll(java.time.Duration.ofMillis(2500));
+                    consumer.poll(java.time.Duration.ofMillis(1500));
                 for (ConsumerRecord<byte[], byte[]> record : records) {
                     if (messages.length() > 0) {
                         messages.append("\n\n");

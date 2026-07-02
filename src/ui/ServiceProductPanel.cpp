@@ -1,5 +1,6 @@
 #include "ui/ServiceProductPanel.h"
 
+#include "adapters/services/KafkaAdminBridge.h"
 #include "adapters/services/SqlServiceClient.h"
 #include "ui/ServiceNodeTypes.h"
 #include "infra/ServiceNodeConnection.h"
@@ -33,6 +34,8 @@
 #include <QDesktopServices>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QTabWidget>
 #include <QUrl>
 #include <QSet>
 #include <QSizePolicy>
@@ -112,9 +115,7 @@ QVector<ServiceProductPanel::DetailTabSpec> detailTabsFor(ServiceProductKind pro
         };
     case ServiceProductKind::Oracle:
     case ServiceProductKind::PostgreSQL:
-        return {
-            {QStringLiteral("SQL"), {}, {}}
-        };
+        return {};
     }
     return {};
 }
@@ -391,6 +392,9 @@ void ServiceProductPanel::persistInstances()
 
 ServiceBroker::TabKind ServiceProductPanel::currentTabKind() const
 {
+    if (isDatabaseConnectionProduct(m_product)) {
+        return ServiceBroker::TabKind::Sql;
+    }
     if (m_currentDetailTab < 0 || m_currentDetailTab >= m_detailTabs.size()) {
         return ServiceBroker::TabKind::Node;
     }
@@ -534,6 +538,32 @@ QWidget *ServiceProductPanel::makeInstanceBanner()
     layout->addWidget(m_bannerTitle, 0, Qt::AlignVCenter);
     layout->addWidget(m_bannerStatus, 1, Qt::AlignVCenter);
     layout->addWidget(m_bannerNode, 0, Qt::AlignVCenter);
+
+    if (isDatabaseConnectionProduct(m_product)) {
+        layout->addStretch();
+        auto *schemaLabel = new QLabel(QStringLiteral("模式"), banner);
+        schemaLabel->setObjectName(QStringLiteral("deployFieldLabel"));
+        layout->addWidget(schemaLabel, 0, Qt::AlignVCenter);
+        m_schemaCombo = new QComboBox(banner);
+        PageLayout::configureFormInput(m_schemaCombo);
+        m_schemaCombo->setMinimumWidth(140);
+        layout->addWidget(m_schemaCombo, 0, Qt::AlignVCenter);
+        m_schemaRefreshButton = new QPushButton(QStringLiteral("刷新"), banner);
+        m_schemaRefreshButton->setObjectName(QStringLiteral("toolSecondaryButton"));
+        m_schemaRefreshButton->setFixedHeight(32);
+        layout->addWidget(m_schemaRefreshButton, 0, Qt::AlignVCenter);
+        connect(m_schemaCombo, &QComboBox::currentTextChanged, this, [this](const QString &schema) {
+            m_activeSchema = schema.trimmed();
+            if (m_sqlWorkbench != nullptr) {
+                m_sqlWorkbench->setCurrentSchema(m_activeSchema);
+            }
+            refreshSqlWorkbench();
+        });
+        connect(m_schemaRefreshButton, &QPushButton::clicked, this, [this]() {
+            updateSchemaCombo();
+            refreshSqlWorkbench();
+        });
+    }
     return banner;
 }
 
@@ -547,55 +577,33 @@ QWidget *ServiceProductPanel::buildDetailPage()
     layout->addWidget(makeInstanceBanner());
     connect(m_backNavButton, &QPushButton::clicked, this, &ServiceProductPanel::backToList);
 
-    m_detailTabStack = new QStackedWidget(m_detailPage);
-    for (const DetailTabSpec &spec : m_detailTabs) {
-        m_detailTabStack->addWidget(new QWidget);
+    if (!isDatabaseConnectionProduct(m_product)) {
+        m_detailTabStack = new QStackedWidget(m_detailPage);
+        for (const DetailTabSpec &spec : m_detailTabs) {
+            m_detailTabStack->addWidget(new QWidget);
+        }
+
+        LineTabBarController *tabController = nullptr;
+        QStringList tabLabels;
+        for (const DetailTabSpec &spec : m_detailTabs) {
+            tabLabels.append(spec.title);
+        }
+
+        auto *tabRow = new QWidget(m_detailPage);
+        auto *tabRowLayout = new QHBoxLayout(tabRow);
+        tabRowLayout->setContentsMargins(0, 0, 0, 0);
+        tabRowLayout->setSpacing(PageLayout::Space8);
+        tabRowLayout->addWidget(PageLayout::makeLineTabBar(tabLabels, m_detailPage, &tabController, m_detailTabStack));
+        m_detailTabController = tabController;
+        connect(m_detailTabController, &LineTabBarController::tabActivated, this, &ServiceProductPanel::onDetailTabChanged);
+        layout->addWidget(tabRow);
+
+        m_detailToolbar = new QWidget(m_detailPage);
+        m_detailToolbarLayout = new QHBoxLayout(m_detailToolbar);
+        m_detailToolbarLayout->setContentsMargins(0, 0, 0, 0);
+        m_detailToolbarLayout->setSpacing(PageLayout::Space8);
+        layout->addWidget(m_detailToolbar);
     }
-
-    LineTabBarController *tabController = nullptr;
-    QStringList tabLabels;
-    for (const DetailTabSpec &spec : m_detailTabs) {
-        tabLabels.append(spec.title);
-    }
-
-    auto *tabRow = new QWidget(m_detailPage);
-    auto *tabRowLayout = new QHBoxLayout(tabRow);
-    tabRowLayout->setContentsMargins(0, 0, 0, 0);
-    tabRowLayout->setSpacing(PageLayout::Space8);
-    tabRowLayout->addWidget(PageLayout::makeLineTabBar(tabLabels, m_detailPage, &tabController, m_detailTabStack));
-    m_detailTabController = tabController;
-    connect(m_detailTabController, &LineTabBarController::tabActivated, this, &ServiceProductPanel::onDetailTabChanged);
-
-    if (isDatabaseConnectionProduct(m_product)) {
-        tabRowLayout->addStretch();
-        tabRowLayout->addWidget(new QLabel(QStringLiteral("模式"), tabRow));
-        m_schemaCombo = new QComboBox(tabRow);
-        PageLayout::configureFormInput(m_schemaCombo);
-        m_schemaCombo->setMinimumWidth(140);
-        tabRowLayout->addWidget(m_schemaCombo);
-        m_schemaRefreshButton = new QPushButton(QStringLiteral("刷新"), tabRow);
-        m_schemaRefreshButton->setObjectName(QStringLiteral("secondaryButton"));
-        m_schemaRefreshButton->setMinimumHeight(32);
-        tabRowLayout->addWidget(m_schemaRefreshButton);
-        connect(m_schemaCombo, &QComboBox::currentTextChanged, this, [this](const QString &schema) {
-            m_activeSchema = schema.trimmed();
-            if (m_sqlWorkbench != nullptr) {
-                m_sqlWorkbench->setCurrentSchema(m_activeSchema);
-            }
-            refreshSqlWorkbench();
-        });
-        connect(m_schemaRefreshButton, &QPushButton::clicked, this, [this]() {
-            updateSchemaCombo();
-            refreshSqlWorkbench();
-        });
-    }
-    layout->addWidget(tabRow);
-
-    m_detailToolbar = new QWidget(m_detailPage);
-    m_detailToolbarLayout = new QHBoxLayout(m_detailToolbar);
-    m_detailToolbarLayout->setContentsMargins(0, 0, 0, 0);
-    m_detailToolbarLayout->setSpacing(PageLayout::Space8);
-    layout->addWidget(m_detailToolbar);
 
     m_detailContentStack = new QStackedWidget(m_detailPage);
     m_detailTablePage = new QWidget(m_detailContentStack);
@@ -635,11 +643,19 @@ QWidget *ServiceProductPanel::buildDetailPage()
                                                                           currentSchema(),
                                                                           tableName));
         });
+        connect(m_sqlWorkbench, &ServiceSqlWorkbenchWidget::tableQueryRequested, this,
+                &ServiceProductPanel::queryTableRows);
     }
 
     layout->addWidget(m_detailContentStack, 1);
 
-    onDetailTabChanged(0);
+    if (isDatabaseConnectionProduct(m_product)) {
+        if (m_detailContentStack != nullptr && m_sqlWorkbench != nullptr) {
+            m_detailContentStack->setCurrentWidget(m_sqlWorkbench);
+        }
+    } else {
+        onDetailTabChanged(0);
+    }
     return m_detailPage;
 }
 
@@ -940,10 +956,17 @@ void ServiceProductPanel::loadRemoteDetailAsync()
     connect(watcher, &QFutureWatcher<ServiceResult>::finished, this, &ServiceProductPanel::onRemoteDataLoaded);
     watcher->setProperty("generation", generation);
     watcher->setProperty("detailTab", detailTab);
+    const bool kafkaTopicDashboard =
+        productKey == QStringLiteral("kafka") && tab == ServiceBroker::TabKind::Topic
+        && KafkaAdminBridge::isAvailable();
     const bool kafkaTopicQuick =
-        productKey == QStringLiteral("kafka") && tab == ServiceBroker::TabKind::Topic;
+        productKey == QStringLiteral("kafka") && tab == ServiceBroker::TabKind::Topic
+        && !kafkaTopicDashboard;
     watcher->setProperty("kafkaTopicQuick", kafkaTopicQuick);
-    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, tab, remoteCopy, schema, kafkaTopicQuick]() {
+    watcher->setFuture(QtConcurrent::run([instanceCopy, serverCopy, productKey, tab, remoteCopy, schema, kafkaTopicQuick, kafkaTopicDashboard]() {
+        if (kafkaTopicDashboard) {
+            return ServiceBroker::loadKafkaTopicStats(instanceCopy, serverCopy, remoteCopy, {});
+        }
         if (kafkaTopicQuick) {
             return ServiceBroker::loadKafkaTopicsQuick(instanceCopy, serverCopy, remoteCopy);
         }
@@ -1839,9 +1862,11 @@ void ServiceProductPanel::openSelectedInstance()
 
     m_stack->setCurrentIndex(1);
     m_detailTabCache.clear();
-    onDetailTabChanged(targetTab);
     refreshBanner();
     if (isDatabaseConnectionProduct(m_product)) {
+        if (m_detailContentStack != nullptr && m_sqlWorkbench != nullptr) {
+            m_detailContentStack->setCurrentWidget(m_sqlWorkbench);
+        }
         updateSchemaCombo();
         if (m_sqlWorkbench != nullptr) {
             m_sqlWorkbench->setCurrentSchema(currentSchema());
@@ -1849,6 +1874,7 @@ void ServiceProductPanel::openSelectedInstance()
         refreshSqlWorkbench();
         return;
     }
+    onDetailTabChanged(targetTab);
     showDetailLoading();
     refreshDetailTable();
 }
@@ -2199,6 +2225,20 @@ void ServiceProductPanel::executeSqlQuery(const QString &sql)
     }));
 }
 
+void ServiceProductPanel::queryTableRows(const QString &tableName)
+{
+    if (tableName.isEmpty() || m_sqlWorkbench == nullptr) {
+        return;
+    }
+
+    const QString sql = SqlServiceClient::defaultSelectSql(serviceProductKindKey(m_product),
+                                                           currentSchema(),
+                                                           tableName,
+                                                           200);
+    m_sqlWorkbench->setSqlText(sql);
+    executeSqlQuery(sql);
+}
+
 void ServiceProductPanel::showTableStructure(const QString &tableName)
 {
     if (tableName.isEmpty()) {
@@ -2213,15 +2253,16 @@ void ServiceProductPanel::showTableStructure(const QString &tableName)
 
     ServiceEndpoint endpoint;
     QString error;
-    if (!ServiceBroker::resolveContext(instance, server, serviceProductKindKey(m_product), &endpoint, &error)) {
+    const QString productKey = serviceProductKindKey(m_product);
+    if (!ServiceBroker::resolveContext(instance, server, productKey, &endpoint, &error)) {
         QMessageBox::warning(this, QStringLiteral("无法查看表结构"), error);
         return;
     }
 
-    const ServiceResult result =
-        SqlServiceClient::describeTable(endpoint, serviceProductKindKey(m_product), currentSchema(), tableName);
-    if (!result.ok) {
-        QMessageBox::warning(this, QStringLiteral("无法查看表结构"), result.message);
+    const QString schema = currentSchema();
+    const ServiceResult columnsResult = SqlServiceClient::describeTable(endpoint, productKey, schema, tableName);
+    if (!columnsResult.ok) {
+        QMessageBox::warning(this, QStringLiteral("无法查看表结构"), columnsResult.message);
         return;
     }
 
@@ -2231,32 +2272,65 @@ void ServiceProductPanel::showTableStructure(const QString &tableName)
     auto *layout = new QVBoxLayout(dialog);
     PageLayout::applyDialog(layout);
 
-    auto *table = new QTableWidget(dialog);
-    table->setColumnCount(5);
-    table->setHorizontalHeaderLabels({QStringLiteral("序号"),
-                                      QStringLiteral("字段"),
-                                      QStringLiteral("类型"),
-                                      QStringLiteral("可空"),
-                                      QStringLiteral("默认值")});
-    table->setRowCount(result.rows.size());
-    for (int row = 0; row < result.rows.size(); ++row) {
-        const QJsonObject item = result.rows.at(row);
-        table->setItem(row, 0, new QTableWidgetItem(item.value(QStringLiteral("ordinal")).toString()));
-        table->setItem(row, 1, new QTableWidgetItem(item.value(QStringLiteral("column_name")).toString()));
-        table->setItem(row, 2, new QTableWidgetItem(item.value(QStringLiteral("data_type")).toString()));
-        table->setItem(row, 3, new QTableWidgetItem(item.value(QStringLiteral("nullable")).toString()));
-        table->setItem(row, 4, new QTableWidgetItem(item.value(QStringLiteral("data_default")).toString()));
+    auto *tabs = new QTabWidget(dialog);
+    layout->addWidget(tabs, 1);
+
+    auto *columnsPage = new QWidget(tabs);
+    auto *columnsLayout = new QVBoxLayout(columnsPage);
+    columnsLayout->setContentsMargins(0, 0, 0, 0);
+    auto *columnsTable = new QTableWidget(columnsPage);
+    columnsTable->setColumnCount(5);
+    columnsTable->setHorizontalHeaderLabels({QStringLiteral("序号"),
+                                               QStringLiteral("字段"),
+                                               QStringLiteral("类型"),
+                                               QStringLiteral("可空"),
+                                               QStringLiteral("默认值")});
+    columnsTable->setRowCount(columnsResult.rows.size());
+    for (int row = 0; row < columnsResult.rows.size(); ++row) {
+        const QJsonObject item = columnsResult.rows.at(row);
+        columnsTable->setItem(row, 0, new QTableWidgetItem(item.value(QStringLiteral("ordinal")).toString()));
+        columnsTable->setItem(row, 1, new QTableWidgetItem(item.value(QStringLiteral("column_name")).toString()));
+        columnsTable->setItem(row, 2, new QTableWidgetItem(item.value(QStringLiteral("data_type")).toString()));
+        columnsTable->setItem(row, 3, new QTableWidgetItem(item.value(QStringLiteral("nullable")).toString()));
+        columnsTable->setItem(row, 4, new QTableWidgetItem(item.value(QStringLiteral("data_default")).toString()));
     }
-    PageLayout::configureListingTable(table);
-    PageLayout::refreshListingTableColumns(table);
-    layout->addWidget(table, 1);
+    PageLayout::configureListingTable(columnsTable);
+    PageLayout::refreshListingTableColumns(columnsTable);
+    columnsLayout->addWidget(columnsTable);
+    tabs->addTab(columnsPage, QStringLiteral("字段"));
+
+    auto *ddlPage = new QWidget(tabs);
+    auto *ddlLayout = new QVBoxLayout(ddlPage);
+    ddlLayout->setContentsMargins(0, 0, 0, 0);
+    auto *ddlEditor = new QPlainTextEdit(ddlPage);
+    ddlEditor->setObjectName(QStringLiteral("toolEditorText"));
+    ddlEditor->setReadOnly(true);
+    ddlEditor->setLineWrapMode(QPlainTextEdit::NoWrap);
+    ddlEditor->setPlaceholderText(QStringLiteral("正在加载 DDL…"));
+    ddlLayout->addWidget(ddlEditor);
+    tabs->addTab(ddlPage, QStringLiteral("DDL"));
+
+    connect(tabs, &QTabWidget::currentChanged, dialog, [tabs, ddlEditor, endpoint, productKey, schema, tableName](int index) {
+        if (index != 1 || ddlEditor->property("ddlLoaded").toBool()) {
+            return;
+        }
+        ddlEditor->setProperty("ddlLoaded", true);
+        ddlEditor->setPlainText(QStringLiteral("正在加载 DDL…"));
+        const ServiceResult ddlResult = SqlServiceClient::fetchTableDdl(endpoint, productKey, schema, tableName);
+        if (!ddlResult.ok) {
+            ddlEditor->setPlainText(ddlResult.message.isEmpty() ? QStringLiteral("无法加载 DDL") : ddlResult.message);
+            return;
+        }
+        const QString ddl = SqlServiceClient::ddlTextFromResult(ddlResult);
+        ddlEditor->setPlainText(ddl.isEmpty() ? QStringLiteral("未获取到 DDL 语句") : ddl);
+    });
 
     auto *closeButton = new QPushButton(QStringLiteral("关闭"), dialog);
     connect(closeButton, &QPushButton::clicked, dialog, &QDialog::accept);
     layout->addWidget(closeButton, 0, Qt::AlignRight);
 
     PageLayout::applyModalDialog(dialog);
-    dialog->resize(760, 480);
+    dialog->resize(820, 520);
     dialog->open();
 }
 

@@ -28,7 +28,9 @@ UuidToolPage::UuidToolPage(QWidget *parent)
     auto *optionsLayout = new QHBoxLayout(options);
     optionsLayout->setContentsMargins(0, 0, 0, 0);
     optionsLayout->setSpacing(PageLayout::Space8);
-    optionsLayout->addWidget(new QLabel(QStringLiteral("数量"), options));
+    auto *countLabel = new QLabel(QStringLiteral("数量"), options);
+    countLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    optionsLayout->addWidget(countLabel);
     auto *count = new QSpinBox(options);
     count->setRange(1, 1000);
     count->setValue(5);

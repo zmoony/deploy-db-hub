@@ -26,32 +26,14 @@
 
 namespace {
 
-constexpr auto kPageBg = ThemeColors::PageBg;
-constexpr auto kCardBg = ThemeColors::Surface;
-constexpr auto kCodeBg = ThemeColors::PageBg;
-constexpr auto kText = ThemeColors::Text;
-constexpr auto kMutedText = ThemeColors::TextMuted;
-constexpr auto kPlaceholderText = ThemeColors::Placeholder;
-constexpr auto kAccent = ThemeColors::Primary;
-constexpr auto kAccentSoft = ThemeColors::PrimarySoft;
-constexpr auto kAccentHover = ThemeColors::InputHover;
-constexpr auto kBorder = ThemeColors::Border;
-constexpr auto kSoftBorder = ThemeColors::PrimarySoftHover;
-constexpr auto kInputBg = ThemeColors::InputBg;
-constexpr auto kBotBubble = ThemeColors::BotBubble;
-constexpr auto kSuccess = ThemeColors::Success;
-constexpr auto kWarning = ThemeColors::Warning;
-constexpr auto kDanger = ThemeColors::Danger;
-constexpr auto kSidebarBg = ThemeColors::SidebarBg;
-constexpr auto kSidebarItemHover = ThemeColors::PrimarySoftHover;
-constexpr auto kSidebarItemSelected = ThemeColors::PrimarySoft;
-constexpr auto kSidebarText = ThemeColors::SidebarText;
-constexpr auto kSidebarTextSelected = ThemeColors::SidebarTextSelected;
+// ── Static palette (updated on apply/reapply) ──
+ThemePalette gCurrentPalette = ThemePalette::light();
 
-constexpr int kRadiusSm = ThemeRadius::Small;
-constexpr int kRadiusMd = ThemeRadius::Medium;
-constexpr int kRadiusLg = ThemeRadius::Large;
-constexpr int kRadiusCard = ThemeRadius::Card;
+const char *toCStr(const QString &s)
+{
+    // Lifetime tied to gCurrentPalette; safe for paint-time reads.
+    return s.toLatin1().constData();
+}
 
 bool isPopupSurface(QObject *object)
 {
@@ -67,7 +49,7 @@ void applyPopupShadow(QWidget *widget)
     auto *shadow = new QGraphicsDropShadowEffect(widget);
     shadow->setBlurRadius(12);
     shadow->setOffset(0, 4);
-    shadow->setColor(QColor(0, 0, 0, 15));
+    shadow->setColor(QColor(0, 0, 0, static_cast<int>(gCurrentPalette.surface == QStringLiteral("#FFFFFF") ? 15 : 40)));
     widget->setGraphicsEffect(shadow);
 }
 
@@ -75,7 +57,7 @@ void drawChevron(QPainter *painter, const QRect &rect, bool up, bool enabled)
 {
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, true);
-    QPen pen(enabled ? QColor(QString::fromLatin1(kMutedText)) : QColor(QString::fromLatin1(kPlaceholderText)));
+    QPen pen(enabled ? QColor(gCurrentPalette.textMuted) : QColor(gCurrentPalette.placeholder));
     pen.setWidthF(1.5);
     pen.setCapStyle(Qt::RoundCap);
     pen.setJoinStyle(Qt::RoundJoin);
@@ -101,32 +83,21 @@ void drawInputPanel(QPainter *painter, const QRect &rect, bool hover, bool focus
 {
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, true);
-    const QColor fill = enabled ? QColor(QStringLiteral("#FFFFFF")) : QColor(QString::fromLatin1(kCodeBg));
+    const QColor fill = enabled ? QColor(gCurrentPalette.surface) : QColor(gCurrentPalette.codeBg);
     QColor stroke;
     if (focused) {
-        stroke = QColor(QString::fromLatin1(kAccent));
+        stroke = QColor(gCurrentPalette.primary);
     } else if (hover) {
-        stroke = QColor(QString::fromLatin1(kAccentHover));
+        stroke = QColor(gCurrentPalette.inputHover);
     } else {
-        stroke = QColor(QString::fromLatin1(kBorder));
+        stroke = QColor(gCurrentPalette.border);
     }
 
     QPen pen(stroke);
     pen.setWidthF(focused ? 1.5 : 1.0);
     painter->setPen(pen);
     painter->setBrush(fill);
-    painter->drawRoundedRect(QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5), kRadiusMd, kRadiusMd);
-    painter->restore();
-}
-
-void drawControlPill(QPainter *painter, const QRect &rect, bool hover, bool enabled)
-{
-    Q_UNUSED(hover);
-    painter->save();
-    painter->setRenderHint(QPainter::Antialiasing, true);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(Qt::NoBrush);
-    Q_UNUSED(enabled);
+    painter->drawRoundedRect(QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5), ThemeRadius::Medium, ThemeRadius::Medium);
     painter->restore();
 }
 
@@ -136,6 +107,7 @@ void applyComboPopupStyle(QAbstractItemView *view)
         return;
     }
 
+    const auto &p = gCurrentPalette;
     view->setObjectName(QStringLiteral("comboPopup"));
     view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -143,49 +115,52 @@ void applyComboPopupStyle(QAbstractItemView *view)
     view->viewport()->setAutoFillBackground(true);
 
     QPalette popupPalette = view->palette();
-    popupPalette.setColor(QPalette::Base, QColor(QStringLiteral("#FFFFFF")));
-    popupPalette.setColor(QPalette::AlternateBase, QColor(QStringLiteral("#FFFFFF")));
-    popupPalette.setColor(QPalette::Window, QColor(QStringLiteral("#FFFFFF")));
-    popupPalette.setColor(QPalette::Text, QColor(QString::fromLatin1(kText)));
-    popupPalette.setColor(QPalette::WindowText, QColor(QString::fromLatin1(kText)));
-    popupPalette.setColor(QPalette::ButtonText, QColor(QString::fromLatin1(kText)));
-    popupPalette.setColor(QPalette::HighlightedText, QColor(QString::fromLatin1(kText)));
-    popupPalette.setColor(QPalette::Highlight, QColor(QString::fromLatin1(kAccentSoft)));
+    popupPalette.setColor(QPalette::Base, QColor(p.surface));
+    popupPalette.setColor(QPalette::AlternateBase, QColor(p.surface));
+    popupPalette.setColor(QPalette::Window, QColor(p.surface));
+    popupPalette.setColor(QPalette::Text, QColor(p.text));
+    popupPalette.setColor(QPalette::WindowText, QColor(p.text));
+    popupPalette.setColor(QPalette::ButtonText, QColor(p.text));
+    popupPalette.setColor(QPalette::HighlightedText, QColor(p.text));
+    popupPalette.setColor(QPalette::Highlight, QColor(p.primarySoft));
     view->setPalette(popupPalette);
     view->viewport()->setPalette(popupPalette);
     if (QWidget *popupWindow = view->window(); popupWindow != nullptr) {
         popupWindow->setPalette(popupPalette);
         popupWindow->setAutoFillBackground(true);
-        popupWindow->setStyleSheet(QStringLiteral("background-color: #FFFFFF; color: %1;").arg(kText));
+        popupWindow->setStyleSheet(QStringLiteral("background-color: %1; color: %2;").arg(p.surface, p.text));
     }
 
     view->setStyleSheet(QStringLiteral(R"(
         QAbstractItemView {
-            background-color: #FFFFFF;
-            color: %1;
-            selection-background-color: %2;
-            selection-color: %1;
-            border: 1px solid %3;
-            border-radius: %4px;
+            background-color: %1;
+            color: %2;
+            selection-background-color: %3;
+            selection-color: %2;
+            border: 1px solid %4;
+            border-radius: %5px;
             padding: 4px;
             outline: none;
         }
         QAbstractItemView::item {
-            background-color: #FFFFFF;
-            color: %1;
+            background-color: %1;
+            color: %2;
             min-height: 28px;
             padding: 4px 10px;
-            border-radius: %5px;
+            border-radius: %6px;
         }
         QAbstractItemView::item:hover {
-            background-color: %6;
-            color: %1;
+            background-color: %7;
+            color: %2;
         }
         QAbstractItemView::item:selected {
-            background-color: %2;
-            color: %1;
+            background-color: %3;
+            color: %2;
         }
-    )").arg(kText, kAccentSoft, kBorder, QString::number(kRadiusMd), QString::number(kRadiusSm), kSoftBorder));
+    )").arg(p.surface, p.text, p.primarySoft, p.border,
+            QString::number(ThemeRadius::Medium),
+            QString::number(ThemeRadius::Small),
+            p.primarySoftHover));
 }
 
 class AppProxyStyle final : public QProxyStyle
@@ -280,7 +255,7 @@ protected:
     {
         if (event->type() == QEvent::Polish) {
             if (auto *label = qobject_cast<QLabel *>(watched)) {
-                label->setTextInteractionFlags(Qt::NoTextInteraction);
+                label->setTextInteractionFlags(Qt::TextSelectableByMouse);
                 label->setFocusPolicy(Qt::NoFocus);
             }
             if (auto *groupBox = qobject_cast<QGroupBox *>(watched)) {
@@ -314,28 +289,124 @@ protected:
     }
 };
 
+// ── QPalette for fundamental widget colors ──
+void applyUiPalette(QApplication &app, const ThemePalette &p)
+{
+    QPalette palette = app.palette();
+    palette.setColor(QPalette::Window, QColor(p.pageBg));
+    palette.setColor(QPalette::WindowText, QColor(p.text));
+    palette.setColor(QPalette::Base, QColor(p.inputBg));
+    palette.setColor(QPalette::AlternateBase, QColor(p.surface));
+    palette.setColor(QPalette::Text, QColor(p.text));
+    palette.setColor(QPalette::Button, QColor(p.surface));
+    palette.setColor(QPalette::ButtonText, QColor(p.text));
+    palette.setColor(QPalette::Highlight, QColor(p.primary));
+    palette.setColor(QPalette::HighlightedText, QColor(p.surface));
+    palette.setColor(QPalette::ToolTipBase, QColor(p.surface));
+    palette.setColor(QPalette::ToolTipText, QColor(p.text));
+    palette.setColor(QPalette::PlaceholderText, QColor(p.placeholder));
+    palette.setColor(QPalette::BrightText, QColor(p.danger));
+    palette.setColor(QPalette::Link, QColor(p.primary));
+    palette.setColor(QPalette::LinkVisited, QColor(p.primaryHover));
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(p.placeholder));
+    palette.setColor(QPalette::Disabled, QPalette::Text, QColor(p.placeholder));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(p.placeholder));
+    app.setPalette(palette);
 }
+
+// ── QSS placeholder replacement ──
+QString buildStyleSheet(const QByteArray &templateBytes, const ThemePalette &p)
+{
+    QString styleTemplate = QString::fromUtf8(templateBytes);
+    const QPair<QString, QString> replacements[] = {
+        {QStringLiteral("@C1@"),  p.pageBg},
+        {QStringLiteral("@C2@"),  p.text},
+        {QStringLiteral("@C3@"),  p.textMuted},
+        {QStringLiteral("@C4@"),  p.border},
+        {QStringLiteral("@C5@"),  QString::number(ThemeRadius::Small)},
+        {QStringLiteral("@C6@"),  p.primary},
+        {QStringLiteral("@C7@"),  p.primarySoft},
+        {QStringLiteral("@C8@"),  p.primarySoftHover},
+        {QStringLiteral("@C9@"),  QString::number(ThemeRadius::Large)},
+        {QStringLiteral("@C10@"), p.inputHover},
+        {QStringLiteral("@C11@"), QString::number(ThemeRadius::Small / 2)},
+        {QStringLiteral("@C12@"), p.success},
+        {QStringLiteral("@C13@"), p.placeholder},
+        {QStringLiteral("@C14@"), p.warning},
+        {QStringLiteral("@C15@"), p.danger},
+        {QStringLiteral("@C16@"), p.sidebarBg},
+        {QStringLiteral("@C17@"), p.sidebarText},
+        {QStringLiteral("@C18@"), p.primarySoftHover},
+        {QStringLiteral("@C19@"), p.primarySoft},
+        {QStringLiteral("@C20@"), p.sidebarTextSelected},
+        {QStringLiteral("@C21@"), QString::number(ThemeRadius::Card)},
+        {QStringLiteral("@C22@"), p.inputBg},
+        {QStringLiteral("@C23@"), QStringLiteral("0px 2px 12px 0px ") + p.shadow},
+        {QStringLiteral("@C24@"), p.botBubble},
+        // New placeholders for hardcoded colors in style.qss
+        {QStringLiteral("@C25@"), p.surface},
+        {QStringLiteral("@C26@"), p.textSecondary},
+        {QStringLiteral("@C27@"), p.codeBg},
+        {QStringLiteral("@C28@"), p.statusBarBg},
+        {QStringLiteral("@C29@"), p.dialogBg},
+        {QStringLiteral("@C30@"), p.sectionHeaderBg},
+        {QStringLiteral("@C31@"), p.statusPanelBg},
+    };
+    for (const auto &replacement : replacements) {
+        styleTemplate.replace(replacement.first, replacement.second);
+    }
+    return styleTemplate;
+}
+
+// ── AppProperty setup (for runtime theme queries) ──
+void applyAppProperties(QApplication &app, const ThemePalette &p)
+{
+    app.setProperty("theme.pageBg", p.pageBg);
+    app.setProperty("theme.cardBg", p.surface);
+    app.setProperty("theme.surface", p.surface);
+    app.setProperty("theme.codeBg", p.codeBg);
+    app.setProperty("theme.text", p.text);
+    app.setProperty("theme.textSecondary", p.textSecondary);
+    app.setProperty("theme.mutedText", p.textMuted);
+    app.setProperty("theme.placeholderText", p.placeholder);
+    app.setProperty("theme.accent", p.primary);
+    app.setProperty("theme.primary", p.primary);
+    app.setProperty("theme.primaryHover", p.primaryHover);
+    app.setProperty("theme.accentSoft", p.primarySoft);
+    app.setProperty("theme.accentHover", p.inputHover);
+    app.setProperty("theme.border", p.border);
+    app.setProperty("theme.softBorder", p.primarySoftHover);
+    app.setProperty("theme.success", p.success);
+    app.setProperty("theme.warning", p.warning);
+    app.setProperty("theme.danger", p.danger);
+    app.setProperty("theme.sidebarBg", p.sidebarBg);
+    app.setProperty("theme.sidebarText", p.sidebarText);
+    app.setProperty("theme.sidebarTextSelected", p.sidebarTextSelected);
+    app.setProperty("theme.inputBg", p.inputBg);
+    app.setProperty("theme.botBubble", p.botBubble);
+}
+
+} // namespace
 
 namespace AppStyle {
 
-void apply(QApplication &app)
+static ThemeMode gMode = ThemeMode::System;
+
+void apply(QApplication &app, ThemeMode mode)
 {
-    app.setStyle(new AppProxyStyle(app.style()));
-    app.installEventFilter(new AppPolishFilter(&app));
-    app.setProperty("theme.pageBg", kPageBg);
-    app.setProperty("theme.cardBg", kCardBg);
-    app.setProperty("theme.codeBg", kCodeBg);
-    app.setProperty("theme.text", kText);
-    app.setProperty("theme.mutedText", kMutedText);
-    app.setProperty("theme.placeholderText", kPlaceholderText);
-    app.setProperty("theme.accent", kAccent);
-    app.setProperty("theme.accentSoft", kAccentSoft);
-    app.setProperty("theme.accentHover", kAccentHover);
-    app.setProperty("theme.border", kBorder);
-    app.setProperty("theme.softBorder", kSoftBorder);
-    app.setProperty("theme.success", kSuccess);
-    app.setProperty("theme.warning", kWarning);
-    app.setProperty("theme.danger", kDanger);
+    gMode = mode;
+    gCurrentPalette = ThemePalette::fromMode(mode);
+
+    // Set style proxy (only once per application lifecycle)
+    if (auto *existing = dynamic_cast<AppProxyStyle *>(app.style()); existing == nullptr) {
+        app.setStyle(new AppProxyStyle(app.style()));
+        app.installEventFilter(new AppPolishFilter(&app));
+    }
+
+    applyUiPalette(app, gCurrentPalette);
+    applyAppProperties(app, gCurrentPalette);
+
+    // Load style.qss and apply
     QFile styleFile(QStringLiteral(":/style.qss"));
     if (!styleFile.exists()) {
         styleFile.setFileName(QStringLiteral(":/src/ui/style.qss"));
@@ -344,38 +415,40 @@ void apply(QApplication &app)
         qWarning() << "Failed to open style.qss from resources";
         return;
     }
-    QString styleTemplate = QString::fromUtf8(styleFile.readAll());
+    const QByteArray templateBytes = styleFile.readAll();
     styleFile.close();
-    const QPair<QString, QString> replacements[] = {
-        {QStringLiteral("@C1@"), QString::fromLatin1(kPageBg)},
-        {QStringLiteral("@C2@"), QString::fromLatin1(kText)},
-        {QStringLiteral("@C3@"), QString::fromLatin1(kMutedText)},
-        {QStringLiteral("@C4@"), QString::fromLatin1(kBorder)},
-        {QStringLiteral("@C5@"), QString::number(kRadiusSm)},
-        {QStringLiteral("@C6@"), QString::fromLatin1(kAccent)},
-        {QStringLiteral("@C7@"), QString::fromLatin1(kAccentSoft)},
-        {QStringLiteral("@C8@"), QString::fromLatin1(kSoftBorder)},
-        {QStringLiteral("@C9@"), QString::number(kRadiusLg)},
-        {QStringLiteral("@C10@"), QString::fromLatin1(kAccentHover)},
-        {QStringLiteral("@C11@"), QString::number(kRadiusSm / 2)},
-        {QStringLiteral("@C12@"), QString::fromLatin1(kSuccess)},
-        {QStringLiteral("@C13@"), QString::fromLatin1(kPlaceholderText)},
-        {QStringLiteral("@C14@"), QString::fromLatin1(kWarning)},
-        {QStringLiteral("@C15@"), QString::fromLatin1(kDanger)},
-        {QStringLiteral("@C16@"), QString::fromLatin1(kSidebarBg)},
-        {QStringLiteral("@C17@"), QString::fromLatin1(kSidebarText)},
-        {QStringLiteral("@C18@"), QString::fromLatin1(kSidebarItemHover)},
-        {QStringLiteral("@C19@"), QString::fromLatin1(kSidebarItemSelected)},
-        {QStringLiteral("@C20@"), QString::fromLatin1(kSidebarTextSelected)},
-        {QStringLiteral("@C21@"), QString::number(kRadiusCard)},
-        {QStringLiteral("@C22@"), QString::fromLatin1(kInputBg)},
-        {QStringLiteral("@C23@"), QStringLiteral("0px 2px 12px 0px rgba(30, 64, 175, 0.094118)")},
-        {QStringLiteral("@C24@"), QString::fromLatin1(kBotBubble)}
-    };
-    for (const auto &replacement : replacements) {
-        styleTemplate.replace(replacement.first, replacement.second);
-    }
-    app.setStyleSheet(styleTemplate);
+
+    app.setStyleSheet(buildStyleSheet(templateBytes, gCurrentPalette));
 }
 
+void reapply(QApplication &app, ThemeMode mode)
+{
+    gMode = mode;
+    gCurrentPalette = ThemePalette::fromMode(mode);
+
+    applyUiPalette(app, gCurrentPalette);
+    applyAppProperties(app, gCurrentPalette);
+
+    QFile styleFile(QStringLiteral(":/style.qss"));
+    if (!styleFile.exists()) {
+        styleFile.setFileName(QStringLiteral(":/src/ui/style.qss"));
+    }
+    if (!styleFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "Failed to open style.qss from resources";
+        return;
+    }
+    const QByteArray templateBytes = styleFile.readAll();
+    styleFile.close();
+
+    app.setStyleSheet(buildStyleSheet(templateBytes, gCurrentPalette));
+
+    // Force repaint via palette change
+    app.setPalette(app.palette());
 }
+
+const ThemePalette &currentPalette()
+{
+    return gCurrentPalette;
+}
+
+} // namespace AppStyle

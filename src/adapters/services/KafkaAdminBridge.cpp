@@ -150,8 +150,8 @@ KafkaAdminPayload KafkaAdminBridge::run(const ServiceEndpoint &endpoint,
                               "INSTALL=%1\n"
                               "JAR=%2\n"
                               "mkdir -p ~/.deploy-hub/tools\n"
-                              "command -v java >/dev/null 2>&1 || { echo '{\"ok\":false,\"message\":\"remote java not found\"}'; exit 1; }\n"
-                              "java -cp \"$INSTALL/libs/*:$JAR\" KafkaAdminRunner %3")
+                              "command -v java >/dev/null 2>&1 || { echo '{\"ok\":false,\"message\":\"remote java not found\"}'; exit 0; }\n"
+                              "java -cp \"$INSTALL/libs/*:$JAR\" KafkaAdminRunner %3; exit 0\n")
                               .arg(shellQuote(endpoint.installPath),
                                    shellQuote(remoteRunnerPath()),
                                    quotedArgs.join(QLatin1Char(' ')));
@@ -159,12 +159,19 @@ KafkaAdminPayload KafkaAdminBridge::run(const ServiceEndpoint &endpoint,
     const QString command = QStringLiteral("export LANG=en; bash --noprofile --norc -c %1").arg(shellQuote(inner));
     const RemoteCommandResult commandResult = executor->execute(command, timeoutSec);
     const QString merged = mergedRemoteOutput(commandResult);
+    const QByteArray stdoutBytes = commandResult.stdoutText.trimmed().toUtf8();
+    if (!stdoutBytes.isEmpty()) {
+        payload = parsePayload(stdoutBytes, merged);
+        if (payload.ok || !payload.message.isEmpty()) {
+            return payload;
+        }
+    }
     if (!commandResult.ok) {
         payload.message = RemoteOutputCleaner::normalizeRemoteError(
             commandResult.error.isEmpty() ? merged : commandResult.error);
         return payload;
     }
-    payload = parsePayload(commandResult.stdoutText.toUtf8(), merged);
+    payload = parsePayload(stdoutBytes, merged);
     if (!payload.ok && merged.contains(QStringLiteral("Permission denied"), Qt::CaseInsensitive)) {
         payload.message = RemoteOutputCleaner::normalizeRemoteError(merged);
     }

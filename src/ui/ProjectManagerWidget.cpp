@@ -60,6 +60,7 @@ QLabel *makeMetaLabel(const QString &text, QWidget *parent)
 {
     auto *label = new QLabel(text, parent);
     label->setObjectName(QStringLiteral("projectDetailMetaLabel"));
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
     return label;
 }
 
@@ -122,7 +123,9 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     m_groupFilter = new QComboBox(toolbarWidget);
     m_groupFilter->setMinimumWidth(160);
     PageLayout::configureFormInput(m_groupFilter);
-    toolbar->addWidget(new QLabel(QStringLiteral("分组筛选")));
+    auto *groupFilterLabel = new QLabel(QStringLiteral("分组筛选"));
+    groupFilterLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    toolbar->addWidget(groupFilterLabel);
     toolbar->addWidget(m_groupFilter);
 
     m_projectSearch = new QLineEdit(toolbarWidget);
@@ -131,7 +134,9 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     m_projectSearch->setClearButtonEnabled(true);
     m_projectSearch->setMinimumWidth(300);
     PageLayout::configureFormInput(m_projectSearch);
-    toolbar->addWidget(new QLabel(QStringLiteral("搜索")));
+    auto *searchLabel = new QLabel(QStringLiteral("搜索"));
+    searchLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    toolbar->addWidget(searchLabel);
     toolbar->addWidget(m_projectSearch);
     layout->addWidget(toolbarWidget);
 
@@ -149,6 +154,7 @@ ProjectManagerWidget::ProjectManagerWidget(ConfigStore *store, QWidget *parent)
     m_emptyState->setObjectName(QStringLiteral("emptyState"));
     m_emptyState->setAlignment(Qt::AlignCenter);
     m_emptyState->setWordWrap(true);
+    m_emptyState->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_emptyState->setVisible(false);
     leftLayout->addWidget(m_emptyState, 1);
 
@@ -206,6 +212,7 @@ void ProjectManagerWidget::buildDetailCard()
     m_detailEmptyState->setObjectName(QStringLiteral("emptyState"));
     m_detailEmptyState->setAlignment(Qt::AlignCenter);
     m_detailEmptyState->setWordWrap(true);
+    m_detailEmptyState->setTextInteractionFlags(Qt::TextSelectableByMouse);
     cardLayout->addWidget(m_detailEmptyState, 1);
 
     m_detailContent = new QWidget(m_detailCard);
@@ -245,6 +252,7 @@ void ProjectManagerWidget::buildDetailCard()
     m_nameLabel->setWordWrap(false);
     m_nameLabel->setMinimumWidth(120);
     m_nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_nameLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     contentLayout->addWidget(m_nameLabel);
 
     auto *metaForm = new QFormLayout;
@@ -258,30 +266,37 @@ void ProjectManagerWidget::buildDetailCard()
     m_typeValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
     m_typeValue->setMinimumWidth(0);
     m_typeValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_typeValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_sourceValue = new QLabel(m_detailContent);
     m_sourceValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
     m_sourceValue->setMinimumWidth(0);
     m_sourceValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_sourceValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_serverValue = new QLabel(m_detailContent);
     m_serverValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
     m_serverValue->setMinimumWidth(0);
     m_serverValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_serverValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_groupValue = new QLabel(m_detailContent);
     m_groupValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
     m_groupValue->setMinimumWidth(0);
     m_groupValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_groupValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_strategyValue = new QLabel(m_detailContent);
     m_strategyValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
     m_strategyValue->setMinimumWidth(0);
     m_strategyValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_strategyValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_statusValue = new QLabel(m_detailContent);
     m_statusValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
     m_statusValue->setMinimumWidth(0);
     m_statusValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_statusValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_pidValue = new QLabel(m_detailContent);
     m_pidValue->setObjectName(QStringLiteral("projectDetailMetaValue"));
     m_pidValue->setMinimumWidth(0);
     m_pidValue->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_pidValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
 
     metaForm->addRow(makeMetaLabel(QStringLiteral("类型"), m_detailContent), m_typeValue);
     metaForm->addRow(makeMetaLabel(QStringLiteral("来源"), m_detailContent), m_sourceValue);

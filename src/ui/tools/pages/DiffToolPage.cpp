@@ -105,6 +105,7 @@ DiffToolPage::DiffToolPage(QWidget *parent)
 
     auto *status = new QLabel(this);
     status->setObjectName(QStringLiteral("toolMessage"));
+    status->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(status);
 
     auto recompute = [left, right, status]() {

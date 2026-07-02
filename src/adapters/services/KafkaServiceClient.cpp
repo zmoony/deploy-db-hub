@@ -53,7 +53,8 @@ QString mergedRemoteOutput(const RemoteCommandResult &commandResult)
 ServiceResult runRemoteKafka(const ServiceEndpoint &endpoint,
                              const RemoteConnectionContext &remote,
                              const QString &innerCommand,
-                             int timeoutSec = 30)
+                             int timeoutSec = 30,
+                             bool acceptOutputOnFailure = false)
 {
     if (endpoint.installPath.isEmpty()) {
         return {false, QStringLiteral("Kafka 节点未配置安装路径"), {}, {}};
@@ -70,7 +71,11 @@ ServiceResult runRemoteKafka(const ServiceEndpoint &endpoint,
     const QString command = QStringLiteral("export LANG=en; bash --noprofile --norc -c %1").arg(shellQuote(innerCommand));
     const RemoteCommandResult commandResult = executor->execute(command, timeoutSec);
     const QString merged = mergedRemoteOutput(commandResult);
+    const QString stdoutText = commandResult.stdoutText.trimmed();
     if (!commandResult.ok) {
+        if (acceptOutputOnFailure && !stdoutText.isEmpty()) {
+            return {true, stdoutText, {}, {}};
+        }
         const QString detail = RemoteOutputCleaner::normalizeRemoteError(merged);
         return {false,
                 commandResult.error.isEmpty() ? (detail.isEmpty() ? commandResult.stderrText : detail)
@@ -81,12 +86,74 @@ ServiceResult runRemoteKafka(const ServiceEndpoint &endpoint,
     if (merged.contains(QStringLiteral("Permission denied"), Qt::CaseInsensitive)) {
         return {false, RemoteOutputCleaner::normalizeRemoteError(merged), {}, {}};
     }
-    return {true, commandResult.stdoutText.trimmed(), {}, {}};
+    return {true, stdoutText, {}, {}};
 }
 
 QStringList splitLines(const QString &text)
 {
     return text.split(QRegularExpression(QStringLiteral("[\\r\\n]+")), Qt::SkipEmptyParts);
+}
+
+bool isJvmJunkLine(const QString &line)
+{
+    if (line.isEmpty()) {
+        return true;
+    }
+    // SLF4J / log4j noise
+    if (line.startsWith(QStringLiteral("SLF4J"), Qt::CaseInsensitive)
+        || line.startsWith(QStringLiteral("log4j"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    // Bracket-style log levels: [main], [INFO], [WARN], [ERROR], etc.
+    if (line.startsWith(QLatin1Char('['))) {
+        return true;
+    }
+    // Date-prefixed logs: 2025-... 
+    if (line.size() >= 10 && line.at(4) == QLatin1Char('-') && line.at(7) == QLatin1Char('-')) {
+        return true;
+    }
+    // Java classpath warnings / other common noise
+    if (line.contains(QStringLiteral("Class path contains"), Qt::CaseInsensitive)
+        || line.contains(QStringLiteral("Processed a total of"), Qt::CaseInsensitive)
+        || line.contains(QStringLiteral("Multiple bindings"))
+        || line.contains(QStringLiteral("Failed to load class"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    const QString trimmed = line.trimmed();
+    static const QRegularExpression processedTotalRe(
+        QStringLiteral("^process(ed)?\\s+a\\s+total\\s+of\\s+\\d+\\s*messages?\\s*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (processedTotalRe.match(trimmed).hasMatch()) {
+        return true;
+    }
+    if (trimmed.contains(QStringLiteral("total of"), Qt::CaseInsensitive)
+        && trimmed.contains(QStringLiteral("message"), Qt::CaseInsensitive)
+        && trimmed.size() <= 96
+        && !trimmed.contains(QLatin1Char('{'))
+        && !trimmed.contains(QLatin1Char('['))) {
+        return true;
+    }
+    return false;
+}
+
+QString topicOffsetRunnerFunction(const ServiceEndpoint &endpoint, const QString &topic)
+{
+    const QString binDir = shellQuote(kafkaBinDir(endpoint));
+    const QString topicQ = shellQuote(topic);
+    return QStringLiteral(
+               "offsets() {\n"
+               "  local T=\"$1\"\n"
+               "  if [ -x %1/kafka-get-offsets.sh ]; then\n"
+               "    bash %1/kafka-get-offsets.sh --bootstrap-server \"$BS\" --topic %2 --time \"$T\" 2>/dev/null\n"
+               "    return $?\n"
+               "  fi\n"
+               "  if [ -x %1/kafka-run-class.sh ]; then\n"
+               "    bash %1/kafka-run-class.sh kafka.tools.GetOffsetShell --bootstrap-server \"$BS\" --topic %2 --time \"$T\" 2>/dev/null\n"
+               "    return $?\n"
+               "  fi\n"
+               "  return 1\n"
+               "}\n")
+        .arg(binDir, topicQ);
 }
 
 QString offsetRunnerFunction(const ServiceEndpoint &endpoint)
@@ -96,23 +163,11 @@ QString offsetRunnerFunction(const ServiceEndpoint &endpoint)
                "offsets() {\n"
                "  local T=\"$1\"\n"
                "  if [ -x %1/kafka-get-offsets.sh ]; then\n"
-               "    bash %1/kafka-get-offsets.sh --bootstrap-server \"$BS\" --time \"$T\"\n"
-               "    return $?\n"
-               "  fi\n"
-               "  if [ -f %1/kafka-get-offsets.sh ]; then\n"
-               "    bash %1/kafka-get-offsets.sh --bootstrap-server \"$BS\" --time \"$T\"\n"
+               "    bash %1/kafka-get-offsets.sh --bootstrap-server \"$BS\" --time \"$T\" 2>/dev/null\n"
                "    return $?\n"
                "  fi\n"
                "  if [ -x %1/kafka-run-class.sh ]; then\n"
-               "    bash %1/kafka-run-class.sh org.apache.kafka.tools.GetOffsetShell --bootstrap-server \"$BS\" --time \"$T\" \\\n"
-               "      || bash %1/kafka-run-class.sh kafka.tools.GetOffsetShell --bootstrap-server \"$BS\" --time \"$T\" \\\n"
-               "      || bash %1/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list \"$BS\" --time \"$T\"\n"
-               "    return $?\n"
-               "  fi\n"
-               "  if [ -f %1/kafka-run-class.sh ]; then\n"
-               "    bash %1/kafka-run-class.sh org.apache.kafka.tools.GetOffsetShell --bootstrap-server \"$BS\" --time \"$T\" \\\n"
-               "      || bash %1/kafka-run-class.sh kafka.tools.GetOffsetShell --bootstrap-server \"$BS\" --time \"$T\" \\\n"
-               "      || bash %1/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list \"$BS\" --time \"$T\"\n"
+               "    bash %1/kafka-run-class.sh kafka.tools.GetOffsetShell --bootstrap-server \"$BS\" --time \"$T\" 2>/dev/null\n"
                "    return $?\n"
                "  fi\n"
                "  return 1\n"
@@ -165,6 +220,19 @@ QString kafkaShellCommand(const ServiceEndpoint &endpoint, const QString &script
     return command.join(QLatin1Char(' '));
 }
 
+}
+
+QString KafkaServiceClient::sanitizeConsumerOutput(const QString &text)
+{
+    QStringList lines;
+    for (const QString &line : splitLines(text)) {
+        const QString trimmed = line.trimmed();
+        if (trimmed.isEmpty() || trimmed.startsWith(QStringLiteral("@DH_MARKER|")) || isJvmJunkLine(trimmed)) {
+            continue;
+        }
+        lines.append(trimmed);
+    }
+    return lines.join(QStringLiteral("\n\n"));
 }
 
 ServiceResult KafkaServiceClient::ping(const ServiceEndpoint &endpoint, const RemoteConnectionContext &remote)
@@ -353,69 +421,41 @@ ServiceResult KafkaServiceClient::consumeLatest(const ServiceEndpoint &endpoint,
              QString::number(limit)},
             60);
         if (payload.ok) {
-            const QString text = payload.message.trimmed();
+            const QString text = KafkaServiceClient::sanitizeConsumerOutput(payload.message.trimmed());
             if (text.isEmpty()) {
                 return {true, QStringLiteral("该主题暂无可用消息。"), {}, {}};
             }
             return {true, text, {}, {}};
+        }
+        if (!payload.message.isEmpty()) {
+            return {false, payload.message, {}, {}};
         }
     }
 
     const QString binDir = shellQuote(kafkaBinDir(endpoint));
     const QString bs = shellQuote(bootstrapServer(endpoint));
     const QString topicQ = shellQuote(topic);
-    const QString consumerScript = shellQuote(kafkaScript(endpoint, QStringLiteral("kafka-console-consumer.sh")));
     const QString script = QStringLiteral(
                                "BIN=%1\n"
                                "BS=%2\n"
                                "TOPIC=%3\n"
                                "LIMIT=%4\n"
-                               "%5"
-                               "TMP=$(mktemp /tmp/dh-kafka-XXXXXX)\n"
-                               "trap 'rm -f \"$TMP\"' EXIT\n"
-                               "offsets -1 > \"$TMP.all\" 2>/dev/null || true\n"
-                               "while IFS= read -r line; do\n"
-                               "  case \"$line\" in \"$TOPIC\":*) echo \"$line\";; esac\n"
-                               "done < \"$TMP.all\" > \"$TMP\"\n"
-                               "count=0\n"
-                               "max_parts=8\n"
-                               "while IFS= read -r line; do\n"
-                               "  [ -z \"$line\" ] && continue\n"
-                               "  case \"$line\" in *:*) ;; *) continue ;; esac\n"
-                               "  end=\"${line##*:}\"\n"
-                               "  rest=\"${line%:*}\"\n"
-                               "  partition=\"${rest##*:}\"\n"
-                               "  start=$((end - LIMIT))\n"
-                               "  [ \"$start\" -lt 0 ] && start=0\n"
-                               "  bash %6 --bootstrap-server \"$BS\" --topic \"$TOPIC\" --partition \"$partition\" "
-                               "--offset \"$start\" --max-messages \"$LIMIT\" --timeout-ms 2500 || true\n"
-                               "  echo '@DH_MARKER|part|end@'\n"
-                               "  count=$((count + 1))\n"
-                               "  [ \"$count\" -ge \"$max_parts\" ] && break\n"
-                               "done < \"$TMP\"\n")
-                               .arg(binDir,
-                                    bs,
-                                    topicQ,
-                                    QString::number(limit),
-                                    offsetRunnerFunction(endpoint),
-                                    consumerScript);
+                               "chmod +x \"$BIN\"/*.sh 2>/dev/null || true\n"
+                               "bash \"$BIN/kafka-console-consumer.sh\" --bootstrap-server \"$BS\" --topic \"$TOPIC\" "
+                               "--max-messages \"$LIMIT\" --timeout-ms 5000 2>/dev/null || true\n"
+                               "exit 0\n")
+                               .arg(binDir, bs, topicQ, QString::number(limit));
 
-    const ServiceResult result = runRemoteKafka(endpoint, remote, script, 45);
+    const ServiceResult result = runRemoteKafka(endpoint, remote, script, 45, true);
     if (!result.ok) {
         return result;
     }
 
-    QStringList lines;
-    for (const QString &line : splitLines(result.message)) {
-        if (line.startsWith(QStringLiteral("@DH_MARKER|")) || line.trimmed().isEmpty()) {
-            continue;
-        }
-        lines.append(line.trimmed());
-    }
-    if (lines.isEmpty()) {
+    const QString sanitized = KafkaServiceClient::sanitizeConsumerOutput(result.message);
+    if (sanitized.isEmpty()) {
         return {true, QStringLiteral("该主题暂无可用消息。"), {}, {}};
     }
-    return {true, lines.join(QStringLiteral("\n\n")), {}, {}};
+    return {true, sanitized, {}, {}};
 }
 
 ServiceResult KafkaServiceClient::describeAllTopics(const ServiceEndpoint &endpoint,
@@ -423,7 +463,7 @@ ServiceResult KafkaServiceClient::describeAllTopics(const ServiceEndpoint &endpo
 {
     if (KafkaAdminBridge::isAvailable()) {
         const KafkaAdminPayload payload =
-            KafkaAdminBridge::run(endpoint, remote, {QStringLiteral("--action"), QStringLiteral("topics")}, 45);
+            KafkaAdminBridge::run(endpoint, remote, {QStringLiteral("--action"), QStringLiteral("topics")}, 60);
         if (payload.ok) {
             ServiceResult rows{true, {}, {}, {}};
             rows.rows = payload.rows;
@@ -431,21 +471,41 @@ ServiceResult KafkaServiceClient::describeAllTopics(const ServiceEndpoint &endpo
         }
     }
 
-    const ServiceResult result = runRemoteKafka(
+    // Try --describe first (gives partitions/replication), with increased timeout.
+    // Automatically chmod +x the script to avoid "Permission denied" errors.
+    const QString scriptPath = shellQuote(kafkaScript(endpoint, QStringLiteral("kafka-topics.sh")));
+    const QString bs = shellQuote(bootstrapServer(endpoint));
+    ServiceResult result = runRemoteKafka(
         endpoint,
         remote,
-        kafkaShellCommand(endpoint,
-                          QStringLiteral("kafka-topics.sh"),
-                          {QStringLiteral("--bootstrap-server"),
-                           bootstrapServer(endpoint),
-                           QStringLiteral("--describe")}),
-        45);
+        QStringLiteral("chmod +x %1 2>/dev/null || true; bash %1 --bootstrap-server %2 --describe")
+            .arg(scriptPath, bs),
+        60);
+    if (result.ok) {
+        ServiceResult rows{true, {}, {}, {}};
+        QVector<QJsonObject> parsed = parseDescribeTopicsOutput(result.message);
+        if (!parsed.isEmpty()) {
+            rows.rows = parsed;
+            return rows;
+        }
+    }
+
+    // Fallback: --list (topic names only) when --describe fails or returns no parseable rows.
+    result = runRemoteKafka(
+        endpoint,
+        remote,
+        QStringLiteral("chmod +x %1 2>/dev/null || true; bash %1 --bootstrap-server %2 --list")
+            .arg(scriptPath, bs),
+        30);
     if (!result.ok) {
         return result;
     }
-
     ServiceResult rows{true, {}, {}, {}};
-    rows.rows = parseDescribeTopicsOutput(result.message);
+    for (const QString &line : splitLines(result.message)) {
+        rows.rows.append(QJsonObject{{QStringLiteral("name"), line.trimmed()},
+                                     {QStringLiteral("partitions"), QStringLiteral("0")},
+                                     {QStringLiteral("replication"), QStringLiteral("0")}});
+    }
     return rows;
 }
 
@@ -458,6 +518,9 @@ QVector<QJsonObject> KafkaServiceClient::parseDescribeTopicsOutput(const QString
     QVector<QJsonObject> rows;
     for (const QString &line : splitLines(text)) {
         if (!line.contains(QStringLiteral("PartitionCount"))) {
+            continue;
+        }
+        if (isJvmJunkLine(line) || line.contains(QStringLiteral("Error"))) {
             continue;
         }
         const auto nameMatch = nameRe.match(line);
@@ -493,7 +556,9 @@ QVector<QJsonObject> KafkaServiceClient::parseOffsetOutputLines(const QString &t
 {
     QVector<QJsonObject> rows;
     for (const QString &line : splitLines(text)) {
-        if (line.startsWith(QStringLiteral("@DH_MARKER|")) || line.contains(QStringLiteral("Error"))) {
+        if (line.startsWith(QStringLiteral("@DH_MARKER|"))
+            || line.contains(QStringLiteral("Error"))
+            || isJvmJunkLine(line)) {
             continue;
         }
 
@@ -577,31 +642,36 @@ KafkaTopicDashboard KafkaServiceClient::loadTopicDashboard(const ServiceEndpoint
 
     const QString binDir = shellQuote(kafkaBinDir(endpoint));
     const QString bs = shellQuote(bootstrapServer(endpoint));
-    // Shell fallback: each command is guarded by `|| true` so a single failure
-    // (e.g. consumer-groups timeout) does not abort the whole script. The script
-    // always exits 0 so runRemoteKafka returns success and we can parse partial
-    // data. Time-based offsets are skipped to cut JVM starts (7 -> 3).
+    // Shell fallback: each step is guarded by || true for partial-failure tolerance.
+    // offsetRunnerFunction now uses only kafka-get-offsets.sh (fast) or single JVM path.
+
     const bool skipDescribe = !dashboard.topics.isEmpty();
-    QString script = QStringLiteral(
-                         "BS=%1\n"
-                         "BIN=%2\n"
-                         "%3\n")
-                         .arg(bs, binDir, offsetRunnerFunction(endpoint));
+    QString script = QStringLiteral("BS=%1\nBIN=%2\nchmod +x \"$BIN\"/*.sh 2>/dev/null || true\n").arg(bs, binDir);
+    script += offsetRunnerFunction(endpoint);
     if (!skipDescribe) {
         script += QStringLiteral(
             "bash \"$BIN/kafka-topics.sh\" --bootstrap-server \"$BS\" --describe 2>/dev/null || true\n");
     }
     script += QStringLiteral(
         "echo '@DH_MARKER|topics|end@'\n"
+        // Run both offset queries in parallel to halve JVM startup time
+        "TMP1=$(mktemp /tmp/dh_offset_XXXXXX)\n"
+        "TMP2=$(mktemp /tmp/dh_offset_XXXXXX)\n"
+        "offsets -1 > \"$TMP1\" 2>/dev/null &\n"
+        "PID1=$!\n"
+        "offsets -2 > \"$TMP2\" 2>/dev/null &\n"
+        "PID2=$!\n"
+        "wait $PID1 $PID2 2>/dev/null || true\n"
+        "cat \"$TMP1\" 2>/dev/null || true\n"
         "echo '@DH_MARKER|offset|-1@'\n"
-        "offsets -1 2>/dev/null || true\n"
+        "cat \"$TMP2\" 2>/dev/null || true\n"
         "echo '@DH_MARKER|offset|-2@'\n"
-        "offsets -2 2>/dev/null || true\n"
+        "rm -f \"$TMP1\" \"$TMP2\"\n"
         "echo '@DH_MARKER|groups|start@'\n"
         "bash \"$BIN/kafka-consumer-groups.sh\" --bootstrap-server \"$BS\" --all-groups --describe 2>/dev/null || true\n"
         "exit 0\n");
 
-    const ServiceResult result = runRemoteKafka(endpoint, remote, script, 90);
+    const ServiceResult result = runRemoteKafka(endpoint, remote, script, 120);
     if (!result.ok) {
         dashboard.message = result.message;
         return dashboard;

@@ -20,6 +20,7 @@
 #include <QScrollBar>
 #include <QSizePolicy>
 #include <QStyle>
+#include <QTextBlock>
 #include <QTextBlockFormat>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -110,7 +111,7 @@ TerminalTextEdit::TerminalTextEdit(QWidget *parent)
     setReadOnly(false);
     setAcceptRichText(true);
     setFocusPolicy(Qt::StrongFocus);
-    setCursorWidth(8);
+    setCursorWidth(2);
     setUndoRedoEnabled(false);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewport()->setCursor(Qt::IBeamCursor);
@@ -134,39 +135,81 @@ void TerminalTextEdit::keyPressEvent(QKeyEvent *event)
                 emit inputBytes(text.toUtf8());
             }
         }
+        event->accept();
         return;
     }
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
         emit inputBytes(QByteArray(1, '\r'));
+        event->accept();
         return;
     }
     if (event->key() == Qt::Key_Backspace) {
         emit inputBytes(QByteArray(1, '\x7f'));
+        event->accept();
         return;
     }
     if (event->key() == Qt::Key_Tab) {
         emit inputBytes(QByteArray(1, '\t'));
+        event->accept();
         return;
     }
     if (event->key() == Qt::Key_Left) {
         emit inputBytes(QByteArray("\x1b[D", 3));
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::Left);
+        setTextCursor(cursor);
+        event->accept();
         return;
     }
     if (event->key() == Qt::Key_Right) {
         emit inputBytes(QByteArray("\x1b[C", 3));
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::Right);
+        setTextCursor(cursor);
+        event->accept();
         return;
     }
     if (event->key() == Qt::Key_Up) {
         emit inputBytes(QByteArray("\x1b[A", 3));
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::Up);
+        setTextCursor(cursor);
+        event->accept();
         return;
     }
     if (event->key() == Qt::Key_Down) {
         emit inputBytes(QByteArray("\x1b[B", 3));
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::Down);
+        setTextCursor(cursor);
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Home) {
+        emit inputBytes(QByteArray("\x1b[H", 3));
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::StartOfLine);
+        setTextCursor(cursor);
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_End) {
+        emit inputBytes(QByteArray("\x1b[F", 3));
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::EndOfLine);
+        setTextCursor(cursor);
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Delete) {
+        emit inputBytes(QByteArray("\x1b[3~", 4));
+        event->accept();
         return;
     }
     const QString text = event->text();
     if (!text.isEmpty() && text.at(0).unicode() >= 0x20) {
         emit inputBytes(text.toUtf8());
+        event->accept();
         return;
     }
     QTextEdit::keyPressEvent(event);
@@ -175,11 +218,6 @@ void TerminalTextEdit::keyPressEvent(QKeyEvent *event)
 void TerminalTextEdit::focusInEvent(QFocusEvent *event)
 {
     QTextEdit::focusInEvent(event);
-    if (!textCursor().hasSelection()) {
-        QTextCursor cursor = textCursor();
-        cursor.movePosition(QTextCursor::End);
-        setTextCursor(cursor);
-    }
 }
 
 void TerminalTextEdit::mousePressEvent(QMouseEvent *event)
@@ -191,11 +229,6 @@ void TerminalTextEdit::mousePressEvent(QMouseEvent *event)
 void TerminalTextEdit::mouseReleaseEvent(QMouseEvent *event)
 {
     QTextEdit::mouseReleaseEvent(event);
-    if (!textCursor().hasSelection()) {
-        QTextCursor cursor = textCursor();
-        cursor.movePosition(QTextCursor::End);
-        setTextCursor(cursor);
-    }
 }
 
 RemoteTerminalWidget::RemoteTerminalWidget(RemoteConnectionContext connectionContext, QWidget *parent)
@@ -353,7 +386,7 @@ void RemoteTerminalWidget::requestCurrentWorkingDirectory()
         return;
     }
     m_pendingPwdRequest = true;
-    writeToProcess(QByteArray("echo __DH_PWD_S__$PWD__DH_PWD_E__\r"));
+    writeToProcess(QByteArray("echo __DH_PWD_S__$(pwd)__DH_PWD_E__\r"));
 }
 
 void RemoteTerminalWidget::checkForDirectoryMarker(const QString &rawText)
@@ -362,19 +395,25 @@ void RemoteTerminalWidget::checkForDirectoryMarker(const QString &rawText)
         return;
     }
     const QString plain = TerminalStream::stripAnsi(rawText);
-    const int startIdx = plain.indexOf(QStringLiteral("__DH_PWD_S__"));
-    if (startIdx < 0) {
-        return;
-    }
-    const int pathStart = startIdx + 12; // length of "__DH_PWD_S__"
-    const int endIdx = plain.indexOf(QStringLiteral("__DH_PWD_E__"), pathStart);
-    if (endIdx < 0) {
-        return;
-    }
-    m_pendingPwdRequest = false;
-    const QString path = plain.mid(pathStart, endIdx - pathStart).trimmed();
-    if (!path.isEmpty()) {
-        emit currentDirectoryReceived(path);
+    int searchFrom = 0;
+    while (searchFrom < plain.size()) {
+        const int startIdx = plain.indexOf(QStringLiteral("__DH_PWD_S__"), searchFrom);
+        if (startIdx < 0) {
+            return;
+        }
+        const int pathStart = startIdx + 12; // length of "__DH_PWD_S__"
+        const int endIdx = plain.indexOf(QStringLiteral("__DH_PWD_E__"), pathStart);
+        if (endIdx < 0) {
+            return;
+        }
+        const QString path = plain.mid(pathStart, endIdx - pathStart).trimmed();
+        // 跳过 shell 回显的命令行（包含 $( 等shell语法），只匹配执行结果
+        if (!path.isEmpty() && !path.contains(QLatin1String("$("))) {
+            m_pendingPwdRequest = false;
+            emit currentDirectoryReceived(path);
+            return;
+        }
+        searchFrom = endIdx + 12; // length of "__DH_PWD_E__"
     }
 }
 
@@ -411,7 +450,12 @@ void RemoteTerminalWidget::appendOutput(const QString &text)
 {
     checkForDirectoryMarker(text);
     QTextCursor cursor = m_output->textCursor();
-    cursor.movePosition(QTextCursor::End);
+    // 含 \n 的文本是新行输出（如命令结果、MOTD），追加到文末
+    // 不含 \n 的文本是行内编辑（如 readline 回显），在当前光标位置插入
+    // 但如果光标不在最后一行（如鼠标点击了历史区域），回退到文末
+    if (text.contains(QLatin1Char('\n')) || cursor.block() != m_output->document()->lastBlock()) {
+        cursor.movePosition(QTextCursor::End);
+    }
     cursor.mergeBlockFormat(terminalBlockFormat());
     TerminalStream::appendToCursor(cursor, text);
     m_output->setTextCursor(cursor);
@@ -427,7 +471,6 @@ void RemoteTerminalWidget::appendNotice(const QString &text)
     cursor.movePosition(QTextCursor::End);
     cursor.mergeBlockFormat(terminalBlockFormat());
     cursor.insertText(text.endsWith(QLatin1Char('\n')) ? text : text + QLatin1Char('\n'));
-    m_output->setTextCursor(cursor);
     trimTerminalDocument(m_output->document(), 5000);
     if (auto *bar = m_output->verticalScrollBar()) {
         bar->setValue(bar->maximum());

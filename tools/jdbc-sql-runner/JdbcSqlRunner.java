@@ -45,13 +45,30 @@ public final class JdbcSqlRunner {
         Class.forName(driverClass);
         try (Connection connection = DriverManager.getConnection(jdbcUrl, username, password);
              Statement statement = connection.createStatement()) {
-            final boolean hasResultSet = statement.execute(sql);
-            if (hasResultSet) {
-                try (ResultSet resultSet = statement.getResultSet()) {
-                    writeSuccess(resultSet);
+            boolean hasResultSet = statement.execute(sql);
+            List<Map<String, String>> lastRows = null;
+            String message = "";
+
+            do {
+                if (hasResultSet) {
+                    try (ResultSet resultSet = statement.getResultSet()) {
+                        if (resultSet != null) {
+                            lastRows = readRows(resultSet);
+                        }
+                    }
+                } else {
+                    final int updateCount = statement.getUpdateCount();
+                    if (updateCount >= 0) {
+                        message = "affected:" + updateCount;
+                    }
                 }
+                hasResultSet = statement.getMoreResults();
+            } while (hasResultSet || statement.getUpdateCount() != -1);
+
+            if (lastRows != null) {
+                writeJson(true, "", lastRows);
             } else {
-                writeJson(true, "affected:" + statement.getUpdateCount(), new ArrayList<>());
+                writeJson(true, message, new ArrayList<>());
             }
         } catch (Exception ex) {
             writeError(ex.getMessage() == null ? ex.toString() : ex.getMessage());
@@ -59,7 +76,7 @@ public final class JdbcSqlRunner {
         }
     }
 
-    private static void writeSuccess(ResultSet resultSet) throws Exception {
+    private static List<Map<String, String>> readRows(ResultSet resultSet) throws Exception {
         final ResultSetMetaData meta = resultSet.getMetaData();
         final int columnCount = meta.getColumnCount();
         final List<Map<String, String>> rows = new ArrayList<>();
@@ -72,7 +89,11 @@ public final class JdbcSqlRunner {
             }
             rows.add(row);
         }
-        writeJson(true, "", rows);
+        return rows;
+    }
+
+    private static void writeSuccess(ResultSet resultSet) throws Exception {
+        writeJson(true, "", readRows(resultSet));
     }
 
     private static void writeError(String message) {

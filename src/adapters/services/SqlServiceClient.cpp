@@ -216,15 +216,69 @@ QString dropTableSql(const QString &productKey, const QString &schema, const QSt
     return QStringLiteral("DROP TABLE \"%1\".\"%2\"").arg(escapedSchema, escapedTable);
 }
 
+QString tableDdlSql(const QString &productKey, const QString &schema, const QString &table)
+{
+    QString escapedSchema = schema;
+    escapedSchema.replace(QLatin1Char('\''), QStringLiteral("''"));
+    QString escapedTable = table;
+    escapedTable.replace(QLatin1Char('\''), QStringLiteral("''"));
+    if (productKey == QStringLiteral("oracle")) {
+        return QStringLiteral("SELECT DBMS_METADATA.GET_DDL('TABLE', '%1', '%2') AS ddl FROM DUAL")
+            .arg(escapedTable.toUpper(), escapedSchema.toUpper());
+    }
+    return QStringLiteral(
+               "SELECT 'CREATE TABLE ' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || E' (\\n' || "
+               "string_agg('  ' || quote_ident(a.attname) || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod) || "
+               "CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END || "
+               "CASE WHEN d.adbin IS NOT NULL THEN ' DEFAULT ' || pg_catalog.pg_get_expr(d.adbin, d.adrelid) ELSE '' END, "
+               "E',\\n' ORDER BY a.attnum) || E'\\n);' AS ddl "
+               "FROM pg_catalog.pg_class c "
+               "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+               "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid "
+               "LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum "
+               "WHERE n.nspname = '%1' AND c.relname = '%2' AND a.attnum > 0 AND NOT a.attisdropped "
+               "GROUP BY n.nspname, c.relname")
+        .arg(escapedSchema, escapedTable);
+}
+
+QString activeSchemaName(const ServiceEndpoint &endpoint, const QString &productKey, const QString &schema)
+{
+    return schema.trimmed().isEmpty()
+        ? (productKey == QStringLiteral("oracle") ? endpoint.username.toUpper() : QStringLiteral("public"))
+        : schema.trimmed();
+}
+
+QString extractDdlText(const ServiceResult &result)
+{
+    if (!result.rows.isEmpty()) {
+        const QJsonObject row = result.rows.first();
+        const QString ddl = row.value(QStringLiteral("ddl")).toString();
+        if (!ddl.isEmpty()) {
+            return ddl;
+        }
+        if (!row.isEmpty()) {
+            return row.begin().value().toString();
+        }
+    }
+    return result.message;
+}
+
 ServiceResult SqlServiceClient::describeTable(const ServiceEndpoint &endpoint,
                                               const QString &productKey,
                                               const QString &schema,
                                               const QString &table)
 {
-    const QString activeSchema = schema.trimmed().isEmpty()
-        ? (productKey == QStringLiteral("oracle") ? endpoint.username.toUpper() : QStringLiteral("public"))
-        : schema.trimmed();
+    const QString activeSchema = activeSchemaName(endpoint, productKey, schema);
     return runSql(endpoint, productKey, describeTableSql(productKey, activeSchema, table));
+}
+
+ServiceResult SqlServiceClient::fetchTableDdl(const ServiceEndpoint &endpoint,
+                                              const QString &productKey,
+                                              const QString &schema,
+                                              const QString &table)
+{
+    const QString activeSchema = activeSchemaName(endpoint, productKey, schema);
+    return runSql(endpoint, productKey, tableDdlSql(productKey, activeSchema, table));
 }
 
 ServiceResult SqlServiceClient::dropTable(const ServiceEndpoint &endpoint,
@@ -232,10 +286,13 @@ ServiceResult SqlServiceClient::dropTable(const ServiceEndpoint &endpoint,
                                           const QString &schema,
                                           const QString &table)
 {
-    const QString activeSchema = schema.trimmed().isEmpty()
-        ? (productKey == QStringLiteral("oracle") ? endpoint.username.toUpper() : QStringLiteral("public"))
-        : schema.trimmed();
+    const QString activeSchema = activeSchemaName(endpoint, productKey, schema);
     return runSql(endpoint, productKey, dropTableSql(productKey, activeSchema, table));
+}
+
+QString SqlServiceClient::ddlTextFromResult(const ServiceResult &result)
+{
+    return extractDdlText(result);
 }
 
 QString SqlServiceClient::defaultSelectSql(const QString &productKey,

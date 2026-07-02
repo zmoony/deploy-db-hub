@@ -75,4 +75,5 @@ public:
                                        const RemoteConnectionContext &remote,
                                        const QString &topic,
                                        int maxMessages = 5);
+    static QString sanitizeConsumerOutput(const QString &text);
 };

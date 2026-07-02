@@ -30,3 +30,11 @@ Desktop.ini
 
 # Isolated worktrees
 .worktrees/
+
+# 把所有.开头的都忽略
+/.*
+!.git
+!.gitignore
+agent_memory/
+.cursor/
+.history/

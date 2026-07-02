@@ -53,6 +53,7 @@ Base64TextToolPage::Base64TextToolPage(QWidget *parent)
 
     auto *message = new QLabel(this);
     message->setObjectName(QStringLiteral("toolMessage"));
+    message->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(message);
 
     connect(encode, &QPushButton::clicked, this, [input, output, message]() {

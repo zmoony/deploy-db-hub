@@ -116,4 +116,5 @@ private:
     QPushButton *m_viewButton = nullptr;
     QPushButton *m_editButton = nullptr;
     QPushButton *m_deleteButton = nullptr;
+    QPushButton *m_goButton = nullptr;
 };

@@ -31,6 +31,7 @@ TimestampToolPage::TimestampToolPage(QWidget *parent)
     nowLayout->setSpacing(PageLayout::Space8);
     auto *nowLabel = new QLabel(nowRow);
     nowLabel->setObjectName(QStringLiteral("sectionLabel"));
+    nowLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     auto *copyNow = Helpers::makeToolButton(QStringLiteral("复制当前毫秒"), nowRow);
     nowLayout->addWidget(nowLabel, 1);
     nowLayout->addWidget(copyNow);
@@ -94,6 +95,7 @@ TimestampToolPage::TimestampToolPage(QWidget *parent)
     auto *message = new QLabel(this);
     message->setObjectName(QStringLiteral("toolMessage"));
     message->setWordWrap(true);
+    message->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(message);
     layout->addStretch();
 

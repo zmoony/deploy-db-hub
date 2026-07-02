@@ -4,6 +4,7 @@
 #include "infra/DataPaths.h"
 #include "infra/AiSettingsStore.h"
 #include "infra/AppSettingsStore.h"
+#include "ui/AppStyle.h"
 #include "adapters/services/JdbcSqlBridge.h"
 #include "infra/JdkProfileStore.h"
 #include "infra/LocalLogCatalog.h"
@@ -122,6 +123,108 @@ QIcon makeSidebarLineIcon(const QString &label)
 
     painter.end();
     return QIcon(pixmap);
+}
+
+QPixmap makeQuickStartIcon(const QString &kind, const QColor &color)
+{
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPen pen(color, 1.6);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    if (kind == QStringLiteral("arrow")) {
+        painter.drawLine(QPointF(5.5, 3.5), QPointF(10.5, 8));
+        painter.drawLine(QPointF(10.5, 8), QPointF(5.5, 12.5));
+    } else if (kind == QStringLiteral("bulb")) {
+        painter.drawEllipse(QRectF(5, 2.5, 6, 7));
+        painter.drawLine(QPointF(6.5, 10.5), QPointF(9.5, 10.5));
+        painter.drawLine(QPointF(7, 13), QPointF(9, 13));
+        painter.drawLine(QPointF(8, 9.5), QPointF(8, 11.5));
+    }
+    painter.end();
+    return pixmap;
+}
+
+QWidget *makeAiQuickStartPanel(QWidget *parent)
+{
+    auto *helpPanel = new QFrame(parent);
+    helpPanel->setObjectName(QStringLiteral("aiQuickHelpPanel"));
+    helpPanel->setAttribute(Qt::WA_StyledBackground, true);
+    helpPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    PageLayout::applyLighterCardShadow(helpPanel);
+    auto *helpLayout = new QHBoxLayout(helpPanel);
+    helpLayout->setContentsMargins(PageLayout::Space20, PageLayout::Space10, PageLayout::Space16, PageLayout::Space10);
+    helpLayout->setSpacing(PageLayout::Space12);
+
+    auto *helpTitle = PageLayout::makeSectionLabel(QStringLiteral("快速开始"), helpPanel);
+    helpTitle->setObjectName(QStringLiteral("quickHelpSectionTitle"));
+    helpLayout->addWidget(helpTitle, 0, Qt::AlignVCenter);
+
+    auto *steps = new QWidget(helpPanel);
+    auto *stepsLayout = new QHBoxLayout(steps);
+    stepsLayout->setContentsMargins(0, 0, 0, 0);
+    stepsLayout->setSpacing(PageLayout::Space8);
+    struct HelpStep {
+        QString number;
+        QString title;
+        QString subtitle;
+    };
+    const QList<HelpStep> helpItems = {
+        {QStringLiteral("1"), QStringLiteral("获取 API Key"), QStringLiteral("从 OpenAI 兼容服务商获取")},
+        {QStringLiteral("2"), QStringLiteral("配置连接信息"), QStringLiteral("填写 Base URL、API Key 和模型")},
+        {QStringLiteral("3"), QStringLiteral("开始使用"), QStringLiteral("在 AI 聊天、辅助分析等工具中使用")}
+    };
+    for (int i = 0; i < helpItems.size(); ++i) {
+        const HelpStep &item = helpItems.at(i);
+        auto *step = new QWidget(steps);
+        step->setObjectName(QStringLiteral("quickHelpStep"));
+        auto *stepLayout = new QHBoxLayout(step);
+        stepLayout->setContentsMargins(0, 0, 0, 0);
+        stepLayout->setSpacing(PageLayout::Space6);
+        auto *badge = new QLabel(item.number, step);
+        badge->setObjectName(QStringLiteral("quickHelpBadge"));
+        badge->setAlignment(Qt::AlignCenter);
+        badge->setFixedSize(20, 20);
+        badge->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        auto *textBlock = new QWidget(step);
+        auto *textLayout = new QVBoxLayout(textBlock);
+        textLayout->setContentsMargins(0, 0, 0, 0);
+        textLayout->setSpacing(0);
+        auto *title = new QLabel(item.title, textBlock);
+        title->setObjectName(QStringLiteral("quickHelpTitle"));
+        title->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        auto *subtitle = new QLabel(item.subtitle, textBlock);
+        subtitle->setObjectName(QStringLiteral("quickHelpItem"));
+        subtitle->setWordWrap(false);
+        subtitle->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        textLayout->addWidget(title);
+        textLayout->addWidget(subtitle);
+        stepLayout->addWidget(badge, 0, Qt::AlignVCenter);
+        stepLayout->addWidget(textBlock, 1);
+        stepsLayout->addWidget(step, 1);
+        if (i + 1 < helpItems.size()) {
+            auto *arrow = new QLabel(steps);
+            arrow->setObjectName(QStringLiteral("quickHelpArrow"));
+            arrow->setPixmap(makeQuickStartIcon(QStringLiteral("arrow"), QColor(QStringLiteral("#9CA3AF"))));
+            arrow->setAlignment(Qt::AlignCenter);
+            arrow->setFixedWidth(14);
+            stepsLayout->addWidget(arrow, 0, Qt::AlignVCenter);
+        }
+    }
+    auto *bulb = new QLabel(steps);
+    bulb->setObjectName(QStringLiteral("quickHelpBulb"));
+    bulb->setPixmap(makeQuickStartIcon(QStringLiteral("bulb"), QColor(QStringLiteral("#4E8EFA"))));
+    bulb->setAlignment(Qt::AlignCenter);
+    bulb->setToolTip(QStringLiteral("API Key 保存在本地凭据存储中，不上传服务器。"));
+    stepsLayout->addWidget(bulb, 0, Qt::AlignVCenter);
+    helpLayout->addWidget(steps, 1);
+
+    return helpPanel;
 }
 
 QString formatByteSize(qint64 bytes)
@@ -257,6 +360,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     contentLayout->addWidget(topBar);
     contentLayout->addWidget(m_contentStack, 1);
+
+    m_aiQuickStartPanel = makeAiQuickStartPanel(content);
+    m_aiQuickStartPanel->setVisible(false);
+    contentLayout->addWidget(m_aiQuickStartPanel);
+
     rootLayout->addWidget(content, 1);
 
     if (m_moduleTabGroup != nullptr) {
@@ -350,6 +458,7 @@ void MainWindow::showModule(int index)
     m_navigation->setCurrentRow(0);
     m_navigation->blockSignals(false);
     m_modulePages.at(index)->setCurrentIndex(0);
+    updateQuickStartVisibility();
 }
 
 void MainWindow::showMainModuleContent()
@@ -363,6 +472,7 @@ void MainWindow::showMainModuleContent()
     if (m_navigation != nullptr) {
         m_navigation->setEnabled(true);
     }
+    updateQuickStartVisibility();
 }
 
 void MainWindow::onModuleChanged(int index)
@@ -378,6 +488,7 @@ void MainWindow::onNavigationChanged(int row)
         return;
     }
     m_modulePages.at(moduleIndex)->setCurrentIndex(row);
+    updateQuickStartVisibility();
 }
 
 void MainWindow::onSettingsClicked()
@@ -395,11 +506,39 @@ void MainWindow::onSettingsClicked()
     if (m_navigation != nullptr) {
         m_navigation->setEnabled(false);
     }
+    updateQuickStartVisibility();
 }
 
 void MainWindow::openAiConfigPage()
 {
     navigateToPage(0, 0);
+}
+
+void MainWindow::onThemeChanged(int index)
+{
+    Q_UNUSED(index);
+    if (m_themeSelector == nullptr) {
+        return;
+    }
+
+    const QString themeMode = m_themeSelector->currentData().toString();
+    ThemeMode mode = ThemeMode::System;
+    if (themeMode == QStringLiteral("dark")) {
+        mode = ThemeMode::Dark;
+    } else if (themeMode == QStringLiteral("light")) {
+        mode = ThemeMode::Light;
+    }
+
+    QApplication *app = qobject_cast<QApplication *>(QCoreApplication::instance());
+    if (app != nullptr) {
+        AppStyle::reapply(*app, mode);
+    }
+
+    AppSettings settings;
+    AppSettingsStore store(AppSettingsStore::defaultSettingsFile());
+    store.load(&settings, nullptr);
+    settings.themeMode = themeMode;
+    store.save(settings, nullptr);
 }
 
 void MainWindow::refreshAiSettingsSummary()
@@ -420,6 +559,23 @@ void MainWindow::refreshAiSettingsSummary()
 
     const bool hasKey = m_credentials != nullptr && m_credentials->has(settings.credentialRef);
     m_aiSummaryKeyStatus->setText(hasKey ? QStringLiteral("已保存（凭据存储）") : unset);
+}
+
+void MainWindow::updateQuickStartVisibility()
+{
+    if (m_aiQuickStartPanel == nullptr) {
+        return;
+    }
+    bool visible = false;
+    const int moduleIndex = m_moduleStack != nullptr ? m_moduleStack->currentIndex() : -1;
+    const int pageRow = (moduleIndex >= 0 && moduleIndex < m_modulePages.size())
+                            ? m_modulePages.at(moduleIndex)->currentIndex()
+                            : -1;
+    if (m_contentStack != nullptr && m_contentStack->currentIndex() == 0
+        && moduleIndex == 0 && pageRow == 0) {
+        visible = true;
+    }
+    m_aiQuickStartPanel->setVisible(visible);
 }
 
 void MainWindow::navigateToPage(int moduleIndex, int pageRow)
@@ -650,9 +806,11 @@ QWidget *MainWindow::createDeployPage()
     statusTextLayout->setSpacing(PageLayout::Space4);
     m_serviceStatusLabel = new QLabel(QStringLiteral("未检测"));
     m_serviceStatusLabel->setObjectName(QStringLiteral("deployStatusValue"));
+    m_serviceStatusLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     auto *statusHint = new QLabel(QStringLiteral("点击「刷新状态」获取最新运行信息"));
     statusHint->setObjectName(QStringLiteral("deployStatusHint"));
     statusHint->setWordWrap(true);
+    statusHint->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusTextLayout->addWidget(m_serviceStatusLabel);
     statusTextLayout->addWidget(statusHint);
 
@@ -768,8 +926,10 @@ QWidget *MainWindow::createDeployPage()
     progressHeader->setSpacing(PageLayout::Space8);
     auto *taskPrefix = new QLabel(QStringLiteral("当前任务："));
     taskPrefix->setObjectName(QStringLiteral("deployProgressCaption"));
+    taskPrefix->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_deployTaskLabel = new QLabel(QStringLiteral("等待开始"));
     m_deployTaskLabel->setObjectName(QStringLiteral("deployTaskValue"));
+    m_deployTaskLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     auto *taskRow = new QWidget;
     auto *taskRowLayout = new QHBoxLayout(taskRow);
     taskRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -780,6 +940,7 @@ QWidget *MainWindow::createDeployPage()
     m_deployProgressLabel = new QLabel(QStringLiteral("0%"));
     m_deployProgressLabel->setObjectName(QStringLiteral("deployProgressValue"));
     m_deployProgressLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_deployProgressLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     progressHeader->addWidget(m_deployProgressLabel);
     execBody->addLayout(progressHeader);
 
@@ -801,6 +962,7 @@ QWidget *MainWindow::createDeployPage()
     outputHeader->setSpacing(PageLayout::Space8);
     auto *outputLabel = new QLabel(QStringLiteral("运行输出"));
     outputLabel->setObjectName(QStringLiteral("deployOutputCaption"));
+    outputLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     outputHeader->addWidget(outputLabel);
     auto *outputDivider = new QFrame;
     outputDivider->setObjectName(QStringLiteral("deployOutputDivider"));
@@ -827,9 +989,11 @@ QWidget *MainWindow::createDeployPage()
     consoleFooter->setFixedHeight(28);
     auto *footerStatus = new QLabel(QStringLiteral("状态：就绪"));
     footerStatus->setObjectName(QStringLiteral("deployConsoleFooterText"));
+    footerStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
     auto *footerEncoding = new QLabel(QStringLiteral("编码：UTF-8"));
     footerEncoding->setObjectName(QStringLiteral("deployConsoleFooterText"));
     footerEncoding->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    footerEncoding->setTextInteractionFlags(Qt::TextSelectableByMouse);
     consoleFooterLayout->addWidget(footerStatus, 1);
     consoleFooterLayout->addWidget(footerEncoding);
     execBody->addWidget(consoleFooter);
@@ -1049,6 +1213,7 @@ AppSettings settings;
     m_driverProbeLabel = new QLabel(QStringLiteral("JDBC 使用部署工具中配置的 JDK；选择驱动 JAR 后点击检测。"), driverActions);
     m_driverProbeLabel->setObjectName(QStringLiteral("mutedText"));
     m_driverProbeLabel->setWordWrap(true);
+    m_driverProbeLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     driverActionsLayout->addWidget(probeButton);
     driverActionsLayout->addWidget(saveJdbcButton);
     driverActionsLayout->addWidget(m_driverProbeLabel, 1);
@@ -1065,6 +1230,7 @@ AppSettings settings;
         aiBox);
     aiHint->setObjectName(QStringLiteral("mutedText"));
     aiHint->setWordWrap(true);
+    aiHint->setTextInteractionFlags(Qt::TextSelectableByMouse);
     aiLayout->addWidget(aiHint);
 
     auto *aiForm = new QFormLayout;
@@ -1083,10 +1249,12 @@ AppSettings settings;
 
     m_aiSummaryKeyStatus = new QLabel(QStringLiteral("未配置"), aiBox);
     m_aiSummaryKeyStatus->setObjectName(QStringLiteral("mutedText"));
+    m_aiSummaryKeyStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
     aiForm->addRow(QStringLiteral("API Key"), m_aiSummaryKeyStatus);
 
-    aiForm->addRow(QStringLiteral("配置文件"),
-                   new QLabel(AiSettingsStore::defaultSettingsFile(), aiBox));
+    auto *aiConfigFileLabel = new QLabel(AiSettingsStore::defaultSettingsFile(), aiBox);
+    aiConfigFileLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    aiForm->addRow(QStringLiteral("配置文件"), aiConfigFileLabel);
 
     aiLayout->addLayout(aiForm);
 
@@ -1102,6 +1270,42 @@ AppSettings settings;
     aiActionsLayout->addStretch();
     aiLayout->addWidget(aiActions);
     layout->addWidget(aiBox);
+
+    // ── 外观主题 ──
+    QVBoxLayout *appearanceLayout = nullptr;
+    auto *appearanceBox = PageLayout::makeDeploySectionCard(page, QStringLiteral("外观"), &appearanceLayout);
+    appearanceLayout->setSpacing(PageLayout::Space8);
+
+    auto *appearanceHint = new QLabel(QStringLiteral("选择界面主题，切换后自动生效并保存。"), appearanceBox);
+    appearanceHint->setObjectName(QStringLiteral("mutedText"));
+    appearanceHint->setWordWrap(true);
+    appearanceHint->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    appearanceLayout->addWidget(appearanceHint);
+
+    auto *themeForm = new QFormLayout;
+    PageLayout::applyInlineForm(themeForm);
+    themeForm->setVerticalSpacing(PageLayout::Space8);
+
+    m_themeSelector = new QComboBox(appearanceBox);
+    m_themeSelector->addItem(QStringLiteral("跟随系统"), QStringLiteral("system"));
+    m_themeSelector->addItem(QStringLiteral("浅色"), QStringLiteral("light"));
+    m_themeSelector->addItem(QStringLiteral("深色"), QStringLiteral("dark"));
+    {
+        const QString current = settings.themeMode;
+        for (int i = 0; i < m_themeSelector->count(); ++i) {
+            if (m_themeSelector->itemData(i).toString() == current) {
+                m_themeSelector->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+    PageLayout::configureFormInput(m_themeSelector);
+    themeForm->addRow(QStringLiteral("主题模式"), m_themeSelector);
+    connect(m_themeSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onThemeChanged);
+
+    appearanceLayout->addLayout(themeForm);
+    layout->addWidget(appearanceBox);
 
     refreshAiSettingsSummary();
     layout->addStretch();
@@ -1354,6 +1558,10 @@ void MainWindow::saveSettings()
         settings.mavenRepository = QDir::fromNativeSeparators(m_mavenRepoInput->text().trimmed());
     }
 
+    if (m_themeSelector != nullptr) {
+        settings.themeMode = m_themeSelector->currentData().toString();
+    }
+
     if (!settings.mavenHome.isEmpty()) {
 #ifdef Q_OS_WIN
         const QString mvnPath = QDir(settings.mavenHome).filePath(QStringLiteral("bin/mvn.cmd"));
@@ -1373,6 +1581,18 @@ void MainWindow::saveSettings()
     if (!store.save(settings, &error)) {
         QMessageBox::warning(this, QStringLiteral("保存失败"), error);
         return;
+    }
+
+    // Reapply theme if changed
+    {
+        const QString &tm = settings.themeMode;
+        ThemeMode mode = ThemeMode::System;
+        if (tm == QStringLiteral("dark")) {
+            mode = ThemeMode::Dark;
+        } else if (tm == QStringLiteral("light")) {
+            mode = ThemeMode::Light;
+        }
+        AppStyle::reapply(*qobject_cast<QApplication *>(QCoreApplication::instance()), mode);
     }
 
     QMessageBox::information(this,

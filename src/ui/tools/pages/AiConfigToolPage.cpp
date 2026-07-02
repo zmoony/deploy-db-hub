@@ -4,9 +4,11 @@
 #include "infra/AiSettingsStore.h"
 #include "infra/CredentialStore.h"
 #include "ui/PageLayout.h"
+#include "ui/tools/pages/AiConnectionManagerDialog.h"
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDialog>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -39,14 +41,13 @@ QIcon makeAiConfigIcon(const QString &kind, const QColor &color)
         painter.drawEllipse(QPointF(8, 8), 5, 5);
         painter.drawLine(QPointF(8, 5), QPointF(8, 8));
         painter.drawLine(QPointF(8, 8), QPointF(10.5, 9.5));
-    } else if (kind == QStringLiteral("arrow")) {
-        painter.drawLine(QPointF(5.5, 3.5), QPointF(10.5, 8));
-        painter.drawLine(QPointF(10.5, 8), QPointF(5.5, 12.5));
-    } else if (kind == QStringLiteral("bulb")) {
-        painter.drawEllipse(QRectF(5, 2.5, 6, 7));
-        painter.drawLine(QPointF(6.5, 10.5), QPointF(9.5, 10.5));
-        painter.drawLine(QPointF(7, 13), QPointF(9, 13));
-        painter.drawLine(QPointF(8, 9.5), QPointF(8, 11.5));
+    } else if (kind == QStringLiteral("manager")) {
+        painter.drawRoundedRect(QRectF(2, 3.5, 5, 9), 1, 1);
+        painter.drawRoundedRect(QRectF(9, 3.5, 5, 9), 1, 1);
+        painter.drawLine(QPointF(4, 6), QPointF(4.5, 6));
+        painter.drawLine(QPointF(4, 8.5), QPointF(5, 8.5));
+        painter.drawLine(QPointF(11, 6), QPointF(12, 6));
+        painter.drawLine(QPointF(11, 8.5), QPointF(12, 8.5));
     }
 
     painter.end();
@@ -79,6 +80,28 @@ QPushButton *makeAiConfigActionButton(const QString &text,
     return button;
 }
 
+QStringList collectModelChoices(const QVector<AiConnection> &connections, const QString &fallback)
+{
+    QStringList models;
+    auto addUnique = [&models](const QString &value) {
+        const QString trimmed = value.trimmed();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+        if (!models.contains(trimmed)) {
+            models.append(trimmed);
+        }
+    };
+    for (const QString &preset : AiSettingsStore::defaultModelPresets()) {
+        addUnique(preset);
+    }
+    for (const AiConnection &connection : connections) {
+        addUnique(connection.model);
+    }
+    addUnique(fallback);
+    return models;
+}
+
 } // namespace
 
 namespace Ui {
@@ -90,6 +113,12 @@ AiConfigToolPage::AiConfigToolPage(AiSettingsStore *aiSettings,
     : ToolPage(parent)
     , m_aiSettings(aiSettings)
     , m_credentials(credentials)
+{
+    buildUi();
+    loadForm();
+}
+
+void AiConfigToolPage::buildUi()
 {
     constexpr int kFormLabelWidth = 124;
 
@@ -117,11 +146,13 @@ AiConfigToolPage::AiConfigToolPage(AiSettingsStore *aiSettings,
         label->setObjectName(QStringLiteral("formFieldLabel"));
         label->setFixedWidth(kFormLabelWidth);
         label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
         return label;
     };
     auto makeHintLabel = [](const QString &text, QWidget *parent) {
         auto *label = new QLabel(text, parent);
         label->setObjectName(QStringLiteral("formFieldHint"));
+        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
         return label;
     };
     auto makeFormRow = [makeFieldLabel, kFormLabelWidth](const QString &labelText,
@@ -145,9 +176,28 @@ AiConfigToolPage::AiConfigToolPage(AiSettingsStore *aiSettings,
         return row;
     };
 
+    auto *connectionRow = new QWidget(formPanel);
+    auto *connectionRowLayout = new QHBoxLayout(connectionRow);
+    connectionRowLayout->setContentsMargins(0, 0, 0, 0);
+    connectionRowLayout->setSpacing(PageLayout::Space8);
+    m_connectionCombo = new QComboBox(connectionRow);
+    m_connectionCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    PageLayout::configureFormInput(m_connectionCombo);
+    auto *managerButton = new QPushButton(QStringLiteral("管理连接"), connectionRow);
+    managerButton->setObjectName(QStringLiteral("secondaryButton"));
+    managerButton->setFixedHeight(40);
+    connect(managerButton, &QPushButton::clicked, this, &AiConfigToolPage::openConnectionManager);
+    connectionRowLayout->addWidget(m_connectionCombo, 1);
+    connectionRowLayout->addWidget(managerButton);
+    formPanelLayout->addWidget(makeFormRow(QStringLiteral("AI 连接"),
+                                           connectionRow,
+                                           makeHintLabel(QStringLiteral("选择已保存的连接，自动填充 Base URL 和模型；可手动修改当前连接。"), formPanel),
+                                           formPanel));
+
     auto *apiBaseUrlInput = new QLineEdit(formPanel);
     apiBaseUrlInput->setPlaceholderText(QStringLiteral("https://api.openai.com/v1"));
     PageLayout::configureFormInput(apiBaseUrlInput);
+    m_apiBaseUrlInput = apiBaseUrlInput;
     formPanelLayout->addWidget(makeFormRow(QStringLiteral("API Base URL"),
                                            apiBaseUrlInput,
                                            makeHintLabel(QStringLiteral("例如：https://api.openai.com/v1"), formPanel),
@@ -162,6 +212,7 @@ AiConfigToolPage::AiConfigToolPage(AiSettingsStore *aiSettings,
     apiKeyInput->setEchoMode(QLineEdit::Password);
     apiKeyInput->setPlaceholderText(QStringLiteral("••••••••••••••••"));
     PageLayout::configureFormInput(apiKeyInput);
+    m_apiKeyInput = apiKeyInput;
     auto *visibilityButton = new QPushButton(QStringLiteral("显示"), passwordRow);
     visibilityButton->setObjectName(QStringLiteral("aiVisibilityButton"));
     visibilityButton->setCheckable(true);
@@ -179,21 +230,25 @@ AiConfigToolPage::AiConfigToolPage(AiSettingsStore *aiSettings,
 
     auto *modelInput = new QComboBox(formPanel);
     modelInput->setEditable(true);
-    modelInput->addItems({
-        QStringLiteral("gpt-4o-mini"),
-        QStringLiteral("gpt-4o"),
-        QStringLiteral("Qwen/Qwen2-7B"),
-        QStringLiteral("deepseek-chat")
-    });
+    modelInput->setInsertPolicy(QComboBox::NoInsert);
+    modelInput->addItems(AiSettingsStore::defaultModelPresets());
     modelInput->setPlaceholderText(QStringLiteral("gpt-4o-mini"));
+    modelInput->setFocusPolicy(Qt::StrongFocus);
+    modelInput->setProperty("manualEdit", true);
     PageLayout::configureFormInput(modelInput);
+    if (QLineEdit *le = modelInput->lineEdit()) {
+        le->setReadOnly(false);
+        le->setPlaceholderText(QStringLiteral("gpt-4o-mini"));
+    }
+    m_modelCombo = modelInput;
     formPanelLayout->addWidget(makeFormRow(QStringLiteral("模型"),
                                            modelInput,
-                                           makeHintLabel(QStringLiteral("选择要使用的 AI 模型"), formPanel),
+                                           makeHintLabel(QStringLiteral("可手动输入任意模型名称，或从下拉选择。"), formPanel),
                                            formPanel));
 
     auto *rememberKeyCheck = new QCheckBox(QStringLiteral("记住 Key"), formPanel);
     rememberKeyCheck->setChecked(true);
+    m_rememberKeyCheck = rememberKeyCheck;
     auto *rememberBlock = new QWidget(formPanel);
     auto *rememberLayout = new QVBoxLayout(rememberBlock);
     rememberLayout->setContentsMargins(0, 0, 0, 0);
@@ -230,199 +285,309 @@ AiConfigToolPage::AiConfigToolPage(AiSettingsStore *aiSettings,
     auto *message = new QLabel(formPanel);
     message->setObjectName(QStringLiteral("toolMessage"));
     message->setContentsMargins(0, PageLayout::Space4, 0, 0);
+    message->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_message = message;
     formPanelLayout->addWidget(message);
-    layout->addWidget(formPanel);
-
-    auto *helpPanel = new QFrame(this);
-    helpPanel->setObjectName(QStringLiteral("aiQuickHelpPanel"));
-    helpPanel->setAttribute(Qt::WA_StyledBackground, true);
-    helpPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-    PageLayout::applyLighterCardShadow(helpPanel);
-    auto *helpLayout = new QHBoxLayout(helpPanel);
-    helpLayout->setContentsMargins(PageLayout::Space20, PageLayout::Space10, PageLayout::Space16, PageLayout::Space10);
-    helpLayout->setSpacing(PageLayout::Space12);
-
-    auto *helpTitle = PageLayout::makeSectionLabel(QStringLiteral("快速开始"), helpPanel);
-    helpTitle->setObjectName(QStringLiteral("quickHelpSectionTitle"));
-    helpLayout->addWidget(helpTitle, 0, Qt::AlignVCenter);
-
-    auto *steps = new QWidget(helpPanel);
-    auto *stepsLayout = new QHBoxLayout(steps);
-    stepsLayout->setContentsMargins(0, 0, 0, 0);
-    stepsLayout->setSpacing(PageLayout::Space8);
-    struct HelpStep {
-        QString number;
-        QString title;
-        QString subtitle;
-    };
-    const QList<HelpStep> helpItems = {
-        {QStringLiteral("1"), QStringLiteral("获取 API Key"), QStringLiteral("从 OpenAI 兼容服务商获取")},
-        {QStringLiteral("2"), QStringLiteral("配置连接信息"), QStringLiteral("填写 Base URL、API Key 和模型")},
-        {QStringLiteral("3"), QStringLiteral("开始使用"), QStringLiteral("在 AI 聊天、辅助分析等工具中使用")}
-    };
-    for (int i = 0; i < helpItems.size(); ++i) {
-        const HelpStep &item = helpItems.at(i);
-        auto *step = new QWidget(steps);
-        step->setObjectName(QStringLiteral("quickHelpStep"));
-        auto *stepLayout = new QHBoxLayout(step);
-        stepLayout->setContentsMargins(0, 0, 0, 0);
-        stepLayout->setSpacing(PageLayout::Space6);
-        auto *badge = new QLabel(item.number, step);
-        badge->setObjectName(QStringLiteral("quickHelpBadge"));
-        badge->setAlignment(Qt::AlignCenter);
-        badge->setFixedSize(20, 20);
-        auto *textBlock = new QWidget(step);
-        auto *textLayout = new QVBoxLayout(textBlock);
-        textLayout->setContentsMargins(0, 0, 0, 0);
-        textLayout->setSpacing(0);
-        auto *title = new QLabel(item.title, textBlock);
-        title->setObjectName(QStringLiteral("quickHelpTitle"));
-        auto *subtitle = new QLabel(item.subtitle, textBlock);
-        subtitle->setObjectName(QStringLiteral("quickHelpItem"));
-        subtitle->setWordWrap(false);
-        textLayout->addWidget(title);
-        textLayout->addWidget(subtitle);
-        stepLayout->addWidget(badge, 0, Qt::AlignVCenter);
-        stepLayout->addWidget(textBlock, 1);
-        stepsLayout->addWidget(step, 1);
-        if (i + 1 < helpItems.size()) {
-            auto *arrow = new QLabel(steps);
-            arrow->setObjectName(QStringLiteral("quickHelpArrow"));
-            arrow->setPixmap(makeAiConfigIcon(QStringLiteral("arrow"), QColor(QStringLiteral("#9CA3AF"))).pixmap(14, 14));
-            arrow->setAlignment(Qt::AlignCenter);
-            arrow->setFixedWidth(14);
-            stepsLayout->addWidget(arrow, 0, Qt::AlignVCenter);
-        }
-    }
-    auto *bulb = new QLabel(steps);
-    bulb->setObjectName(QStringLiteral("quickHelpBulb"));
-    bulb->setPixmap(makeAiConfigIcon(QStringLiteral("bulb"), QColor(QStringLiteral("#4E8EFA"))).pixmap(16, 16));
-    bulb->setAlignment(Qt::AlignCenter);
-    bulb->setToolTip(QStringLiteral("API Key 保存在本地凭据存储中，不上传服务器。"));
-    stepsLayout->addWidget(bulb, 0, Qt::AlignVCenter);
-    helpLayout->addWidget(steps, 1);
-
     layout->addWidget(formPanel, 1);
-    layout->addWidget(helpPanel, 0);
 
     auto *testClient = new OpenAiChatClient(this);
 
-    auto loadForm = [m_aiSettings = m_aiSettings, m_credentials = m_credentials, apiBaseUrlInput, apiKeyInput, modelInput, rememberKeyCheck, message]() {
+    auto reloadConnections = [this, modelInput](const QString &preserveModel = QString()) {
         if (m_aiSettings == nullptr) {
             return;
         }
         AiSettings settings;
         QString error;
-        if (!m_aiSettings->load(&settings, &error)) {
-            message->setText(error);
-            return;
+        m_aiSettings->load(&settings, &error);
+        m_connectionCombo->blockSignals(true);
+        m_connectionCombo->clear();
+        for (int i = 0; i < settings.connections.size(); ++i) {
+            const AiConnection &connection = settings.connections.at(i);
+            m_connectionCombo->addItem(connection.name, connection.id);
         }
-        apiBaseUrlInput->setText(settings.apiBaseUrl);
-        if (!settings.model.isEmpty()) {
-            const int modelIndex = modelInput->findText(settings.model);
-            if (modelIndex >= 0) {
-                modelInput->setCurrentIndex(modelIndex);
-            } else {
-                modelInput->setEditText(settings.model);
+        int activeIndex = -1;
+        if (!settings.activeConnectionId.isEmpty()) {
+            for (int i = 0; i < settings.connections.size(); ++i) {
+                if (settings.connections.at(i).id == settings.activeConnectionId) {
+                    activeIndex = i;
+                    break;
+                }
             }
         }
-        rememberKeyCheck->setChecked(settings.rememberKey);
-        apiKeyInput->clear();
-        apiKeyInput->setPlaceholderText(QStringLiteral("••••••••••••••••"));
-        if (m_credentials != nullptr && m_credentials->has(settings.credentialRef)) {
-            apiKeyInput->setText(m_credentials->load(settings.credentialRef));
+        if (activeIndex >= 0) {
+            m_connectionCombo->setCurrentIndex(activeIndex);
+        } else if (m_connectionCombo->count() > 0) {
+            m_connectionCombo->setCurrentIndex(0);
         }
-        message->clear();
+        m_connectionCombo->blockSignals(false);
+        const QString modelToRestore = preserveModel.isEmpty()
+            ? settings.connections.value(activeIndex).model
+            : preserveModel;
+        const QStringList models = collectModelChoices(settings.connections, modelToRestore);
+        m_modelCombo->blockSignals(true);
+        m_modelCombo->clear();
+        m_modelCombo->addItems(models);
+        m_modelCombo->setEditable(true);
+        m_modelCombo->setInsertPolicy(QComboBox::NoInsert);
+        m_modelCombo->setProperty("manualEdit", true);
+        m_modelCombo->setFocusPolicy(Qt::StrongFocus);
+        if (QLineEdit *le = m_modelCombo->lineEdit()) {
+            le->setReadOnly(false);
+        }
+        if (!modelToRestore.isEmpty()) {
+            const int modelIndex = m_modelCombo->findText(modelToRestore);
+            if (modelIndex >= 0) {
+                m_modelCombo->setCurrentIndex(modelIndex);
+            } else {
+                m_modelCombo->setEditText(modelToRestore);
+            }
+        }
+        m_modelCombo->blockSignals(false);
     };
-    loadForm();
 
-    connect(saveButton, &QPushButton::clicked, this, [this, m_aiSettings = m_aiSettings, m_credentials = m_credentials, apiBaseUrlInput, apiKeyInput, modelInput, rememberKeyCheck, message, loadForm]() {
-        if (m_aiSettings == nullptr || m_credentials == nullptr) {
-            message->setText(QStringLiteral("AI 配置存储未初始化"));
+    connect(m_connectionCombo,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this,
+            [this, reloadConnections](int index) {
+                if (m_aiSettings == nullptr || index < 0) {
+                    return;
+                }
+                AiSettings settings;
+                QString error;
+                m_aiSettings->load(&settings, &error);
+                if (index >= settings.connections.size()) {
+                    return;
+                }
+                const AiConnection &connection = settings.connections.at(index);
+                settings.activeConnectionId = connection.id;
+                QString saveError;
+                m_aiSettings->save(settings, &saveError);
+                m_apiBaseUrlInput->setText(connection.apiBaseUrl);
+                m_modelCombo->blockSignals(true);
+                {
+                    const QStringList models = collectModelChoices(settings.connections,
+                                                                   connection.model);
+                    m_modelCombo->clear();
+                    m_modelCombo->addItems(models);
+                    m_modelCombo->setEditable(true);
+                    m_modelCombo->setInsertPolicy(QComboBox::NoInsert);
+                    m_modelCombo->setProperty("manualEdit", true);
+                    m_modelCombo->setFocusPolicy(Qt::StrongFocus);
+                    if (QLineEdit *le = m_modelCombo->lineEdit()) {
+                        le->setReadOnly(false);
+                    }
+                    const int modelIndex = m_modelCombo->findText(connection.model);
+                    if (modelIndex >= 0) {
+                        m_modelCombo->setCurrentIndex(modelIndex);
+                    } else {
+                        m_modelCombo->setEditText(connection.model);
+                    }
+                }
+                m_modelCombo->blockSignals(false);
+                m_apiKeyInput->clear();
+                m_apiKeyInput->setPlaceholderText(QStringLiteral("••••••••••••••••"));
+                if (m_credentials != nullptr && m_credentials->has(connection.credentialRef)) {
+                    m_apiKeyInput->setText(m_credentials->load(connection.credentialRef));
+                }
+                m_message->clear();
+                reloadConnections();
+            });
+
+    connect(saveButton, &QPushButton::clicked, this, [this, reloadConnections]() {
+        if (m_aiSettings == nullptr) {
+            m_message->setText(QStringLiteral("AI 配置存储未初始化"));
             return;
         }
-
         AiSettings settings;
         QString loadError;
-        m_aiSettings->load(&settings, &loadError);
-
-        settings.apiBaseUrl = apiBaseUrlInput->text().trimmed();
-        settings.model = modelInput->currentText().trimmed();
-        settings.rememberKey = rememberKeyCheck->isChecked();
-        if (settings.credentialRef.isEmpty()) {
-            settings.credentialRef = QStringLiteral("deploy-hub/ai-api-key");
-        }
-
-        if (settings.apiBaseUrl.isEmpty()) {
-            message->setText(QStringLiteral("请填写 API Base URL"));
+        if (!m_aiSettings->load(&settings, &loadError)) {
+            m_message->setText(loadError);
             return;
         }
-        if (settings.model.isEmpty()) {
-            message->setText(QStringLiteral("请填写模型名称"));
+        int connectionIndex = m_connectionCombo->currentIndex();
+        if (connectionIndex < 0 || connectionIndex >= settings.connections.size()) {
+            AiConnection created;
+            created.id = AiSettings::generateConnectionId();
+            created.name = QStringLiteral("新连接");
+            created.credentialRef = AiSettingsStore::buildCredentialRef(created.id);
+            settings.connections.append(created);
+            connectionIndex = settings.connections.size() - 1;
+            settings.activeConnectionId = created.id;
+        }
+        AiConnection &target = settings.connections[connectionIndex];
+        if (target.name.isEmpty()) {
+            target.name = QStringLiteral("未命名连接");
+        }
+        if (target.credentialRef.isEmpty()) {
+            target.credentialRef = AiSettingsStore::buildCredentialRef(target.id);
+        }
+        target.apiBaseUrl = m_apiBaseUrlInput->text().trimmed();
+        m_modelCombo->lineEdit()->editingFinished();
+        target.model = m_modelCombo->currentText().trimmed();
+        settings.apiBaseUrl = target.apiBaseUrl;
+        settings.model = target.model;
+        settings.credentialRef = target.credentialRef;
+        settings.rememberKey = m_rememberKeyCheck->isChecked();
+        settings.activeConnectionId = target.id;
+
+        if (target.apiBaseUrl.isEmpty()) {
+            m_message->setText(QStringLiteral("请填写 API Base URL"));
+            return;
+        }
+        if (target.model.isEmpty()) {
+            m_message->setText(QStringLiteral("请填写模型名称"));
             return;
         }
 
         QString saveError;
         if (!m_aiSettings->save(settings, &saveError)) {
-            message->setText(saveError);
+            m_message->setText(saveError);
             return;
         }
 
         if (settings.rememberKey) {
-            if (!apiKeyInput->text().isEmpty()) {
-                if (!m_credentials->save(settings.credentialRef, apiKeyInput->text(), &saveError)) {
-                    message->setText(saveError);
+            if (!m_apiKeyInput->text().isEmpty()) {
+                if (m_credentials == nullptr) {
+                    m_message->setText(QStringLiteral("凭据存储未初始化"));
                     return;
                 }
-            } else if (!m_credentials->has(settings.credentialRef)) {
-                message->setText(QStringLiteral("勾选记住 Key 时请填写 API Key"));
+                if (!m_credentials->save(target.credentialRef, m_apiKeyInput->text(), &saveError)) {
+                    m_message->setText(saveError);
+                    return;
+                }
+            } else if (m_credentials == nullptr || !m_credentials->has(target.credentialRef)) {
+                m_message->setText(QStringLiteral("勾选记住 Key 时请填写 API Key"));
                 return;
             }
-        } else {
-            m_credentials->remove(settings.credentialRef, &saveError);
+        } else if (m_credentials != nullptr) {
+            m_credentials->remove(target.credentialRef, &saveError);
         }
 
-        message->setText(QStringLiteral("配置已保存"));
+        m_message->setText(QStringLiteral("配置已保存"));
         loadForm();
     });
 
-    connect(testButton, &QPushButton::clicked, this, [this, m_aiSettings = m_aiSettings, m_credentials = m_credentials, apiBaseUrlInput, apiKeyInput, modelInput, message, testClient, saveButton, testButton]() {
-        AiSettings settings;
-        settings.apiBaseUrl = apiBaseUrlInput->text().trimmed();
-        settings.model = modelInput->currentText().trimmed();
-        settings.credentialRef = QStringLiteral("deploy-hub/ai-api-key");
-
-        QString key = apiKeyInput->text();
-        if (key.isEmpty() && m_credentials != nullptr) {
+    connect(testButton, &QPushButton::clicked, this, [this, testClient, saveButton, testButton]() {
+        const QString baseUrl = m_apiBaseUrlInput->text().trimmed();
+        m_modelCombo->lineEdit()->editingFinished();
+        const QString model = m_modelCombo->currentText().trimmed();
+        QString key = m_apiKeyInput->text();
+        if (key.isEmpty() && m_credentials != nullptr && m_aiSettings != nullptr) {
             AiSettings stored;
             m_aiSettings->load(&stored, nullptr);
-            key = m_credentials->load(stored.credentialRef);
+            const int idx = findConnectionIndex(stored.activeConnectionId);
+            if (idx >= 0) {
+                const AiConnection &connection = stored.connections.at(idx);
+                if (m_credentials->has(connection.credentialRef)) {
+                    key = m_credentials->load(connection.credentialRef);
+                }
+            }
         }
-
-        QString error;
-        if (settings.apiBaseUrl.isEmpty() || settings.model.isEmpty() || key.isEmpty()) {
-            message->setText(QStringLiteral("请先填写 URL、模型和 API Key"));
+        if (baseUrl.isEmpty() || model.isEmpty() || key.isEmpty()) {
+            m_message->setText(QStringLiteral("请先填写 URL、模型和 API Key"));
             return;
         }
 
         testClient->abort();
         saveButton->setEnabled(false);
         testButton->setEnabled(false);
-        message->setText(QStringLiteral("正在测试连接..."));
+        m_message->setText(QStringLiteral("正在测试连接..."));
 
-        connect(testClient, &OpenAiChatClient::finished, this, [message, testButton, saveButton]() {
-            message->setText(QStringLiteral("连接成功"));
+        connect(testClient, &OpenAiChatClient::finished, this, [this, testButton, saveButton]() {
+            m_message->setText(QStringLiteral("连接成功"));
             testButton->setEnabled(true);
             saveButton->setEnabled(true);
         }, Qt::SingleShotConnection);
-        connect(testClient, &OpenAiChatClient::failed, this, [message, testButton, saveButton](const QString &failedMessage) {
-            message->setText(QStringLiteral("连接失败：%1").arg(failedMessage));
+        connect(testClient, &OpenAiChatClient::failed, this, [this, testButton, saveButton](const QString &error) {
+            m_message->setText(QStringLiteral("连接失败：%1").arg(error));
             testButton->setEnabled(true);
             saveButton->setEnabled(true);
         }, Qt::SingleShotConnection);
 
-        testClient->testConnection(settings.apiBaseUrl, key, settings.model);
+        testClient->testConnection(baseUrl, key, model);
     });
+}
+
+int AiConfigToolPage::findConnectionIndex(const QString &id) const
+{
+    if (m_aiSettings == nullptr) {
+        return -1;
+    }
+    AiSettings settings;
+    m_aiSettings->load(&settings, nullptr);
+    for (int i = 0; i < settings.connections.size(); ++i) {
+        if (settings.connections.at(i).id == id) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void AiConfigToolPage::loadForm()
+{
+    if (m_aiSettings == nullptr) {
+        return;
+    }
+    AiSettings settings;
+    QString error;
+    if (!m_aiSettings->load(&settings, &error)) {
+        m_message->setText(error);
+        return;
+    }
+    m_connectionCombo->blockSignals(true);
+    m_connectionCombo->clear();
+    for (const AiConnection &connection : settings.connections) {
+        m_connectionCombo->addItem(connection.name, connection.id);
+    }
+    int activeIndex = -1;
+    for (int i = 0; i < settings.connections.size(); ++i) {
+        if (settings.connections.at(i).id == settings.activeConnectionId) {
+            activeIndex = i;
+            break;
+        }
+    }
+    if (activeIndex < 0 && m_connectionCombo->count() > 0) {
+        activeIndex = 0;
+    }
+    m_connectionCombo->setCurrentIndex(activeIndex);
+    m_connectionCombo->blockSignals(false);
+
+    const AiConnection &current = settings.connections.value(activeIndex);
+    m_apiBaseUrlInput->setText(current.apiBaseUrl);
+    m_modelCombo->blockSignals(true);
+    m_modelCombo->clear();
+    m_modelCombo->addItems(collectModelChoices(settings.connections, current.model));
+    m_modelCombo->setEditable(true);
+    m_modelCombo->setInsertPolicy(QComboBox::NoInsert);
+    m_modelCombo->setProperty("manualEdit", true);
+    m_modelCombo->setFocusPolicy(Qt::StrongFocus);
+    if (QLineEdit *le = m_modelCombo->lineEdit()) {
+        le->setReadOnly(false);
+    }
+    {
+        const int idx = m_modelCombo->findText(current.model);
+        if (idx >= 0) {
+            m_modelCombo->setCurrentIndex(idx);
+        } else {
+            m_modelCombo->setEditText(current.model);
+        }
+    }
+    m_modelCombo->blockSignals(false);
+    m_rememberKeyCheck->setChecked(settings.rememberKey);
+    m_apiKeyInput->clear();
+    m_apiKeyInput->setPlaceholderText(QStringLiteral("••••••••••••••••"));
+    if (m_credentials != nullptr && m_credentials->has(current.credentialRef)) {
+        m_apiKeyInput->setText(m_credentials->load(current.credentialRef));
+    }
+    m_message->clear();
+}
+
+void AiConfigToolPage::openConnectionManager()
+{
+    AiConnectionManagerDialog dialog(m_credentials, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        loadForm();
+    }
 }
 
 QString AiConfigToolPage::title() const

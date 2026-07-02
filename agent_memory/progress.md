@@ -482,3 +482,20 @@
   - `ServiceSqlWorkbenchWidget`：左侧表树（选中态 QSS、右键查看结构/刷新/删表）、SQL 模式提示、结果分页（50/100/200 + 总数 + 耗时 ms）、复制行 JSON、导出 CSV/JSON/Excel、工具栏间距压缩以扩大编辑/结果区。
   - `SqlServiceClient`：`withSchemaContext`、`describeTable`、`dropTable`；`ServiceProductPanel` 执行 SQL 时注入当前 schema 上下文。
   - `scripts/build-release.ps1` Release 构建通过。
+- 2026-06-30：数据库 SQL 页 UI 对齐部署工具规范：
+  - 去除 SQL Tab，进入连接后直接展示工作台；模式/刷新移至实例 banner 右侧。
+  - `ServiceSqlWorkbenchWidget` 改用 `deploySectionCard` 三卡片（表列表 / SQL 查询 / 查询结果）；按钮使用 `deployStartButton`、`toolSecondaryButton`、`toolBarButton`；编辑器使用 `toolEditorText`。
+  - 新增 `SqlCodeEditor`：SQL 语法高亮（关键字/字符串/数字/注释/函数）、行号、当前行高亮；自动补全 SQL 关键字 + 当前 schema + 表名（输入时自动弹出，`Ctrl+Space` 手动触发）。
+- 2026-06-30：SQL 结果表列头交互修复：
+  - `SqlResultHeaderView`：排序改为独立上下箭头图标（与筛选漏斗并列），仅点击图标触发排序/筛选；其余区域交给 `QHeaderView` 默认行为，恢复列宽拖拽。
+  - `ServiceSqlWorkbenchWidget::applyResultColumnLayout`：列少时 `Stretch` 撑满结果区，列多时 `Interactive` + 最小列宽 + 横向滚动条；窗口 resize 时自动切换模式。
+  - 移除结果表 `refreshListingTableColumns` 调用，避免与列宽策略冲突。`build-release.ps1` 通过。
+- 2026-07-02：新增主题管理系统，支持浅色/深色/跟随系统：
+  - `Theme.h`：新增 `ThemeMode` 枚举 (Light/Dark/System)、`ThemeColors::Dark` 深色调色板、`ThemePalette` 运行时结构体及 `fromMode`/`resolveMode`（Qt 6.5+ 通过 `QStyleHints::colorScheme()` 检测系统深色模式）。
+  - `Theme.cpp`：`ThemePalette::light()`/`dark()`/`fromMode()`/`resolveMode()` 实现。
+  - `AppStyle`：`apply()` 改为接受 `ThemeMode`（默认 System）；新增 `reapply()` 运行时切换主题（重新生成 QSS + 更新 QPalette + 刷新窗口）；匿名命名空间 helper 改为从 `currentPalette()` 读取运行时颜色。
+  - `AppSettings` 新增 `themeMode` 字段（`"light"`/`"dark"`/`"system"`），持久化到 `settings.json`。
+  - `MainWindow` 全局设置页新增「外观」Section，QComboBox 选择主题模式（跟随系统/浅色/深色）；`currentIndexChanged` 触发 `AppStyle::reapply()`，切换即时生效并自动保存到 `settings.json`。
+  - `style.qss`：60+ 处硬编码 `background-color: #FFFFFF` 替换为 `@C25@`（Surface）、`selection-color: #FFFFFF` 替换为 `@C25@`、`color: #374151` 替换为 `@C26@`、`selection-background-color: #2563EB` 替换为 `@C6@`；新增 `@C25@`~`@C29@` 占位符（Surface/TextSecondary/CodeBg/StatusBarBg/DialogBg）。
+  - `CMakeLists.txt` 新增 `src/ui/Theme.cpp` 到构建目标与测试目标。
+  - 本机未安装 Qt/CMake，未能编译验证。

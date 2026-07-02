@@ -174,6 +174,7 @@ JsonToolPage::JsonToolPage(QWidget *parent)
 
     auto *message = new QLabel(this);
     message->setObjectName(QStringLiteral("toolMessage"));
+    message->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(message);
 
     auto rebuildTree = [tree, input, message]() {
